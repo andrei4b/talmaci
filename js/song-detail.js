@@ -1,0 +1,118 @@
+/* song-detail.js — a single song's page: header + 4 tabs
+ * (Text, Rime, Sinonime, Biblie).
+ *
+ * Only the "Text" tab has real functionality (view original, edit
+ * translation) — the other three are placeholders until their behavior is
+ * specified. Each tab renderer lives in its own function so new
+ * functionality can be dropped in without touching the tab-switching
+ * scaffolding. */
+(function () {
+const { el, escapeHtml, toast, debounce } = window.Utils;
+
+const TABS = [
+  { id: 'text', label: 'Text' },
+  { id: 'rime', label: 'Rime' },
+  { id: 'sinonime', label: 'Sinonime' },
+  { id: 'biblie', label: 'Biblie' }
+];
+
+let _activeTab = 'text';
+let _song = null;
+
+async function render(root, songId) {
+  _activeTab = 'text';
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'topbar' }, [
+    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
+    el('h1', { class: 'topbar__title' }, ['Se încarcă…'])
+  ]));
+
+  try {
+    _song = await window.Db.getSong(songId);
+  } catch (err) {
+    toast('Nu am putut încărca melodia: ' + err.message, { kind: 'error' });
+    _song = null;
+  }
+
+  if (!_song) {
+    root.appendChild(el('div', { class: 'empty-state' }, ['Melodia nu a fost găsită.']));
+    return;
+  }
+
+  _renderShell(root);
+}
+
+function _renderShell(root) {
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'topbar' }, [
+    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
+    el('h1', { class: 'topbar__title' }, [escapeHtml(_song.title || 'Fără titlu')])
+  ]));
+
+  const tabBar = el('div', { class: 'tab-bar', role: 'tablist' });
+  const content = el('div', { class: 'tab-content' });
+
+  TABS.forEach(tab => {
+    tabBar.appendChild(el('button', {
+      class: 'tab-bar__tab' + (tab.id === _activeTab ? ' tab-bar__tab--active' : ''),
+      role: 'tab',
+      'aria-selected': tab.id === _activeTab ? 'true' : 'false',
+      onclick: () => { _activeTab = tab.id; _renderShell(root); }
+    }, [tab.label]));
+  });
+
+  root.appendChild(tabBar);
+  root.appendChild(content);
+  _renderTab(content);
+}
+
+function _renderTab(content) {
+  content.innerHTML = '';
+  if (_activeTab === 'text') return _renderTextTab(content);
+  return content.appendChild(_placeholderPanel(_activeTab));
+}
+
+function _renderTextTab(content) {
+  const translation = el('textarea', {
+    class: 'field__input field__input--textarea field__input--tall',
+    placeholder: 'Traducerea în română…',
+    oninput: debounce(_saveTranslation, 600)
+  });
+  translation.value = _song.translatedText || '';
+
+  content.appendChild(el('div', { class: 'text-tab' }, [
+    el('div', { class: 'text-tab__col' }, [
+      el('h3', { class: 'text-tab__heading' }, ['Original (EN)']),
+      el('div', { class: 'text-tab__original' }, [escapeHtml(_song.originalText || '')])
+    ]),
+    el('div', { class: 'text-tab__col' }, [
+      el('h3', { class: 'text-tab__heading' }, ['Traducere (RO)']),
+      translation
+    ])
+  ]));
+}
+
+async function _saveTranslation(e) {
+  try {
+    await window.Db.updateSong(_song.id, { translatedText: e.target.value });
+    _song.translatedText = e.target.value;
+  } catch (err) {
+    toast('Nu am putut salva traducerea: ' + err.message, { kind: 'error' });
+  }
+}
+
+function _placeholderPanel(tabId) {
+  const copy = {
+    rime: 'Aici vei putea căuta rime pentru cuvintele din traducere.',
+    sinonime: 'Aici vei putea căuta sinonime pentru cuvintele din traducere.',
+    biblie: 'Aici vei putea vedea referințe biblice legate de text.'
+  }[tabId] || '';
+  return el('div', { class: 'empty-state' }, [
+    el('p', {}, [copy]),
+    el('p', { class: 'empty-state__hint' }, ['În curând.'])
+  ]);
+}
+
+window.SongDetail = { render };
+
+})();
