@@ -84,7 +84,7 @@ function _renderTab(content) {
 
 function _renderTextTab(content) {
   const translation = el('textarea', {
-    class: 'field__input field__input--textarea field__input--tall',
+    class: 'field__input text-tab__translation',
     placeholder: 'Traducerea în română…',
     oninput: debounce(_saveTranslation, 600)
   });

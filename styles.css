@@ -31,7 +31,8 @@ html, body {
 }
 
 #app {
-  min-height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   max-width: 720px;
@@ -48,6 +49,7 @@ a { color: inherit; text-decoration: none; }
 
 /* Topbar */
 .topbar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -89,7 +91,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* Search bar */
-.search-bar { padding: 0 20px 12px; }
+.search-bar { flex-shrink: 0; padding: 0 20px 12px; }
 .search-bar__input {
   width: 100%;
   padding: 12px 14px;
@@ -99,7 +101,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* Song list */
-.song-list-wrap { flex: 1; padding: 0 20px 100px; }
+.song-list-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 100px; }
 .song-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .song-list__item { }
 .song-list__link {
@@ -234,22 +236,40 @@ a { color: inherit; text-decoration: none; }
 .tab-bar__tab--active {
   color: var(--color-accent);
 }
-.tab-content { flex: 1; padding: 20px 20px calc(20px + 70px + env(safe-area-inset-bottom)); }
+.tab-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 20px 20px calc(20px + 70px + env(safe-area-inset-bottom));
+}
 
-/* Text tab */
-.text-tab { display: flex; flex-direction: column; gap: 20px; }
-.text-tab__heading { margin: 0 0 8px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+/* Text tab — original and translation each take a fixed half of the
+   available height on mobile (stacked), full height side-by-side on wider
+   screens; each box scrolls internally rather than growing. */
+.text-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.text-tab__col { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.text-tab__heading { flex-shrink: 0; margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
 .text-tab__original {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   white-space: pre-wrap;
   padding: 14px;
-  background: var(--color-surface);
+  background: var(--color-bg);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
-  min-height: 100px;
+}
+.text-tab__translation {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--color-surface);
+  resize: none;
 }
 @media (min-width: 640px) {
-  .text-tab { flex-direction: row; }
-  .text-tab__col { flex: 1; }
+  .text-tab { flex-direction: row; gap: 20px; }
 }
 
 /* Toast */
