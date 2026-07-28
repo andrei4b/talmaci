@@ -24,6 +24,7 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
@@ -31,7 +32,14 @@ html, body {
 }
 
 #app {
-  height: 100dvh;
+  /* --vvh (set from visualViewport in app.js) tracks the actual visible
+     height and self-corrects on resize/scroll; 100dvh is just the initial
+     fallback before that JS runs. Using dvh alone can get stuck too tall
+     right after Chrome's native pull-to-refresh reload, which — combined
+     with html/body having no overflow clamp of their own above — is what
+     turned the whole page scrollable instead of just the panes meant to
+     scroll internally. */
+  height: var(--vvh, 100dvh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
