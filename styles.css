@@ -83,6 +83,8 @@ a { color: inherit; text-decoration: none; }
 }
 .btn--wide { width: 100%; margin-top: 10px; }
 .btn--text { background: transparent; border-color: transparent; color: var(--color-text-muted); }
+.btn--danger { color: var(--color-danger); }
+.btn:disabled { opacity: 0.35; cursor: default; }
 .btn--icon {
   width: 40px; height: 40px; padding: 0;
   display: flex; align-items: center; justify-content: center;
@@ -270,6 +272,49 @@ a { color: inherit; text-decoration: none; }
 @media (min-width: 640px) {
   .text-tab { flex-direction: row; gap: 20px; }
 }
+
+/* Version switcher — sits above the translation box only. */
+.version-switcher {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.version-switcher__nav,
+.version-switcher__add {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.version-switcher__nav:disabled,
+.version-switcher__add:disabled { opacity: 0.35; cursor: default; }
+.version-switcher__add { color: var(--color-accent); font-size: 1.1rem; font-weight: 700; }
+.version-switcher__title {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.version-switcher__title:disabled { opacity: 0.5; cursor: default; }
 
 /* Toast */
 .toast-root {

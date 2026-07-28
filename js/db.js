@@ -1,11 +1,24 @@
-/* db.js — Firestore data layer for songs.
+/* db.js — Firestore data layer for songs and their translation versions.
  *
  * Song doc shape (collection "songs"):
  *   {
  *     title: string,
  *     originalText: string,     // English source text (Text tab)
- *     translatedText: string,   // Romanian translation (Text tab)
+ *     translatedText: string,   // legacy single-translation field, no longer
+ *                                // written — kept only so pre-versions data
+ *                                // isn't lost; see listVersions' migration.
  *     groupId: string,
+ *     createdBy: uid,
+ *     createdAt: number (ms),
+ *     updatedAt: number (ms)
+ *   }
+ *
+ * Translation versions live in a subcollection so multiple people can edit
+ * different versions of the same song without racing on one big doc:
+ *   songs/{songId}/versions/{versionId}
+ *   {
+ *     title: string,             // shown in the version switcher
+ *     text: string,              // the Romanian translation for this version
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -55,6 +68,41 @@ async function deleteSong(songId) {
   await fs().collection('songs').doc(songId).delete();
 }
 
-window.Db = { listSongs, getSong, addSong, updateSong, deleteSong };
+function _versionsRef(songId) {
+  return fs().collection('songs').doc(songId).collection('versions');
+}
+
+async function listVersions(songId) {
+  const snap = await _versionsRef(songId).orderBy('createdAt', 'asc').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function addVersion(songId, { title, text, createdBy }) {
+  const now = Date.now();
+  const ref = await _versionsRef(songId).add({
+    title: title || 'Versiune nouă',
+    text: text || '',
+    createdBy,
+    createdAt: now,
+    updatedAt: now
+  });
+  return ref.id;
+}
+
+async function updateVersion(songId, versionId, patch) {
+  await _versionsRef(songId).doc(versionId).update({
+    ...patch,
+    updatedAt: Date.now()
+  });
+}
+
+async function deleteVersion(songId, versionId) {
+  await _versionsRef(songId).doc(versionId).delete();
+}
+
+window.Db = {
+  listSongs, getSong, addSong, updateSong, deleteSong,
+  listVersions, addVersion, updateVersion, deleteVersion
+};
 
 })();

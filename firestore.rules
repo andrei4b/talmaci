@@ -12,10 +12,12 @@ rules_version = '2';
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /invites/{code}   { groupId, createdBy, createdAt }
 //   /songs/{songId}   { title, originalText, translatedText, groupId, createdBy, createdAt, updatedAt }
+//   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
 //
 // Songs are a shared, collaborative workspace — any member of the group can
 // create/edit/delete songs, not just admins (translation is iterative team
-// work, unlike worship-setlist's admin-curated song library).
+// work, unlike worship-setlist's admin-curated song library). Translation
+// versions inherit the parent song's group check via get().
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -86,6 +88,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.groupId == myGroup();
       allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId');
       allow delete: if isSignedIn() && resource.data.groupId == myGroup();
+
+      match /versions/{versionId} {
+        function parentSongGroup() {
+          return get(/databases/$(database)/documents/songs/$(songId)).data.groupId;
+        }
+        allow read, create, update, delete: if isSignedIn() && parentSongGroup() == myGroup();
+      }
     }
   }
 }

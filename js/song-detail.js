@@ -5,7 +5,11 @@
  * translation) — the other three are placeholders until their behavior is
  * specified. Each tab renderer lives in its own function so new
  * functionality can be dropped in without touching the tab-switching
- * scaffolding. */
+ * scaffolding.
+ *
+ * The translation itself supports multiple named versions (so several
+ * people can draft in parallel) via the version switcher above the
+ * translation box — see db.js's versions subcollection. */
 (function () {
 const { el, escapeHtml, toast, debounce } = window.Utils;
 
@@ -25,6 +29,8 @@ const TABS = [
 
 let _activeTab = 'text';
 let _song = null;
+let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
+let _activeVersionId = null;
 
 async function render(root, songId) {
   _activeTab = 'text';
@@ -36,6 +42,22 @@ async function render(root, songId) {
 
   try {
     _song = await window.Db.getSong(songId);
+    _versions = _song ? await window.Db.listVersions(songId) : [];
+
+    // One-time migration: a song saved before versions existed may still
+    // carry its translation in the legacy translatedText field. Turn it
+    // into "Versiunea 1" instead of losing it.
+    if (_song && _versions.length === 0 && _song.translatedText) {
+      const id = await window.Db.addVersion(songId, {
+        title: 'Versiunea 1',
+        text: _song.translatedText,
+        createdBy: window.Auth.currentUser().uid
+      });
+      const now = Date.now();
+      _versions = [{ id, title: 'Versiunea 1', text: _song.translatedText, createdAt: now, updatedAt: now }];
+    }
+
+    _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
   } catch (err) {
     toast('Nu am putut încărca melodia: ' + err.message, { kind: 'error' });
     _song = null;
@@ -87,31 +109,170 @@ function _renderTab(content) {
   return content.appendChild(_placeholderPanel(_activeTab));
 }
 
+function _activeVersion() {
+  return _versions.find(v => v.id === _activeVersionId) || null;
+}
+
 function _renderTextTab(content) {
+  const active = _activeVersion();
+
+  const switcher = el('div', { class: 'version-switcher' }, [
+    el('button', {
+      class: 'version-switcher__nav',
+      'aria-label': 'Versiunea anterioară',
+      disabled: _versions.length < 2,
+      onclick: () => _cycleVersion(content, -1)
+    }, ['‹']),
+    el('button', {
+      class: 'version-switcher__title',
+      disabled: !active,
+      onclick: () => active && _openVersionMenu(content, active)
+    }, [active ? escapeHtml(active.title || 'Fără titlu') : 'Nicio versiune']),
+    el('button', {
+      class: 'version-switcher__nav',
+      'aria-label': 'Versiunea următoare',
+      disabled: _versions.length < 2,
+      onclick: () => _cycleVersion(content, 1)
+    }, ['›']),
+    el('button', {
+      class: 'version-switcher__add',
+      'aria-label': 'Adaugă versiune',
+      onclick: () => _openAddVersion(content)
+    }, ['+'])
+  ]);
+
   const translation = el('textarea', {
     class: 'field__input text-tab__translation',
-    placeholder: 'Traducerea în română…',
-    oninput: debounce(_saveTranslation, 600)
+    placeholder: active ? 'Traducerea în română…' : 'Creează o versiune pentru a începe traducerea.',
+    disabled: !active,
+    oninput: debounce((e) => _saveVersionText(e.target.value), 600)
   });
-  translation.value = _song.translatedText || '';
+  translation.value = active ? (active.text || '') : '';
 
   content.appendChild(el('div', { class: 'text-tab' }, [
     el('div', { class: 'text-tab__col' }, [
       el('div', { class: 'text-tab__original' }, [escapeHtml(_song.originalText || '')])
     ]),
     el('div', { class: 'text-tab__col' }, [
+      switcher,
       translation
     ])
   ]));
 }
 
-async function _saveTranslation(e) {
+function _cycleVersion(content, dir) {
+  if (_versions.length < 2) return;
+  const idx = _versions.findIndex(v => v.id === _activeVersionId);
+  const nextIdx = (idx + dir + _versions.length) % _versions.length;
+  _activeVersionId = _versions[nextIdx].id;
+  content.innerHTML = '';
+  _renderTextTab(content);
+}
+
+async function _saveVersionText(text) {
+  if (!_activeVersionId) return;
   try {
-    await window.Db.updateSong(_song.id, { translatedText: e.target.value });
-    _song.translatedText = e.target.value;
+    await window.Db.updateVersion(_song.id, _activeVersionId, { text });
+    const v = _activeVersion();
+    if (v) v.text = text;
   } catch (err) {
     toast('Nu am putut salva traducerea: ' + err.message, { kind: 'error' });
   }
+}
+
+function _openAddVersion(content) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const defaultTitle = `Versiunea ${_versions.length + 1}`;
+  const titleInput = el('input', { class: 'field__input', type: 'text', value: defaultTitle });
+
+  const sheet = el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Versiune nouă']),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--primary',
+        onclick: async () => {
+          const title = titleInput.value.trim() || defaultTitle;
+          try {
+            const id = await window.Db.addVersion(_song.id, {
+              title,
+              text: '',
+              createdBy: window.Auth.currentUser().uid
+            });
+            const now = Date.now();
+            _versions.push({ id, title, text: '', createdAt: now, updatedAt: now });
+            _activeVersionId = id;
+            overlay.remove();
+            content.innerHTML = '';
+            _renderTextTab(content);
+          } catch (err) {
+            toast('Nu am putut crea versiunea: ' + err.message, { kind: 'error' });
+          }
+        }
+      }, ['Creează'])
+    ])
+  ]);
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  titleInput.focus();
+  titleInput.select();
+}
+
+function _openVersionMenu(content, version) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const titleInput = el('input', { class: 'field__input', type: 'text', value: version.title || '' });
+  const canDelete = _versions.length > 1;
+
+  const actions = [
+    el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+    el('button', {
+      class: 'btn btn--primary',
+      onclick: async () => {
+        const title = titleInput.value.trim() || version.title;
+        try {
+          await window.Db.updateVersion(_song.id, version.id, { title });
+          version.title = title;
+          overlay.remove();
+          content.innerHTML = '';
+          _renderTextTab(content);
+        } catch (err) {
+          toast('Nu am putut redenumi versiunea: ' + err.message, { kind: 'error' });
+        }
+      }
+    }, ['Salvează'])
+  ];
+
+  const sheetChildren = [
+    el('h2', { class: 'sheet__title' }, ['Redenumește versiunea']),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
+    el('div', { class: 'sheet__actions' }, actions)
+  ];
+
+  if (canDelete) {
+    sheetChildren.push(el('button', {
+      class: 'btn btn--text btn--danger btn--wide',
+      onclick: async () => {
+        try {
+          await window.Db.deleteVersion(_song.id, version.id);
+          _versions = _versions.filter(v => v.id !== version.id);
+          if (_activeVersionId === version.id) {
+            _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+          }
+          overlay.remove();
+          content.innerHTML = '';
+          _renderTextTab(content);
+        } catch (err) {
+          toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
+        }
+      }
+    }, ['Șterge versiunea']));
+  }
+
+  overlay.appendChild(el('div', { class: 'sheet' }, sheetChildren));
+  document.body.appendChild(overlay);
+  titleInput.focus();
+  titleInput.select();
 }
 
 function _openSongMenu(root) {
