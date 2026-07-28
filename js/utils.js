@@ -53,6 +53,22 @@ function debounce(fn, wait) {
   };
 }
 
-window.Utils = { $, $all, el, escapeHtml, toast, debounce };
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    const ta = el('textarea', { style: 'position:fixed;left:-9999px' });
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove();
+    return ok;
+  }
+}
+
+window.Utils = { $, $all, el, escapeHtml, toast, debounce, copyToClipboard };
 
 })();

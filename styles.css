@@ -209,6 +209,18 @@ a { color: inherit; text-decoration: none; }
 .sheet__text { margin: 0; color: var(--color-text-muted); line-height: 1.5; }
 .sheet__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
 .sheet__user { font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); }
+.invite-code {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 1.9rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+  color: var(--color-accent);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+}
 
 /* Fields */
 .field { display: flex; flex-direction: column; gap: 6px; }

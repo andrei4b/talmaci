@@ -1,6 +1,6 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
-const { $, el, toast } = window.Utils;
+const { $, el, toast, copyToClipboard } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
 // accessory bar (the key/card/location icon row) ----
@@ -144,7 +144,7 @@ function openAccountMenu() {
         try {
           const code = await window.Auth.createInvite();
           overlay.remove();
-          toast('Cod de invitație: ' + code);
+          _openInviteCode(code);
         } catch (err) {
           toast(err.message, { kind: 'error' });
         }
@@ -163,6 +163,22 @@ function openAccountMenu() {
   }, ['Deconectează-te']));
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
+  document.body.appendChild(overlay);
+}
+
+function _openInviteCode(code) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const copyBtn = el('button', { class: 'btn btn--wide' }, ['Copiază codul']);
+  copyBtn.addEventListener('click', async () => {
+    const ok = await copyToClipboard(code);
+    toast(ok ? 'Cod copiat.' : 'Nu am putut copia codul.', ok ? {} : { kind: 'error' });
+  });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Invită pe cineva']),
+    el('p', { class: 'sheet__text' }, ['Trimite-i acest cod ca să se alăture grupului tău:']),
+    el('div', { class: 'invite-code' }, [code]),
+    copyBtn
+  ]));
   document.body.appendChild(overlay);
 }
 
