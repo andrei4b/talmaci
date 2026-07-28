@@ -142,9 +142,15 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 
-/* Sheet / modal */
+/* Sheet / modal — sized to the visual viewport (see syncViewportInsets in
+   app.js), not the full layout viewport, so it shrinks above the on-screen
+   keyboard AND Chrome's autofill accessory bar instead of letting them cover
+   its bottom buttons. */
 .sheet-overlay {
-  position: fixed; inset: 0;
+  position: fixed;
+  left: 0; right: 0;
+  top: var(--vv-top, 0px);
+  height: var(--vvh, 100vh);
   background: rgba(0,0,0,0.35);
   display: flex;
   align-items: flex-end;
@@ -160,7 +166,7 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 85vh;
+  max-height: calc(var(--vvh, 100vh) * 0.92);
   overflow-y: auto;
 }
 .sheet__title { font-family: var(--font-heading); margin: 0 0 4px; }

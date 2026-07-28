@@ -2,6 +2,24 @@
 (function () {
 const { $, el, toast } = window.Utils;
 
+// ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
+// accessory bar (the key/card/location icon row) ----
+// The visual viewport shrinks (and can shift) when either appears, but
+// fixed-position elements stay sized to the full layout viewport by
+// default. Mirror the visual viewport into CSS vars so .sheet-overlay/.sheet
+// track it instead, keeping their buttons above both.
+function syncViewportInsets() {
+  const vv = window.visualViewport;
+  const root = document.documentElement.style;
+  root.setProperty('--vvh', (vv ? vv.height : window.innerHeight) + 'px');
+  root.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncViewportInsets);
+  window.visualViewport.addEventListener('scroll', syncViewportInsets);
+}
+syncViewportInsets();
+
 async function boot() {
   await window.Auth.ready();
   window.Auth.onChange(_renderCurrentScreen);
