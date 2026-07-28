@@ -30,7 +30,10 @@ async function render(root) {
     onclick: () => _openAddSong()
   }, ['+']));
 
-  listWrap.appendChild(el('div', { class: 'empty-state' }, ['Se încarcă…']));
+  listWrap.appendChild(el('div', { class: 'loading-state' }, [
+    el('div', { class: 'spinner' }),
+    'Se încarcă…'
+  ]));
   try {
     _songs = await window.Db.listSongs(window.Auth.currentGroupId());
   } catch (err) {

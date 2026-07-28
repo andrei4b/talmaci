@@ -21,10 +21,19 @@ if (window.visualViewport) {
 syncViewportInsets();
 
 async function boot() {
+  _renderBootLoading();
   await window.Auth.ready();
   window.Auth.onChange(_renderCurrentScreen);
   window.addEventListener('hashchange', _renderCurrentScreen);
   _renderCurrentScreen();
+}
+
+function _renderBootLoading() {
+  const root = $('#app');
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'loading-state' }, [
+    el('div', { class: 'spinner' })
+  ]));
 }
 
 function _renderCurrentScreen() {
@@ -54,16 +63,36 @@ function _renderSignIn(root) {
       el('p', { class: 'gate__subtitle' }, ['Your Song Translation Toolkit']),
       el('button', {
         class: 'btn btn--primary btn--wide',
-        onclick: async () => {
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          if (btn.disabled) return;
+          _setButtonLoading(btn, 'primary', 'Continuă cu Google');
           try {
             await window.Auth.signInWithGoogle();
+            // On success, Auth.onChange re-renders the whole screen, so
+            // this button gets replaced — no need to reset it here.
           } catch (err) {
             toast('Autentificarea a eșuat: ' + err.message, { kind: 'error' });
+            _resetButtonLoading(btn, 'Continuă cu Google');
           }
         }
       }, ['Continuă cu Google'])
     ])
   ]));
+}
+
+function _setButtonLoading(btn, kind, label) {
+  btn.disabled = true;
+  btn.innerHTML = '';
+  btn.appendChild(el('span', { class: 'btn__spinner-wrap' }, [
+    el('span', { class: 'spinner spinner--sm' + (kind === 'primary' ? ' spinner--on-primary' : '') }),
+    label
+  ]));
+}
+
+function _resetButtonLoading(btn, label) {
+  btn.disabled = false;
+  btn.textContent = label;
 }
 
 function _renderJoinGroup(root) {
@@ -76,11 +105,16 @@ function _renderJoinGroup(root) {
       el('label', { class: 'field' }, [codeInput]),
       el('button', {
         class: 'btn btn--primary btn--wide',
-        onclick: async () => {
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          if (btn.disabled) return;
+          _setButtonLoading(btn, 'primary', 'Alătură-te');
           try {
             await window.Auth.redeemInvite(codeInput.value);
+            // Success re-renders via Auth.onChange, replacing this button.
           } catch (err) {
             toast(err.message, { kind: 'error' });
+            _resetButtonLoading(btn, 'Alătură-te');
           }
         }
       }, ['Alătură-te']),

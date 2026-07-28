@@ -44,6 +44,9 @@ async function render(root, songId) {
     el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
     el('h1', { class: 'topbar__title' }, ['Se încarcă…'])
   ]));
+  root.appendChild(el('div', { class: 'loading-state' }, [
+    el('div', { class: 'spinner' })
+  ]));
 
   try {
     _song = await window.Db.getSong(songId);
