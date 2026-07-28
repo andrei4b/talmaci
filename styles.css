@@ -273,19 +273,50 @@ a { color: inherit; text-decoration: none; }
   .text-tab { flex-direction: row; gap: 20px; }
 }
 
-/* Version switcher — sits above the translation box only. */
-.version-switcher {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
+/* Version switcher — a single button under the translation box, opening
+   the version list sheet (rename/delete/switch live there instead). */
+.version-switcher { flex-shrink: 0; margin-top: 8px; }
+.version-switcher__current {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.version-switcher__nav,
-.version-switcher__add {
+.version-switcher__current:disabled { opacity: 0.5; cursor: default; }
+
+/* Version list sheet rows */
+.version-list { display: flex; flex-direction: column; gap: 8px; }
+.version-row { display: flex; align-items: center; gap: 8px; }
+.version-row__title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.version-row__title--active { border-color: var(--color-accent); color: var(--color-accent); }
+.version-row__icon {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
@@ -295,26 +326,9 @@ a { color: inherit; text-decoration: none; }
   color: var(--color-text-muted);
   cursor: pointer;
 }
-.version-switcher__nav:disabled,
-.version-switcher__add:disabled { opacity: 0.35; cursor: default; }
-.version-switcher__add { color: var(--color-accent); font-size: 1.1rem; font-weight: 700; }
-.version-switcher__title {
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.85rem;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.version-switcher__title:disabled { opacity: 0.5; cursor: default; }
+.version-row__icon svg { width: 16px; height: 16px; }
+.version-row__icon--danger { color: var(--color-danger); }
+.version-row__icon:disabled { opacity: 0.3; cursor: default; }
 
 /* Toast */
 .toast-root {

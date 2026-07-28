@@ -20,6 +20,11 @@ const ICONS = {
   biblie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H12v18H4.5A2.5 2.5 0 0 0 2 22z"/><path d="M22 4.5A2.5 2.5 0 0 0 19.5 2H12v18h7.5a2.5 2.5 0 0 1 2.5 2z"/></svg>`
 };
 
+const ROW_ICONS = {
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  delete: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`
+};
+
 const TABS = [
   { id: 'text', label: 'Text' },
   { id: 'rime', label: 'Rime' },
@@ -118,27 +123,10 @@ function _renderTextTab(content) {
 
   const switcher = el('div', { class: 'version-switcher' }, [
     el('button', {
-      class: 'version-switcher__nav',
-      'aria-label': 'Versiunea anterioară',
-      disabled: _versions.length < 2,
-      onclick: () => _cycleVersion(content, -1)
-    }, ['‹']),
-    el('button', {
-      class: 'version-switcher__title',
-      disabled: !active,
-      onclick: () => active && _openVersionMenu(content, active)
+      class: 'version-switcher__current',
+      disabled: !_versions.length,
+      onclick: () => _openVersionList(content)
     }, [active ? escapeHtml(active.title || 'Fără titlu') : 'Nicio versiune']),
-    el('button', {
-      class: 'version-switcher__nav',
-      'aria-label': 'Versiunea următoare',
-      disabled: _versions.length < 2,
-      onclick: () => _cycleVersion(content, 1)
-    }, ['›']),
-    el('button', {
-      class: 'version-switcher__add',
-      'aria-label': 'Adaugă versiune',
-      onclick: () => _openAddVersion(content)
-    }, ['+'])
   ]);
 
   const translation = el('textarea', {
@@ -154,17 +142,13 @@ function _renderTextTab(content) {
       el('div', { class: 'text-tab__original' }, [escapeHtml(_song.originalText || '')])
     ]),
     el('div', { class: 'text-tab__col' }, [
-      switcher,
-      translation
+      translation,
+      switcher
     ])
   ]));
 }
 
-function _cycleVersion(content, dir) {
-  if (_versions.length < 2) return;
-  const idx = _versions.findIndex(v => v.id === _activeVersionId);
-  const nextIdx = (idx + dir + _versions.length) % _versions.length;
-  _activeVersionId = _versions[nextIdx].id;
+function _refreshTextTab(content) {
   content.innerHTML = '';
   _renderTextTab(content);
 }
@@ -178,6 +162,54 @@ async function _saveVersionText(text) {
   } catch (err) {
     toast('Nu am putut salva traducerea: ' + err.message, { kind: 'error' });
   }
+}
+
+function _openVersionList(content) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+
+  const rows = _versions.map(v => el('div', { class: 'version-row' }, [
+    el('button', {
+      class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
+      onclick: () => { _activeVersionId = v.id; overlay.remove(); _refreshTextTab(content); }
+    }, [escapeHtml(v.title || 'Fără titlu')]),
+    el('button', {
+      class: 'version-row__icon',
+      'aria-label': 'Redenumește versiunea',
+      html: ROW_ICONS.edit,
+      onclick: () => { overlay.remove(); _openRenameVersion(content, v); }
+    }),
+    el('button', {
+      class: 'version-row__icon version-row__icon--danger',
+      'aria-label': 'Șterge versiunea',
+      disabled: _versions.length < 2,
+      html: ROW_ICONS.delete,
+      onclick: async () => {
+        if (_versions.length < 2) return;
+        try {
+          await window.Db.deleteVersion(_song.id, v.id);
+          _versions = _versions.filter(x => x.id !== v.id);
+          if (_activeVersionId === v.id) {
+            _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+          }
+          overlay.remove();
+          _refreshTextTab(content);
+          _openVersionList(content);
+        } catch (err) {
+          toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
+        }
+      }
+    })
+  ]));
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Versiuni']),
+    el('div', { class: 'version-list' }, rows),
+    el('button', {
+      class: 'btn btn--wide',
+      onclick: () => { overlay.remove(); _openAddVersion(content); }
+    }, ['+ Adaugă versiune'])
+  ]));
+  document.body.appendChild(overlay);
 }
 
 function _openAddVersion(content) {
@@ -204,8 +236,7 @@ function _openAddVersion(content) {
             _versions.push({ id, title, text: '', createdAt: now, updatedAt: now });
             _activeVersionId = id;
             overlay.remove();
-            content.innerHTML = '';
-            _renderTextTab(content);
+            _refreshTextTab(content);
           } catch (err) {
             toast('Nu am putut crea versiunea: ' + err.message, { kind: 'error' });
           }
@@ -219,57 +250,33 @@ function _openAddVersion(content) {
   titleInput.select();
 }
 
-function _openVersionMenu(content, version) {
+function _openRenameVersion(content, version) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
   const titleInput = el('input', { class: 'field__input', type: 'text', value: version.title || '' });
-  const canDelete = _versions.length > 1;
 
-  const actions = [
-    el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
-    el('button', {
-      class: 'btn btn--primary',
-      onclick: async () => {
-        const title = titleInput.value.trim() || version.title;
-        try {
-          await window.Db.updateVersion(_song.id, version.id, { title });
-          version.title = title;
-          overlay.remove();
-          content.innerHTML = '';
-          _renderTextTab(content);
-        } catch (err) {
-          toast('Nu am putut redenumi versiunea: ' + err.message, { kind: 'error' });
-        }
-      }
-    }, ['Salvează'])
-  ];
-
-  const sheetChildren = [
+  const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Redenumește versiunea']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
-    el('div', { class: 'sheet__actions' }, actions)
-  ];
-
-  if (canDelete) {
-    sheetChildren.push(el('button', {
-      class: 'btn btn--text btn--danger btn--wide',
-      onclick: async () => {
-        try {
-          await window.Db.deleteVersion(_song.id, version.id);
-          _versions = _versions.filter(v => v.id !== version.id);
-          if (_activeVersionId === version.id) {
-            _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => { overlay.remove(); _openVersionList(content); } }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--primary',
+        onclick: async () => {
+          const title = titleInput.value.trim() || version.title;
+          try {
+            await window.Db.updateVersion(_song.id, version.id, { title });
+            version.title = title;
+            overlay.remove();
+            _refreshTextTab(content);
+            _openVersionList(content);
+          } catch (err) {
+            toast('Nu am putut redenumi versiunea: ' + err.message, { kind: 'error' });
           }
-          overlay.remove();
-          content.innerHTML = '';
-          _renderTextTab(content);
-        } catch (err) {
-          toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
         }
-      }
-    }, ['Șterge versiunea']));
-  }
-
-  overlay.appendChild(el('div', { class: 'sheet' }, sheetChildren));
+      }, ['Salvează'])
+    ])
+  ]);
+  overlay.appendChild(sheet);
   document.body.appendChild(overlay);
   titleInput.focus();
   titleInput.select();
