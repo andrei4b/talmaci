@@ -53,7 +53,12 @@ function _renderShell(root) {
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
-    el('h1', { class: 'topbar__title' }, [escapeHtml(_song.title || 'Fără titlu')])
+    el('h1', { class: 'topbar__title' }, [escapeHtml(_song.title || 'Fără titlu')]),
+    el('button', {
+      class: 'btn btn--icon',
+      'aria-label': 'Meniu melodie',
+      onclick: () => _openSongMenu(root)
+    }, ['⋮'])
   ]));
 
   const tabBar = el('div', { class: 'tab-bar', role: 'tablist' });
@@ -92,11 +97,9 @@ function _renderTextTab(content) {
 
   content.appendChild(el('div', { class: 'text-tab' }, [
     el('div', { class: 'text-tab__col' }, [
-      el('h3', { class: 'text-tab__heading' }, ['Original (EN)']),
       el('div', { class: 'text-tab__original' }, [escapeHtml(_song.originalText || '')])
     ]),
     el('div', { class: 'text-tab__col' }, [
-      el('h3', { class: 'text-tab__heading' }, ['Traducere (RO)']),
       translation
     ])
   ]));
@@ -109,6 +112,47 @@ async function _saveTranslation(e) {
   } catch (err) {
     toast('Nu am putut salva traducerea: ' + err.message, { kind: 'error' });
   }
+}
+
+function _openSongMenu(root) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('button', {
+      class: 'btn btn--wide',
+      onclick: () => { overlay.remove(); _openEditOriginal(root); }
+    }, ['Editează textul original'])
+  ]));
+  document.body.appendChild(overlay);
+}
+
+function _openEditOriginal(root) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const textInput = el('textarea', { class: 'field__input field__input--textarea', rows: 10 });
+  textInput.value = _song.originalText || '';
+
+  const sheet = el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Editează textul original']),
+    el('label', { class: 'field' }, [textInput]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--primary',
+        onclick: async () => {
+          try {
+            await window.Db.updateSong(_song.id, { originalText: textInput.value });
+            _song.originalText = textInput.value;
+            overlay.remove();
+            _renderShell(root);
+          } catch (err) {
+            toast('Nu am putut salva textul original: ' + err.message, { kind: 'error' });
+          }
+        }
+      }, ['Salvează'])
+    ])
+  ]);
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  textInput.focus();
 }
 
 function _placeholderPanel(tabId) {

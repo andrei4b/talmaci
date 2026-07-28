@@ -249,8 +249,7 @@ a { color: inherit; text-decoration: none; }
    available height on mobile (stacked), full height side-by-side on wider
    screens; each box scrolls internally rather than growing. */
 .text-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.text-tab__col { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-.text-tab__heading { flex-shrink: 0; margin: 0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.text-tab__col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .text-tab__original {
   flex: 1;
   min-height: 0;
