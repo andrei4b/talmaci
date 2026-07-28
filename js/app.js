@@ -130,7 +130,11 @@ function openAccountMenu() {
   const user = window.Auth.currentUser();
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
   const items = [
-    el('div', { class: 'sheet__user' }, [user.displayName || user.email])
+    el('div', { class: 'sheet__user' }, [user.displayName || user.email]),
+    el('button', {
+      class: 'btn btn--wide',
+      onclick: () => { overlay.remove(); window.Songs.refresh(); }
+    }, ['Reîmprospătează'])
   ];
 
   if (window.Auth.isAdmin()) {
@@ -146,6 +150,11 @@ function openAccountMenu() {
         }
       }
     }, ['Generează cod de invitație']));
+
+    items.push(el('button', {
+      class: 'btn btn--wide',
+      onclick: () => { overlay.remove(); _openManageMembers(); }
+    }, ['Gestionează membrii']));
   }
 
   items.push(el('button', {
@@ -155,6 +164,101 @@ function openAccountMenu() {
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
   document.body.appendChild(overlay);
+}
+
+async function _openManageMembers() {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const listEl = el('div', { class: 'member-list' }, [
+    el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' })])
+  ]);
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Membri']),
+    listEl
+  ]));
+  document.body.appendChild(overlay);
+
+  let members;
+  try {
+    members = await window.Auth.listGroupMembers();
+  } catch (err) {
+    listEl.innerHTML = '';
+    listEl.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut încărca membrii: ' + err.message]));
+    return;
+  }
+
+  members.sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''));
+  const me = window.Auth.currentUser();
+
+  listEl.innerHTML = '';
+  if (!members.length) {
+    listEl.appendChild(el('div', { class: 'empty-state' }, ['Niciun membru găsit.']));
+  }
+  members.forEach(m => {
+    const isAdminRole = m.role === 'admin';
+    listEl.appendChild(el('div', { class: 'member-row' }, [
+      el('div', { class: 'member-row__info' }, [
+        el('div', { class: 'member-row__name' }, [m.displayName || m.email || m.uid]),
+        el('div', { class: 'member-row__meta' }, [m.email || ''])
+      ]),
+      el('button', {
+        class: 'btn member-row__role-btn' + (isAdminRole ? ' member-row__role-btn--admin' : ''),
+        onclick: (e) => _toggleMemberRole(e.currentTarget, m, members, me, overlay)
+      }, [isAdminRole ? 'Admin' : 'Membru'])
+    ]));
+  });
+}
+
+async function _toggleMemberRole(btn, member, members, me, overlay) {
+  const nextRole = member.role === 'admin' ? 'user' : 'admin';
+
+  if (member.uid === me.uid && nextRole === 'user') {
+    const hasOtherAdmin = members.some(x => x.uid !== me.uid && x.role === 'admin');
+    if (!hasOtherAdmin) {
+      toast('Ești singurul admin — fă pe altcineva admin mai întâi.', { kind: 'error' });
+      return;
+    }
+    overlay.remove();
+    _confirmSelfDemote(member);
+    return;
+  }
+
+  await _setMemberRole(btn, member, nextRole, overlay);
+}
+
+function _confirmSelfDemote(member) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Renunți la rolul de admin?']),
+    el('p', { class: 'sheet__text' }, ['Nu vei mai putea genera coduri de invitație sau gestiona membrii, până când altcineva te face din nou admin.']),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => { overlay.remove(); _openManageMembers(); } }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--danger-solid',
+        onclick: async () => {
+          try {
+            await window.Auth.setMemberRole(member.uid, 'user');
+            overlay.remove();
+            _openManageMembers();
+          } catch (err) {
+            toast(err.message, { kind: 'error' });
+          }
+        }
+      }, ['Renunță'])
+    ])
+  ]));
+  document.body.appendChild(overlay);
+}
+
+async function _setMemberRole(btn, member, nextRole, overlay) {
+  btn.disabled = true;
+  try {
+    await window.Auth.setMemberRole(member.uid, nextRole);
+    overlay.remove();
+    _openManageMembers();
+  } catch (err) {
+    toast(err.message, { kind: 'error' });
+    btn.disabled = false;
+  }
 }
 
 window.App = { boot, openAccountMenu };

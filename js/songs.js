@@ -4,6 +4,7 @@ const { $, el, escapeHtml, toast, debounce } = window.Utils;
 
 let _songs = [];
 let _query = '';
+let _listWrap = null;
 
 async function render(root) {
   root.innerHTML = '';
@@ -12,17 +13,17 @@ async function render(root) {
     el('button', { class: 'btn btn--icon', 'aria-label': 'Cont', onclick: () => window.App.openAccountMenu() }, ['⋮'])
   ]));
 
-  const listWrap = el('div', { class: 'song-list-wrap' });
+  _listWrap = el('div', { class: 'song-list-wrap' });
   root.appendChild(el('div', { class: 'search-bar' }, [
     el('input', {
       type: 'search',
       placeholder: 'Caută o melodie…',
       class: 'search-bar__input',
       value: _query,
-      oninput: debounce((e) => { _query = e.target.value; _renderList(listWrap); }, 150)
+      oninput: debounce((e) => { _query = e.target.value; _renderList(_listWrap); }, 150)
     })
   ]));
-  root.appendChild(listWrap);
+  root.appendChild(_listWrap);
 
   root.appendChild(el('button', {
     class: 'fab',
@@ -30,7 +31,13 @@ async function render(root) {
     onclick: () => _openAddSong()
   }, ['+']));
 
-  listWrap.appendChild(el('div', { class: 'loading-state' }, [
+  await _loadSongs();
+}
+
+async function _loadSongs() {
+  if (!_listWrap) return;
+  _listWrap.innerHTML = '';
+  _listWrap.appendChild(el('div', { class: 'loading-state' }, [
     el('div', { class: 'spinner' }),
     'Se încarcă…'
   ]));
@@ -40,7 +47,14 @@ async function render(root) {
     toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
     _songs = [];
   }
-  _renderList(listWrap);
+  _renderList(_listWrap);
+}
+
+// Re-fetches from Firestore — there are no live listeners, so this is how
+// you pick up a song someone else in the group just added or edited.
+async function refresh() {
+  await _loadSongs();
+  toast('Actualizat.');
 }
 
 function _renderList(listWrap) {
@@ -109,6 +123,6 @@ function _openAddSong() {
   titleInput.focus();
 }
 
-window.Songs = { render };
+window.Songs = { render, refresh };
 
 })();

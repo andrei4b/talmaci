@@ -313,10 +313,38 @@ function _openSongMenu(root) {
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('button', {
       class: 'btn btn--wide',
+      onclick: () => { overlay.remove(); _refreshSong(root); }
+    }, ['Reîmprospătează']),
+    el('button', {
+      class: 'btn btn--wide',
       onclick: () => { overlay.remove(); _openEditOriginal(root); }
     }, ['Editează textul original'])
   ]));
   document.body.appendChild(overlay);
+}
+
+// Re-fetches the song + its versions from Firestore — there are no live
+// listeners, so this is how you pick up a change someone else just made.
+// Keeps the current tab (unlike render(), which is also used for
+// navigating to a brand-new song and resets to the Text tab).
+async function _refreshSong(root) {
+  try {
+    const refreshed = await window.Db.getSong(_song.id);
+    if (!refreshed) {
+      toast('Melodia nu mai există.', { kind: 'error' });
+      location.hash = '#/';
+      return;
+    }
+    _song = refreshed;
+    _versions = await window.Db.listVersions(_song.id);
+    if (!_versions.find(v => v.id === _activeVersionId)) {
+      _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+    }
+    _renderShell(root);
+    toast('Actualizat.');
+  } catch (err) {
+    toast('Nu am putut actualiza: ' + err.message, { kind: 'error' });
+  }
 }
 
 function _openEditOriginal(root) {
