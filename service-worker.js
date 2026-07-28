@@ -1,8 +1,17 @@
 /* service-worker.js — app-shell offline caching.
  * Never caches Firebase/Google API traffic (auth, Firestore) — only the
  * static shell, so the app installs fast and opens offline, while data
- * always comes from the network. */
-const CACHE_NAME = 'talmaci-shell-v1';
+ * always comes from the network.
+ *
+ * Network-first, not cache-first: the fetch handler always tries the
+ * network and only falls back to the cache when offline. A cache-first
+ * strategy sounds more "offline-friendly" but means every shell file
+ * (styles.css, the js/*.js files) gets frozen at whatever it was on first
+ * install — the browser only re-checks this script for updates when its
+ * own bytes change, so editing styles.css/app.js/etc. alone never
+ * refreshes what's cached. Network-first fixes that: online users always
+ * get the latest deploy, offline users still get the last-seen version. */
+const CACHE_NAME = 'talmaci-shell-v2';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -45,15 +54,12 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || _isBypassed(req.url)) return;
 
   event.respondWith(
-    caches.match(req).then(cached => {
-      if (cached) return cached;
-      return fetch(req).then(res => {
-        if (res.ok && res.type === 'basic') {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-        }
-        return res;
-      }).catch(() => cached);
-    })
+    fetch(req).then(res => {
+      if (res.ok && res.type === 'basic') {
+        const copy = res.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
+      }
+      return res;
+    }).catch(() => caches.match(req))
   );
 });
