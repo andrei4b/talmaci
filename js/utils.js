@@ -14,6 +14,12 @@ function el(tag, attrs, children) {
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else node.setAttribute(k, v);
   });
+  // Chrome's address/payment autofill suggestion bar otherwise pops up over
+  // sheet buttons on any text input inside a modal — off by default unless
+  // a caller explicitly opts in.
+  if ((tag === 'input' || tag === 'textarea') && !node.hasAttribute('autocomplete')) {
+    node.setAttribute('autocomplete', 'off');
+  }
   (children || []).forEach(c => {
     if (c == null) return;
     node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);

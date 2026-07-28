@@ -183,20 +183,10 @@ function _openVersionList(content) {
       'aria-label': 'Șterge versiunea',
       disabled: _versions.length < 2,
       html: ROW_ICONS.delete,
-      onclick: async () => {
+      onclick: () => {
         if (_versions.length < 2) return;
-        try {
-          await window.Db.deleteVersion(_song.id, v.id);
-          _versions = _versions.filter(x => x.id !== v.id);
-          if (_activeVersionId === v.id) {
-            _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
-          }
-          overlay.remove();
-          _refreshTextTab(content);
-          _openVersionList(content);
-        } catch (err) {
-          toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
-        }
+        overlay.remove();
+        _confirmDeleteVersion(content, v);
       }
     })
   ]));
@@ -209,6 +199,39 @@ function _openVersionList(content) {
       onclick: () => { overlay.remove(); _openAddVersion(content); }
     }, ['+ Adaugă versiune'])
   ]));
+  document.body.appendChild(overlay);
+}
+
+function _confirmDeleteVersion(content, version) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { overlay.remove(); _openVersionList(content); } } });
+
+  const sheet = el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Ștergi versiunea?']),
+    el('p', { class: 'sheet__text' }, [
+      `Sigur vrei să ștergi versiunea „${version.title || 'Fără titlu'}”? Traducerea ei se pierde definitiv.`
+    ]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => { overlay.remove(); _openVersionList(content); } }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--danger-solid',
+        onclick: async () => {
+          try {
+            await window.Db.deleteVersion(_song.id, version.id);
+            _versions = _versions.filter(v => v.id !== version.id);
+            if (_activeVersionId === version.id) {
+              _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+            }
+            overlay.remove();
+            _refreshTextTab(content);
+            _openVersionList(content);
+          } catch (err) {
+            toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
+          }
+        }
+      }, ['Șterge'])
+    ])
+  ]);
+  overlay.appendChild(sheet);
   document.body.appendChild(overlay);
 }
 
