@@ -32,20 +32,22 @@ html, body {
 }
 
 #app {
-  /* --vvh (set from visualViewport in app.js) tracks the actual visible
-     height and self-corrects on resize/scroll; 100dvh is just the initial
-     fallback before that JS runs. Using dvh alone can get stuck too tall
-     right after Chrome's native pull-to-refresh reload, which — combined
-     with html/body having no overflow clamp of their own above — is what
-     turned the whole page scrollable instead of just the panes meant to
-     scroll internally. */
-  height: var(--vvh, 100dvh);
+  /* Fixed + inset:0 instead of height:100dvh/var(--vvh): a viewport-unit
+     height can resolve too tall right after Chrome's native pull-to-refresh
+     reload (its dynamic toolbar hasn't settled yet), and since #app was in
+     normal document flow, that extra height spilled into a scrollable page.
+     Fixed positioning ties #app's box directly to the browser's actual
+     rendered viewport instead of a computed length, which mobile Chrome
+     handles far more reliably across toolbar show/hide and reloads. */
+  position: fixed;
+  inset: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   max-width: 720px;
-  margin: 0 auto;
-  position: relative;
 }
 
 button, input, textarea {
