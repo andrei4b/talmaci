@@ -11,7 +11,7 @@
  * people can draft in parallel) via the version switcher above the
  * translation box — see db.js's versions subcollection. */
 (function () {
-const { el, escapeHtml, toast, debounce } = window.Utils;
+const { el, toast, debounce } = window.Utils;
 
 const ICONS = {
   text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
@@ -83,7 +83,7 @@ function _renderShell(root) {
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
-    el('h1', { class: 'topbar__title' }, [escapeHtml(_song.title || 'Fără titlu')]),
+    el('h1', { class: 'topbar__title' }, [_song.title || 'Fără titlu']),
     el('button', {
       class: 'btn btn--icon',
       'aria-label': 'Meniu melodie',
@@ -129,7 +129,7 @@ function _renderTextTab(content) {
       class: 'version-switcher__current',
       disabled: !_versions.length,
       onclick: () => _openVersionList(content)
-    }, [active ? escapeHtml(active.title || 'Fără titlu') : 'Nicio versiune']),
+    }, [active ? (active.title || 'Fără titlu') : 'Nicio versiune']),
   ]);
 
   const translation = el('textarea', {
@@ -142,7 +142,7 @@ function _renderTextTab(content) {
 
   content.appendChild(el('div', { class: 'text-tab' }, [
     el('div', { class: 'text-tab__col' }, [
-      el('div', { class: 'text-tab__original' }, [escapeHtml(_song.originalText || '')])
+      el('div', { class: 'text-tab__original' }, [_song.originalText || ''])
     ]),
     el('div', { class: 'text-tab__col' }, [
       translation,
@@ -174,7 +174,7 @@ function _openVersionList(content) {
     el('button', {
       class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
       onclick: () => { _activeVersionId = v.id; overlay.remove(); _refreshTextTab(content); }
-    }, [escapeHtml(v.title || 'Fără titlu')]),
+    }, [v.title || 'Fără titlu']),
     el('button', {
       class: 'version-row__icon',
       'aria-label': 'Redenumește versiunea',

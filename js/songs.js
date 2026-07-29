@@ -1,6 +1,6 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, escapeHtml, toast, debounce } = window.Utils;
+const { $, el, toast, debounce } = window.Utils;
 
 let _songs = [];
 let _query = '';
@@ -78,8 +78,8 @@ function _renderList(listWrap) {
         href: `#/song/${song.id}`,
         class: 'song-list__link'
       }, [
-        el('span', { class: 'song-list__title' }, [escapeHtml(song.title || 'Fără titlu')]),
-        el('span', { class: 'song-list__snippet' }, [escapeHtml((song.originalText || '').slice(0, 80))])
+        el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
+        el('span', { class: 'song-list__snippet' }, [(song.originalText || '').slice(0, 80)])
       ])
     ]));
   });
