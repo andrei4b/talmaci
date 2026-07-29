@@ -300,7 +300,11 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 20px 20px calc(20px + 70px + env(safe-area-inset-bottom));
+  /* Top/right/left are the real padding; bottom is set inline in JS to
+     the tab-bar's actual measured height (song-detail.js), not a guessed
+     buffer — that guess used to be bigger than the real bar, wasting
+     space. This calc is just the fallback before that JS runs. */
+  padding: 10px 20px calc(70px + env(safe-area-inset-bottom));
 }
 
 /* Text tab — original and translation each take a fixed half of the
@@ -325,6 +329,10 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface);
   resize: none;
 }
+/* Invisible spacer under the original box, matching the version switcher's
+   footprint under the translation box, so the two boxes end up the same
+   height instead of the original one being taller by that amount. */
+.text-tab__spacer { flex-shrink: 0; height: 36px; margin-top: 8px; visibility: hidden; }
 @media (min-width: 640px) {
   .text-tab { flex-direction: row; gap: 20px; }
 }

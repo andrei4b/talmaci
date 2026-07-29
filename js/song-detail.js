@@ -109,6 +109,9 @@ function _renderShell(root) {
   root.appendChild(tabBar);
   root.appendChild(content);
   _renderTab(content);
+  // Clear tab-content's fixed CSS estimate with the tab-bar's real
+  // measured height, so there's no leftover gap above it.
+  content.style.paddingBottom = tabBar.offsetHeight + 'px';
 }
 
 function _renderTab(content) {
@@ -142,7 +145,8 @@ function _renderTextTab(content) {
 
   content.appendChild(el('div', { class: 'text-tab' }, [
     el('div', { class: 'text-tab__col' }, [
-      el('div', { class: 'text-tab__original' }, [_song.originalText || ''])
+      el('div', { class: 'text-tab__original' }, [_song.originalText || '']),
+      el('div', { class: 'text-tab__spacer' })
     ]),
     el('div', { class: 'text-tab__col' }, [
       translation,
