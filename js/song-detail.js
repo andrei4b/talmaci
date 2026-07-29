@@ -109,9 +109,10 @@ function _renderShell(root) {
   root.appendChild(tabBar);
   root.appendChild(content);
   _renderTab(content);
-  // Clear tab-content's fixed CSS estimate with the tab-bar's real
-  // measured height, so there's no leftover gap above it.
-  content.style.paddingBottom = tabBar.offsetHeight + 'px';
+  // Replace tab-content's fixed CSS estimate with the tab-bar's real
+  // measured height (+ a small breathing gap), instead of a guessed
+  // buffer that was bigger than the real bar and wasted space.
+  content.style.paddingBottom = (tabBar.offsetHeight + 10) + 'px';
 }
 
 function _renderTab(content) {
@@ -143,15 +144,18 @@ function _renderTextTab(content) {
   });
   translation.value = active ? (active.text || '') : '';
 
-  content.appendChild(el('div', { class: 'text-tab' }, [
+  const textTab = el('div', { class: 'text-tab' }, [
     el('div', { class: 'text-tab__col' }, [
-      el('div', { class: 'text-tab__original' }, [_song.originalText || '']),
-      el('div', { class: 'text-tab__spacer' })
+      el('div', { class: 'text-tab__original' }, [_song.originalText || ''])
     ]),
     el('div', { class: 'text-tab__col' }, [
-      translation,
-      switcher
+      translation
     ])
+  ]);
+
+  content.appendChild(el('div', { class: 'text-tab-wrap' }, [
+    textTab,
+    switcher
   ]));
 }
 

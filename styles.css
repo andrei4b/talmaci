@@ -301,15 +301,17 @@ a { color: inherit; text-decoration: none; }
   flex-direction: column;
   overflow-y: auto;
   /* Top/right/left are the real padding; bottom is set inline in JS to
-     the tab-bar's actual measured height (song-detail.js), not a guessed
-     buffer — that guess used to be bigger than the real bar, wasting
-     space. This calc is just the fallback before that JS runs. */
-  padding: 10px 20px calc(70px + env(safe-area-inset-bottom));
+     the tab-bar's actual measured height plus a small buffer
+     (song-detail.js) — this calc is just the fallback before that JS
+     runs. */
+  padding: 6px 20px calc(70px + env(safe-area-inset-bottom));
 }
 
-/* Text tab — original and translation each take a fixed half of the
-   available height on mobile (stacked), full height side-by-side on wider
-   screens; each box scrolls internally rather than growing. */
+/* Text tab — the switcher is a shared control below both boxes (not
+   inside either column), so the two columns are plain flex:1 siblings
+   with nothing eating into either one — same height with no spacer
+   hack, and no dead space between them. */
+.text-tab-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .text-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
 .text-tab__col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .text-tab__original {
@@ -329,10 +331,6 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface);
   resize: none;
 }
-/* Invisible spacer under the original box, matching the version switcher's
-   footprint under the translation box, so the two boxes end up the same
-   height instead of the original one being taller by that amount. */
-.text-tab__spacer { flex-shrink: 0; height: 36px; margin-top: 8px; visibility: hidden; }
 @media (min-width: 640px) {
   .text-tab { flex-direction: row; gap: 20px; }
 }
