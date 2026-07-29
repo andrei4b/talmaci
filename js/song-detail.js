@@ -410,7 +410,7 @@ function _offerMotAMot(root) {
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
-    el('p', { class: 'sheet__text' }, ['Textul original s-a schimbat. Vrei să (re)generezi versiunea „Mot-a-mot” cu DeepL?']),
+    el('p', { class: 'sheet__text' }, ['Textul original s-a schimbat. Vrei să (re)generezi versiunea „Mot-a-mot” cu Google Translate?']),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Nu, mulțumesc']),
       generateBtn
@@ -419,11 +419,11 @@ function _offerMotAMot(root) {
   document.body.appendChild(overlay);
 }
 
-// Calls DeepL and creates/updates the "Mot-a-mot" version, from the offer
-// sheets above and from the kebab menu's manual button.
+// Calls Google Translate and creates/updates the "Mot-a-mot" version, from
+// the offer sheets above and from the kebab menu's manual button.
 async function _generateMotAMot(root) {
   try {
-    const v = await window.DeepL.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid);
+    const v = await window.Translator.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid);
     const idx = _versions.findIndex(x => x.id === v.id);
     if (idx >= 0) _versions[idx] = v; else _versions.push(v);
     _activeVersionId = v.id;

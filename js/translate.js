@@ -1,9 +1,9 @@
-/* deepl.js — thin client for the translateWithDeepL Cloud Function.
+/* translate.js — thin client for the translateText Cloud Function.
  * See functions/index.js for the server-side proxy this calls. */
 (function () {
 
 async function translate(text) {
-  const fn = firebase.functions().httpsCallable('translateWithDeepL');
+  const fn = firebase.functions().httpsCallable('translateText');
   const res = await fn({ text });
   return res.data.translatedText;
 }
@@ -24,6 +24,6 @@ async function generateMotAMotVersion(songId, originalText, existingVersions, cr
   return { id, title: 'Mot-a-mot', text: translatedText, createdBy, createdAt: now, updatedAt: now };
 }
 
-window.DeepL = { translate, generateMotAMotVersion };
+window.Translator = { translate, generateMotAMotVersion };
 
 })();

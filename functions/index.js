@@ -1,26 +1,30 @@
 /* functions/index.js — Cloud Functions for Tălmaci.
  *
- * translateWithDeepL: a callable function that proxies a translation
- * request to DeepL. Runs server-side so the DeepL API key never appears
- * in client code (this repo is public), and so the browser doesn't have
- * to make a cross-origin request DeepL's API isn't set up to allow.
+ * translateText: a callable function that proxies a translation request to
+ * the Google Cloud Translation API. Runs server-side purely to keep this
+ * off the client's plate — unlike DeepL (which this replaced), Cloud
+ * Translation needs no API key at all here: it authenticates as the
+ * function's own service account (Application Default Credentials), so
+ * there's nothing to store as a secret.
  *
  * Setup:
- *   1. Get a DeepL API key at deepl.com/pro-api (Free tier: 500k
- *      chars/month). Free-tier keys end in ":fx" — this function detects
- *      that suffix and calls api-free.deepl.com instead of api.deepl.com
- *      automatically, so you don't need to configure which one.
- *   2. Store it as a secret (never commit it):
- *        firebase functions:secrets:set DEEPL_API_KEY
+ *   1. In the Google Cloud Console for this Firebase project, enable the
+ *      "Cloud Translation API" (APIs & Services → Library → search for it
+ *      → Enable).
+ *   2. Grant the Cloud Functions service account the "Cloud Translation
+ *      API User" role (IAM & Admin → IAM → find the service account
+ *      ending in "@<project>.iam.gserviceaccount.com" used by your
+ *      functions — usually the default compute service account for
+ *      2nd-gen functions → Edit → Add role → Cloud Translation API User).
  *   3. Deploy: firebase deploy --only functions
  *
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { defineSecret } = require('firebase-functions/params');
+const { Translate } = require('@google-cloud/translate').v2;
 
-const DEEPL_API_KEY = defineSecret('DEEPL_API_KEY');
+const translate = new Translate();
 
-exports.translateWithDeepL = onCall({ secrets: [DEEPL_API_KEY] }, async (request) => {
+exports.translateText = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Trebuie să fii autentificat.');
   }
@@ -33,36 +37,15 @@ exports.translateWithDeepL = onCall({ secrets: [DEEPL_API_KEY] }, async (request
     throw new HttpsError('invalid-argument', 'Textul e prea lung pentru o singură traducere.');
   }
 
-  const apiKey = DEEPL_API_KEY.value();
-  const apiHost = apiKey.endsWith(':fx') ? 'api-free.deepl.com' : 'api.deepl.com';
-
-  let res;
+  let translatedText;
   try {
-    res = await fetch(`https://${apiHost}/v2/translate`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `DeepL-Auth-Key ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: [text],
-        source_lang: 'EN',
-        target_lang: 'RO'
-      })
-    });
+    [translatedText] = await translate.translate(text, { from: 'en', to: 'ro' });
   } catch (err) {
-    throw new HttpsError('unavailable', 'Nu am putut contacta DeepL: ' + err.message);
+    throw new HttpsError('unavailable', 'Nu am putut contacta Google Translate: ' + err.message);
   }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new HttpsError('unavailable', `DeepL a răspuns cu eroare (${res.status}): ${body.slice(0, 300)}`);
-  }
-
-  const data = await res.json();
-  const translatedText = data && data.translations && data.translations[0] && data.translations[0].text;
   if (!translatedText) {
-    throw new HttpsError('internal', 'Răspuns neașteptat de la DeepL.');
+    throw new HttpsError('internal', 'Răspuns neașteptat de la Google Translate.');
   }
 
   return { translatedText };

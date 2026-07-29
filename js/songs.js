@@ -136,7 +136,7 @@ function _offerMotAMot(songId, originalText) {
     generateBtn.disabled = true;
     generateBtn.textContent = 'Se generează…';
     try {
-      await window.DeepL.generateMotAMotVersion(songId, originalText, [], window.Auth.currentUser().uid);
+      await window.Translator.generateMotAMotVersion(songId, originalText, [], window.Auth.currentUser().uid);
     } catch (err) {
       toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
     }
@@ -146,7 +146,7 @@ function _offerMotAMot(songId, originalText) {
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
-    el('p', { class: 'sheet__text' }, ['Vrei o traducere generată automat cu DeepL, ca punct de plecare?']),
+    el('p', { class: 'sheet__text' }, ['Vrei o traducere generată automat cu Google Translate, ca punct de plecare?']),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => { overlay.remove(); goToSong(); } }, ['Nu, mulțumesc']),
       generateBtn

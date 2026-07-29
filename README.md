@@ -52,33 +52,36 @@ provider enabled) and **Firestore** turned on.
    `/users/{yourUid}` document with `role: "admin"` and `groupId` pointing
    at it.
 
-## DeepL "Mot-a-mot" translations (optional)
+## Google Translate "Mot-a-mot" translations (optional)
 
 A song's kebab menu (and a prompt right after you save a song, or edit its
 original text) can generate a literal machine translation into a version
 named **"Mot-a-mot"** — a starting point to work from, not a substitute for
-the real translation. This calls DeepL through a Cloud Function
-(`functions/index.js`), never directly from the browser, since a DeepL key
-shouldn't be exposed in this repo's public client code and DeepL's API
-isn't set up for direct browser calls anyway. Skip this section entirely if
-you don't want the feature — the rest of the app works without it.
+the real translation. This calls the Google Cloud Translation API through a
+Cloud Function (`functions/index.js`), never directly from the browser.
+Unlike the DeepL version this replaced, there's no API key to manage at
+all — the function authenticates as its own Google Cloud service account.
+Skip this section entirely if you don't want the feature — the rest of the
+app works without it.
 
-1. Get a DeepL API key at [deepl.com/pro-api](https://www.deepl.com/pro-api)
-   (the Free tier gives 500,000 characters/month at no cost).
-2. Upgrade your Firebase project to the **Blaze** (pay-as-you-go) plan —
-   Cloud Functions need it, even though this function's usage will likely
-   stay within Blaze's free monthly quota. Firebase console → your project
-   → the upgrade prompt at the bottom of the left sidebar.
-3. Install the Firebase CLI and sign in (needs Node 18+ locally; the
+1. In the [Google Cloud Console](https://console.cloud.google.com) for this
+   Firebase project, go to **APIs & Services → Library**, search for
+   **Cloud Translation API**, and enable it.
+2. **IAM & Admin → IAM** → find the service account your functions run as
+   (for 2nd-gen functions, usually the one ending in
+   `@<project-id>.iam.gserviceaccount.com` named "Default compute service
+   account") → **Edit principal** → **Add another role** → grant
+   **Cloud Translation API User**.
+3. Upgrade your Firebase project to the **Blaze** (pay-as-you-go) plan —
+   Cloud Functions need it. Firebase console → your project → the upgrade
+   prompt at the bottom of the left sidebar. Cloud Translation itself has a
+   free tier (500,000 characters/month, resets monthly), so normal usage
+   shouldn't cost anything either.
+4. Install the Firebase CLI and sign in (needs Node 18+ locally; the
    functions themselves run on Node 20 regardless of your local version):
    ```bash
    npm install -g firebase-tools
    firebase login
-   ```
-4. Store your DeepL key as a secret (never commit it — it's not in any file
-   in this repo):
-   ```bash
-   firebase functions:secrets:set DEEPL_API_KEY
    ```
 5. Install the function's dependencies and deploy:
    ```bash
@@ -86,12 +89,12 @@ you don't want the feature — the rest of the app works without it.
    firebase deploy --only functions
    ```
 6. That's it — the "Mot-a-mot" prompts and the kebab menu button will start
-   working. No client-side config needed; `js/deepl.js` calls the deployed
-   function by name.
+   working. No client-side config needed; `js/translate.js` calls the
+   deployed function by name.
 
-If a translation ever fails (DeepL down, quota exceeded, function not
-deployed yet), it just shows an error toast — nothing else about the app is
-affected.
+If a translation ever fails (API not enabled yet, IAM role missing, quota
+exceeded, function not deployed), it just shows an error toast — nothing
+else about the app is affected.
 
 ## Deploy it for real use
 
@@ -132,13 +135,14 @@ firestore.rules             Security rules (reference copy — publish to
 js/firebase-config.js        Your Firebase project's public web config
 js/auth.js                    Firebase Auth + user profile (role, group)
 js/db.js                       Firestore data layer (songs, versions)
-js/deepl.js                     Client for the translateWithDeepL function
+js/translate.js                 Client for the translateText function
 js/utils.js                      DOM helpers, toast
 js/songs.js                       Main page: song list, search, add song
 js/song-detail.js                  Song page: Text/Rime/Sinonime/Biblie tabs
 js/app.js                           Sign-in/join gating, routing, account menu
-functions/index.js                   Cloud Function: DeepL proxy (optional,
-                                       see "DeepL Mot-a-mot" above)
+functions/index.js                   Cloud Function: Google Translate proxy
+                                       (optional, see "Google Translate
+                                       Mot-a-mot" above)
 icons/                                 App icons (192, 512, maskable 512 —
                                         placeholder "T" mark, swap for real
                                         artwork)

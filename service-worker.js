@@ -21,7 +21,7 @@ const SHELL_FILES = [
   './js/firebase-config.js',
   './js/auth.js',
   './js/db.js',
-  './js/deepl.js',
+  './js/translate.js',
   './js/songs.js',
   './js/song-detail.js',
   './js/app.js',
