@@ -326,7 +326,19 @@ function _openSongMenu(root) {
     el('button', {
       class: 'btn btn--wide',
       onclick: () => { overlay.remove(); _openEditOriginal(root); }
-    }, ['Editează textul original'])
+    }, ['Editează textul original']),
+    el('button', {
+      class: 'btn btn--wide',
+      onclick: async () => {
+        overlay.remove();
+        if (!_song.originalText || !_song.originalText.trim()) {
+          toast('Adaugă mai întâi textul original.', { kind: 'error' });
+          return;
+        }
+        toast('Se generează traducerea…');
+        await _generateMotAMot(root);
+      }
+    }, ['Generează traducere Mot-a-mot'])
   ]));
   document.body.appendChild(overlay);
 }
@@ -373,6 +385,7 @@ function _openEditOriginal(root) {
             _song.originalText = textInput.value;
             overlay.remove();
             _renderShell(root);
+            if (_song.originalText.trim()) _offerMotAMot(root);
           } catch (err) {
             toast('Nu am putut salva textul original: ' + err.message, { kind: 'error' });
           }
@@ -383,6 +396,42 @@ function _openEditOriginal(root) {
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
   textInput.focus();
+}
+
+function _offerMotAMot(root) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const generateBtn = el('button', { class: 'btn btn--primary' }, ['Da, generează']);
+  generateBtn.addEventListener('click', async () => {
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Se generează…';
+    await _generateMotAMot(root);
+    overlay.remove();
+  });
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
+    el('p', { class: 'sheet__text' }, ['Textul original s-a schimbat. Vrei să (re)generezi versiunea „Mot-a-mot” cu DeepL?']),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Nu, mulțumesc']),
+      generateBtn
+    ])
+  ]));
+  document.body.appendChild(overlay);
+}
+
+// Calls DeepL and creates/updates the "Mot-a-mot" version, from the offer
+// sheets above and from the kebab menu's manual button.
+async function _generateMotAMot(root) {
+  try {
+    const v = await window.DeepL.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid);
+    const idx = _versions.findIndex(x => x.id === v.id);
+    if (idx >= 0) _versions[idx] = v; else _versions.push(v);
+    _activeVersionId = v.id;
+    _renderShell(root);
+    toast('Traducere Mot-a-mot generată.');
+  } catch (err) {
+    toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
+  }
 }
 
 function _placeholderPanel(tabId) {

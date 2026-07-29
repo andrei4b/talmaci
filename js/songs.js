@@ -102,15 +102,20 @@ function _openAddSong() {
         onclick: async () => {
           const title = titleInput.value.trim();
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
+          const originalText = textInput.value;
           try {
             const id = await window.Db.addSong({
               title,
-              originalText: textInput.value,
+              originalText,
               groupId: window.Auth.currentGroupId(),
               createdBy: window.Auth.currentUser().uid
             });
             overlay.remove();
-            location.hash = `#/song/${id}`;
+            if (originalText.trim()) {
+              _offerMotAMot(id, originalText);
+            } else {
+              location.hash = `#/song/${id}`;
+            }
           } catch (err) {
             toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
           }
@@ -121,6 +126,33 @@ function _openAddSong() {
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
   titleInput.focus();
+}
+
+function _offerMotAMot(songId, originalText) {
+  const goToSong = () => { location.hash = `#/song/${songId}`; };
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { overlay.remove(); goToSong(); } } });
+  const generateBtn = el('button', { class: 'btn btn--primary' }, ['Da, generează']);
+  generateBtn.addEventListener('click', async () => {
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Se generează…';
+    try {
+      await window.DeepL.generateMotAMotVersion(songId, originalText, [], window.Auth.currentUser().uid);
+    } catch (err) {
+      toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
+    }
+    overlay.remove();
+    goToSong();
+  });
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
+    el('p', { class: 'sheet__text' }, ['Vrei o traducere generată automat cu DeepL, ca punct de plecare?']),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => { overlay.remove(); goToSong(); } }, ['Nu, mulțumesc']),
+      generateBtn
+    ])
+  ]));
+  document.body.appendChild(overlay);
 }
 
 window.Songs = { render, refresh };

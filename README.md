@@ -52,6 +52,47 @@ provider enabled) and **Firestore** turned on.
    `/users/{yourUid}` document with `role: "admin"` and `groupId` pointing
    at it.
 
+## DeepL "Mot-a-mot" translations (optional)
+
+A song's kebab menu (and a prompt right after you save a song, or edit its
+original text) can generate a literal machine translation into a version
+named **"Mot-a-mot"** — a starting point to work from, not a substitute for
+the real translation. This calls DeepL through a Cloud Function
+(`functions/index.js`), never directly from the browser, since a DeepL key
+shouldn't be exposed in this repo's public client code and DeepL's API
+isn't set up for direct browser calls anyway. Skip this section entirely if
+you don't want the feature — the rest of the app works without it.
+
+1. Get a DeepL API key at [deepl.com/pro-api](https://www.deepl.com/pro-api)
+   (the Free tier gives 500,000 characters/month at no cost).
+2. Upgrade your Firebase project to the **Blaze** (pay-as-you-go) plan —
+   Cloud Functions need it, even though this function's usage will likely
+   stay within Blaze's free monthly quota. Firebase console → your project
+   → the upgrade prompt at the bottom of the left sidebar.
+3. Install the Firebase CLI and sign in (needs Node 18+ locally; the
+   functions themselves run on Node 20 regardless of your local version):
+   ```bash
+   npm install -g firebase-tools
+   firebase login
+   ```
+4. Store your DeepL key as a secret (never commit it — it's not in any file
+   in this repo):
+   ```bash
+   firebase functions:secrets:set DEEPL_API_KEY
+   ```
+5. Install the function's dependencies and deploy:
+   ```bash
+   cd functions && npm install && cd ..
+   firebase deploy --only functions
+   ```
+6. That's it — the "Mot-a-mot" prompts and the kebab menu button will start
+   working. No client-side config needed; `js/deepl.js` calls the deployed
+   function by name.
+
+If a translation ever fails (DeepL down, quota exceeded, function not
+deployed yet), it just shows an error toast — nothing else about the app is
+affected.
+
 ## Deploy it for real use
 
 This repo includes `.github/workflows/deploy-pages.yml`, which deploys to
@@ -90,14 +131,17 @@ firestore.rules             Security rules (reference copy — publish to
                              the Firebase console manually, see above)
 js/firebase-config.js        Your Firebase project's public web config
 js/auth.js                    Firebase Auth + user profile (role, group)
-js/db.js                       Firestore data layer (songs)
-js/utils.js                     DOM helpers, toast
-js/songs.js                      Main page: song list, search, add song
-js/song-detail.js                 Song page: Text/Rime/Sinonime/Biblie tabs
-js/app.js                          Sign-in/join gating, routing
-icons/                                App icons (192, 512, maskable 512 —
-                                       placeholder "T" mark, swap for real
-                                       artwork)
+js/db.js                       Firestore data layer (songs, versions)
+js/deepl.js                     Client for the translateWithDeepL function
+js/utils.js                      DOM helpers, toast
+js/songs.js                       Main page: song list, search, add song
+js/song-detail.js                  Song page: Text/Rime/Sinonime/Biblie tabs
+js/app.js                           Sign-in/join gating, routing, account menu
+functions/index.js                   Cloud Function: DeepL proxy (optional,
+                                       see "DeepL Mot-a-mot" above)
+icons/                                 App icons (192, 512, maskable 512 —
+                                        placeholder "T" mark, swap for real
+                                        artwork)
 ```
 
 No npm install, no bundler — open `index.html` in a browser (via a local
@@ -110,5 +154,3 @@ runs.
 - **Sinonime** tab: synonym lookup for Romanian words in the translation.
 - **Biblie** tab: Bible cross-references relevant to the text.
 - Real app icons (the current ones are a generated placeholder).
-- A "manage members" screen for admins (the data layer already supports it
-  via `Auth.listGroupMembers` / `Auth.setMemberRole`).
