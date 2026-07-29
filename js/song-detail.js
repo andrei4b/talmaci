@@ -325,6 +325,10 @@ function _openSongMenu(root) {
     }, ['Reîmprospătează']),
     el('button', {
       class: 'btn btn--wide',
+      onclick: () => { overlay.remove(); _openRenameSong(root); }
+    }, ['Redenumește melodia']),
+    el('button', {
+      class: 'btn btn--wide',
       onclick: () => { overlay.remove(); _openEditOriginal(root); }
     }, ['Editează textul original']),
     el('button', {
@@ -338,7 +342,68 @@ function _openSongMenu(root) {
         toast('Se generează traducerea…');
         await _generateMotAMot(root);
       }
-    }, ['Generează traducere Mot-a-mot'])
+    }, ['Generează traducere Mot-a-mot']),
+    el('button', {
+      class: 'btn btn--wide btn--danger',
+      onclick: () => { overlay.remove(); _confirmDeleteSong(); }
+    }, ['Șterge melodia'])
+  ]));
+  document.body.appendChild(overlay);
+}
+
+function _openRenameSong(root) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const titleInput = el('input', { class: 'field__input', type: 'text', value: _song.title || '' });
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Redenumește melodia']),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--primary',
+        onclick: async () => {
+          const title = titleInput.value.trim();
+          if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
+          try {
+            await window.Db.updateSong(_song.id, { title });
+            _song.title = title;
+            overlay.remove();
+            _renderShell(root);
+          } catch (err) {
+            toast('Nu am putut redenumi melodia: ' + err.message, { kind: 'error' });
+          }
+        }
+      }, ['Salvează'])
+    ])
+  ]));
+  document.body.appendChild(overlay);
+  titleInput.focus();
+  titleInput.select();
+}
+
+function _confirmDeleteSong() {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Ștergi melodia?']),
+    el('p', { class: 'sheet__text' }, [
+      `Sigur vrei să ștergi „${_song.title || 'Fără titlu'}”? Textul original și toate versiunile de traducere se pierd definitiv.`
+    ]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--danger-solid',
+        onclick: async () => {
+          try {
+            await window.Db.deleteSong(_song.id);
+            overlay.remove();
+            location.hash = '#/';
+          } catch (err) {
+            toast('Nu am putut șterge melodia: ' + err.message, { kind: 'error' });
+          }
+        }
+      }, ['Șterge'])
+    ])
   ]));
   document.body.appendChild(overlay);
 }

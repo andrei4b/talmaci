@@ -64,12 +64,17 @@ async function updateSong(songId, patch) {
   });
 }
 
-async function deleteSong(songId) {
-  await fs().collection('songs').doc(songId).delete();
-}
-
 function _versionsRef(songId) {
   return fs().collection('songs').doc(songId).collection('versions');
+}
+
+// Firestore doesn't cascade-delete subcollections when you delete a
+// document, so the versions have to be cleared out by hand first —
+// otherwise they'd be orphaned (unreachable, but still taking up storage).
+async function deleteSong(songId) {
+  const versionsSnap = await _versionsRef(songId).get();
+  await Promise.all(versionsSnap.docs.map(d => d.ref.delete()));
+  await fs().collection('songs').doc(songId).delete();
 }
 
 async function listVersions(songId) {
