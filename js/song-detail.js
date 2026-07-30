@@ -279,8 +279,14 @@ function _renderTextTab(content) {
 }
 
 function _refreshTextTab(content) {
+  // The original text doesn't change when switching versions — carry its
+  // scroll position across the rebuild instead of resetting to the top.
+  const prevOriginal = content.querySelector('.text-tab__original');
+  const originalScrollTop = prevOriginal ? prevOriginal.scrollTop : 0;
   content.innerHTML = '';
   _renderTextTab(content);
+  const newOriginal = content.querySelector('.text-tab__original');
+  if (newOriginal) newOriginal.scrollTop = originalScrollTop;
 }
 
 async function _saveVersionText(text) {
