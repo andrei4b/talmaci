@@ -34,7 +34,7 @@ async function listSongs(groupId) {
   if (!groupId) return [];
   const snap = await fs().collection('songs').where('groupId', '==', groupId).get();
   const songs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  songs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  songs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return songs;
 }
 
