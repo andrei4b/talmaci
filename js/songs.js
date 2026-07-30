@@ -136,7 +136,7 @@ function _offerMotAMot(songId, originalText) {
     generateBtn.disabled = true;
     generateBtn.textContent = 'Se generează…';
     try {
-      await window.Translator.generateMotAMotVersion(songId, originalText, [], window.Auth.currentUser().uid);
+      await window.Translator.generateMotAMotVersion(songId, originalText, [], window.Auth.currentUser().uid, window.Auth.isAdmin());
     } catch (err) {
       toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
     }

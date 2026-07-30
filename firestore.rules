@@ -90,11 +90,19 @@ service cloud.firestore {
       allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId');
       allow delete: if isSignedIn() && resource.data.groupId == myGroup() && isAdmin();
 
+      // Everyone in the group can see every version and add new ones, but
+      // editing/deleting an existing version is limited to whoever created
+      // it, or an admin — this is what stops one person's draft from being
+      // overwritten by someone else without permission.
       match /versions/{versionId} {
         function parentSongGroup() {
           return get(/databases/$(database)/documents/songs/$(songId)).data.groupId;
         }
-        allow read, create, update, delete: if isSignedIn() && parentSongGroup() == myGroup();
+        allow read: if isSignedIn() && parentSongGroup() == myGroup();
+        allow create: if isSignedIn() && parentSongGroup() == myGroup()
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if isSignedIn() && parentSongGroup() == myGroup()
+          && (resource.data.createdBy == request.auth.uid || isAdmin());
       }
     }
   }

@@ -125,8 +125,18 @@ function _activeVersion() {
   return _versions.find(v => v.id === _activeVersionId) || null;
 }
 
+// Editing/deleting a version is limited to whoever created it, or an
+// admin — enforced for real in firestore.rules; this just drives the UI
+// (disabling the textarea, hiding the edit/delete icons) to match.
+function _canEditVersion(version) {
+  if (!version) return false;
+  if (window.Auth.isAdmin()) return true;
+  return version.createdBy === window.Auth.currentUser().uid;
+}
+
 function _renderTextTab(content) {
   const active = _activeVersion();
+  const canEdit = _canEditVersion(active);
 
   const switcher = el('div', { class: 'version-switcher' }, [
     el('button', {
@@ -136,10 +146,13 @@ function _renderTextTab(content) {
     }, [active ? (active.title || 'Fără titlu') : 'Nicio versiune']),
   ]);
 
+  let placeholder = 'Creează o versiune pentru a începe traducerea.';
+  if (active) placeholder = canEdit ? 'Traducerea în română…' : 'Doar creatorul sau un admin poate edita această versiune.';
+
   const translation = el('textarea', {
     class: 'field__input text-tab__translation',
-    placeholder: active ? 'Traducerea în română…' : 'Creează o versiune pentru a începe traducerea.',
-    disabled: !active,
+    placeholder,
+    disabled: !active || !canEdit,
     oninput: debounce((e) => _saveVersionText(e.target.value), 600)
   });
   translation.value = active ? (active.text || '') : '';
@@ -178,29 +191,37 @@ async function _saveVersionText(text) {
 function _openVersionList(content) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
 
-  const rows = _versions.map(v => el('div', { class: 'version-row' }, [
-    el('button', {
-      class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
-      onclick: () => { _activeVersionId = v.id; overlay.remove(); _refreshTextTab(content); }
-    }, [v.title || 'Fără titlu']),
-    el('button', {
-      class: 'version-row__icon',
-      'aria-label': 'Redenumește versiunea',
-      html: ROW_ICONS.edit,
-      onclick: () => { overlay.remove(); _openRenameVersion(content, v); }
-    }),
-    el('button', {
-      class: 'version-row__icon version-row__icon--danger',
-      'aria-label': 'Șterge versiunea',
-      disabled: _versions.length < 2,
-      html: ROW_ICONS.delete,
-      onclick: () => {
-        if (_versions.length < 2) return;
-        overlay.remove();
-        _confirmDeleteVersion(content, v);
-      }
-    })
-  ]));
+  const rows = _versions.map(v => {
+    const row = [
+      el('button', {
+        class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
+        onclick: () => { _activeVersionId = v.id; overlay.remove(); _refreshTextTab(content); }
+      }, [v.title || 'Fără titlu'])
+    ];
+    // Rename/delete are limited to whoever created the version (or an
+    // admin) — the icons are just hidden for everyone else, matching the
+    // firestore.rules restriction.
+    if (_canEditVersion(v)) {
+      row.push(el('button', {
+        class: 'version-row__icon',
+        'aria-label': 'Redenumește versiunea',
+        html: ROW_ICONS.edit,
+        onclick: () => { overlay.remove(); _openRenameVersion(content, v); }
+      }));
+      row.push(el('button', {
+        class: 'version-row__icon version-row__icon--danger',
+        'aria-label': 'Șterge versiunea',
+        disabled: _versions.length < 2,
+        html: ROW_ICONS.delete,
+        onclick: () => {
+          if (_versions.length < 2) return;
+          overlay.remove();
+          _confirmDeleteVersion(content, v);
+        }
+      }));
+    }
+    return el('div', { class: 'version-row' }, row);
+  });
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Versiuni']),
@@ -496,7 +517,7 @@ function _offerMotAMot(root) {
 // the offer sheets above and from the kebab menu's manual button.
 async function _generateMotAMot(root) {
   try {
-    const v = await window.Translator.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid);
+    const v = await window.Translator.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid, window.Auth.isAdmin());
     const idx = _versions.findIndex(x => x.id === v.id);
     if (idx >= 0) _versions[idx] = v; else _versions.push(v);
     _activeVersionId = v.id;
