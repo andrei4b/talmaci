@@ -192,35 +192,35 @@ function _openVersionList(content) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
 
   const rows = _versions.map(v => {
-    const row = [
+    // Rename/delete are limited to whoever created the version (or an
+    // admin), matching the firestore.rules restriction — shown disabled
+    // for everyone else rather than hidden, so it's clear the option
+    // exists but isn't available to you.
+    const editable = _canEditVersion(v);
+    return el('div', { class: 'version-row' }, [
       el('button', {
         class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
         onclick: () => { _activeVersionId = v.id; overlay.remove(); _refreshTextTab(content); }
-      }, [v.title || 'Fără titlu'])
-    ];
-    // Rename/delete are limited to whoever created the version (or an
-    // admin) — the icons are just hidden for everyone else, matching the
-    // firestore.rules restriction.
-    if (_canEditVersion(v)) {
-      row.push(el('button', {
+      }, [v.title || 'Fără titlu']),
+      el('button', {
         class: 'version-row__icon',
         'aria-label': 'Redenumește versiunea',
+        disabled: !editable,
         html: ROW_ICONS.edit,
         onclick: () => { overlay.remove(); _openRenameVersion(content, v); }
-      }));
-      row.push(el('button', {
+      }),
+      el('button', {
         class: 'version-row__icon version-row__icon--danger',
         'aria-label': 'Șterge versiunea',
-        disabled: _versions.length < 2,
+        disabled: !editable || _versions.length < 2,
         html: ROW_ICONS.delete,
         onclick: () => {
-          if (_versions.length < 2) return;
+          if (!editable || _versions.length < 2) return;
           overlay.remove();
           _confirmDeleteVersion(content, v);
         }
-      }));
-    }
-    return el('div', { class: 'version-row' }, row);
+      })
+    ]);
   });
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
