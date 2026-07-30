@@ -337,20 +337,31 @@ function _openRenameVersion(content, version) {
   titleInput.select();
 }
 
+// Editing (rename, original text) or deleting a song is limited to
+// whoever created it, or an admin — enforced for real in firestore.rules;
+// this just drives the UI (disabling the relevant menu items) to match.
+function _canEditSong() {
+  return window.Auth.isAdmin() || _song.createdBy === window.Auth.currentUser().uid;
+}
+
 function _openSongMenu(root) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
-  const items = [
+  const canEdit = _canEditSong();
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
     el('button', {
       class: 'btn btn--wide',
       onclick: () => { overlay.remove(); _refreshSong(root); }
     }, ['Reîmprospătează']),
     el('button', {
       class: 'btn btn--wide',
-      onclick: () => { overlay.remove(); _openRenameSong(root); }
+      disabled: !canEdit,
+      onclick: () => { if (!canEdit) return; overlay.remove(); _openRenameSong(root); }
     }, ['Redenumește melodia']),
     el('button', {
       class: 'btn btn--wide',
-      onclick: () => { overlay.remove(); _openEditOriginal(root); }
+      disabled: !canEdit,
+      onclick: () => { if (!canEdit) return; overlay.remove(); _openEditOriginal(root); }
     }, ['Editează textul original']),
     el('button', {
       class: 'btn btn--wide',
@@ -363,20 +374,13 @@ function _openSongMenu(root) {
         toast('Se generează traducerea…');
         await _generateMotAMot(root);
       }
-    }, ['Generează traducere Mot-a-mot'])
-  ];
-
-  // Deleting a whole song (vs. editing it) is admin-only — enforced for
-  // real in firestore.rules; hiding the button here is just so a
-  // non-admin doesn't see an option that would fail.
-  if (window.Auth.isAdmin()) {
-    items.push(el('button', {
+    }, ['Generează traducere Mot-a-mot']),
+    el('button', {
       class: 'btn btn--wide btn--danger',
-      onclick: () => { overlay.remove(); _confirmDeleteSong(); }
-    }, ['Șterge melodia']));
-  }
-
-  overlay.appendChild(el('div', { class: 'sheet' }, items));
+      disabled: !canEdit,
+      onclick: () => { if (!canEdit) return; overlay.remove(); _confirmDeleteSong(); }
+    }, ['Șterge melodia'])
+  ]));
   document.body.appendChild(overlay);
 }
 

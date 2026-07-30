@@ -14,11 +14,10 @@ rules_version = '2';
 //   /songs/{songId}   { title, originalText, translatedText, groupId, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
 //
-// Songs are a shared, collaborative workspace — any member of the group can
-// create/edit songs (translation is iterative team work, unlike
-// worship-setlist's admin-curated song library), but deleting a whole song
-// is admin-only, since it's a lot more destructive than editing one.
-// Translation versions inherit the parent song's group check via get().
+// Any group member can create a song, but editing (rename, original text)
+// or deleting one is limited to whoever created it, or an admin — same
+// ownership model as translation versions below. Translation versions
+// inherit the parent song's group check via get().
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -87,8 +86,10 @@ service cloud.firestore {
     match /songs/{songId} {
       allow read: if isSignedIn() && resource.data.groupId == myGroup();
       allow create: if isSignedIn() && request.resource.data.groupId == myGroup();
-      allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId');
-      allow delete: if isSignedIn() && resource.data.groupId == myGroup() && isAdmin();
+      allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId')
+        && (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && resource.data.groupId == myGroup()
+        && (resource.data.createdBy == request.auth.uid || isAdmin());
 
       // Everyone in the group can see every version and add new ones, but
       // editing/deleting an existing version is limited to whoever created
