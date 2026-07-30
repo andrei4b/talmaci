@@ -286,7 +286,15 @@ function _refreshTextTab(content) {
   content.innerHTML = '';
   _renderTextTab(content);
   const newOriginal = content.querySelector('.text-tab__original');
-  if (newOriginal) newOriginal.scrollTop = originalScrollTop;
+  if (newOriginal) {
+    // Setting scrollTop right after building fresh DOM can silently no-op
+    // if the browser hasn't computed the box's scrollable height yet —
+    // reading a layout property first forces that computation to happen
+    // before we set it, without waiting an extra frame (which would show
+    // a visible flash back to the top first).
+    void newOriginal.offsetHeight;
+    newOriginal.scrollTop = originalScrollTop;
+  }
 }
 
 async function _saveVersionText(text) {
