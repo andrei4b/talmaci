@@ -55,7 +55,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || _isBypassed(req.url)) return;
 
   event.respondWith(
-    fetch(req).then(res => {
+    // cache: 'no-store' bypasses the browser's own HTTP cache, not just
+    // this service worker's cache — a plain fetch() can still be served
+    // from HTTP cache under the hood depending on GitHub Pages' response
+    // headers, silently defeating "network-first" without this.
+    fetch(req, { cache: 'no-store' }).then(res => {
       if (res.ok && res.type === 'basic') {
         const copy = res.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
