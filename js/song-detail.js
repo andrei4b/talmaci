@@ -42,6 +42,24 @@ let _song = null;
 let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
 let _activeVersionId = null;
 
+// Remembers which version was last viewed, per song, per device — a
+// personal UI preference, not shared team data, so this is localStorage
+// rather than Firestore. Falls back to the most recently created version
+// (Db.listVersions returns them createdAt-ascending) if nothing's
+// remembered, or if the remembered one no longer exists.
+function _rememberedVersionKey(songId) {
+  return `talmaci:lastVersion:${songId}`;
+}
+function _rememberVersion(songId, versionId) {
+  try {
+    if (versionId) localStorage.setItem(_rememberedVersionKey(songId), versionId);
+    else localStorage.removeItem(_rememberedVersionKey(songId));
+  } catch (_) { /* localStorage unavailable (private browsing etc.) — fine, just no memory */ }
+}
+function _recallVersion(songId) {
+  try { return localStorage.getItem(_rememberedVersionKey(songId)); } catch (_) { return null; }
+}
+
 // Undo/redo history for the translation textarea — scoped to whichever
 // version is active, reset when the active version actually changes (see
 // _syncUndoState), but preserved across incidental re-renders of the same
@@ -80,7 +98,10 @@ async function render(root, songId) {
       _versions = [{ id, title: 'Versiunea 1', text: _song.translatedText, createdAt: now, updatedAt: now }];
     }
 
-    _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+    const remembered = _recallVersion(songId);
+    const rememberedStillExists = remembered && _versions.some(v => v.id === remembered);
+    _activeVersionId = rememberedStillExists ? remembered
+      : (_versions.length ? _versions[_versions.length - 1].id : null);
   } catch (err) {
     toast('Nu am putut încărca melodia: ' + err.message, { kind: 'error' });
     _song = null;
@@ -287,7 +308,7 @@ function _openVersionList(content) {
     return el('div', { class: 'version-row' }, [
       el('button', {
         class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
-        onclick: () => { _activeVersionId = v.id; closeSheet(overlay); _refreshTextTab(content); }
+        onclick: () => { _activeVersionId = v.id; _rememberVersion(_song.id, v.id); closeSheet(overlay); _refreshTextTab(content); }
       }, [v.title || 'Fără titlu']),
       el('button', {
         class: 'version-row__icon',
@@ -339,6 +360,7 @@ function _confirmDeleteVersion(content, version) {
             _versions = _versions.filter(v => v.id !== version.id);
             if (_activeVersionId === version.id) {
               _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+              _rememberVersion(_song.id, _activeVersionId);
             }
             closeSheet(overlay);
             _refreshTextTab(content);
@@ -377,6 +399,7 @@ function _openAddVersion(content) {
             const now = Date.now();
             _versions.push({ id, title, text: '', createdAt: now, updatedAt: now });
             _activeVersionId = id;
+            _rememberVersion(_song.id, id);
             closeSheet(overlay);
             _refreshTextTab(content);
           } catch (err) {
@@ -612,6 +635,7 @@ async function _generateMotAMot(root) {
     const idx = _versions.findIndex(x => x.id === v.id);
     if (idx >= 0) _versions[idx] = v; else _versions.push(v);
     _activeVersionId = v.id;
+    _rememberVersion(_song.id, v.id);
     _renderShell(root);
     toast('Traducere Mot-a-mot generată.');
   } catch (err) {
