@@ -11,7 +11,7 @@
  * people can draft in parallel) via the version switcher above the
  * translation box — see db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet } = window.Utils;
 
 const ICONS = {
   text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
@@ -166,17 +166,23 @@ function _renderTextTab(content) {
   const canEdit = _canEditVersion(active);
   _syncUndoState(active);
 
+  // preventDefault on mousedown (fires before the click would shift focus
+  // to the button) keeps the textarea — and so the on-screen keyboard —
+  // focused when tapping undo/redo, instead of dismissing the keyboard.
+  const keepFocus = (e) => e.preventDefault();
   const undoBtn = el('button', {
     class: 'version-switcher__nav',
     'aria-label': 'Anulează',
     html: UNDO_REDO_ICONS.undo,
-    disabled: !canEdit || !_undoStack.length
+    disabled: !canEdit || !_undoStack.length,
+    onmousedown: keepFocus
   });
   const redoBtn = el('button', {
     class: 'version-switcher__nav',
     'aria-label': 'Refă',
     html: UNDO_REDO_ICONS.redo,
-    disabled: !canEdit || !_redoStack.length
+    disabled: !canEdit || !_redoStack.length,
+    onmousedown: keepFocus
   });
 
   const switcher = el('div', { class: 'version-switcher' }, [
@@ -270,7 +276,7 @@ async function _saveVersionText(text) {
 }
 
 function _openVersionList(content) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
 
   const rows = _versions.map(v => {
     // Rename/delete are limited to whoever created the version (or an
@@ -281,14 +287,14 @@ function _openVersionList(content) {
     return el('div', { class: 'version-row' }, [
       el('button', {
         class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
-        onclick: () => { _activeVersionId = v.id; overlay.remove(); _refreshTextTab(content); }
+        onclick: () => { _activeVersionId = v.id; closeSheet(overlay); _refreshTextTab(content); }
       }, [v.title || 'Fără titlu']),
       el('button', {
         class: 'version-row__icon',
         'aria-label': 'Redenumește versiunea',
         disabled: !editable,
         html: ROW_ICONS.edit,
-        onclick: () => { overlay.remove(); _openRenameVersion(content, v); }
+        onclick: () => { closeSheet(overlay); _openRenameVersion(content, v); }
       }),
       el('button', {
         class: 'version-row__icon version-row__icon--danger',
@@ -297,7 +303,7 @@ function _openVersionList(content) {
         html: ROW_ICONS.delete,
         onclick: () => {
           if (!editable || _versions.length < 2) return;
-          overlay.remove();
+          closeSheet(overlay);
           _confirmDeleteVersion(content, v);
         }
       })
@@ -309,14 +315,14 @@ function _openVersionList(content) {
     el('div', { class: 'version-list' }, rows),
     el('button', {
       class: 'btn btn--wide',
-      onclick: () => { overlay.remove(); _openAddVersion(content); }
+      onclick: () => { closeSheet(overlay); _openAddVersion(content); }
     }, ['+ Adaugă versiune'])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 function _confirmDeleteVersion(content, version) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { overlay.remove(); _openVersionList(content); } } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { closeSheet(overlay); _openVersionList(content); } } });
 
   const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Ștergi versiunea?']),
@@ -324,7 +330,7 @@ function _confirmDeleteVersion(content, version) {
       `Sigur vrei să ștergi versiunea „${version.title || 'Fără titlu'}”? Traducerea ei se pierde definitiv.`
     ]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { overlay.remove(); _openVersionList(content); } }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openVersionList(content); } }, ['Anulează']),
       el('button', {
         class: 'btn btn--danger-solid',
         onclick: async () => {
@@ -334,7 +340,7 @@ function _confirmDeleteVersion(content, version) {
             if (_activeVersionId === version.id) {
               _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
             }
-            overlay.remove();
+            closeSheet(overlay);
             _refreshTextTab(content);
             _openVersionList(content);
           } catch (err) {
@@ -345,11 +351,11 @@ function _confirmDeleteVersion(content, version) {
     ])
   ]);
   overlay.appendChild(sheet);
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 function _openAddVersion(content) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const defaultTitle = `Versiunea ${_versions.length + 1}`;
   const titleInput = el('input', { class: 'field__input', type: 'text', value: defaultTitle });
 
@@ -357,7 +363,7 @@ function _openAddVersion(content) {
     el('h2', { class: 'sheet__title' }, ['Versiune nouă']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
@@ -371,7 +377,7 @@ function _openAddVersion(content) {
             const now = Date.now();
             _versions.push({ id, title, text: '', createdAt: now, updatedAt: now });
             _activeVersionId = id;
-            overlay.remove();
+            closeSheet(overlay);
             _refreshTextTab(content);
           } catch (err) {
             toast('Nu am putut crea versiunea: ' + err.message, { kind: 'error' });
@@ -381,20 +387,20 @@ function _openAddVersion(content) {
     ])
   ]);
   overlay.appendChild(sheet);
-  document.body.appendChild(overlay);
+  openSheet(overlay);
   titleInput.focus();
   titleInput.select();
 }
 
 function _openRenameVersion(content, version) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const titleInput = el('input', { class: 'field__input', type: 'text', value: version.title || '' });
 
   const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Redenumește versiunea']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { overlay.remove(); _openVersionList(content); } }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openVersionList(content); } }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
@@ -402,7 +408,7 @@ function _openRenameVersion(content, version) {
           try {
             await window.Db.updateVersion(_song.id, version.id, { title });
             version.title = title;
-            overlay.remove();
+            closeSheet(overlay);
             _refreshTextTab(content);
             _openVersionList(content);
           } catch (err) {
@@ -413,7 +419,7 @@ function _openRenameVersion(content, version) {
     ])
   ]);
   overlay.appendChild(sheet);
-  document.body.appendChild(overlay);
+  openSheet(overlay);
   titleInput.focus();
   titleInput.select();
 }
@@ -426,28 +432,28 @@ function _canEditSong() {
 }
 
 function _openSongMenu(root) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const canEdit = _canEditSong();
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('button', {
       class: 'btn btn--wide',
-      onclick: () => { overlay.remove(); _refreshSong(root); }
+      onclick: () => { closeSheet(overlay); _refreshSong(root); }
     }, ['Reîmprospătează']),
     el('button', {
       class: 'btn btn--wide',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; overlay.remove(); _openRenameSong(root); }
+      onclick: () => { if (!canEdit) return; closeSheet(overlay); _openRenameSong(root); }
     }, ['Redenumește melodia']),
     el('button', {
       class: 'btn btn--wide',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; overlay.remove(); _openEditOriginal(root); }
+      onclick: () => { if (!canEdit) return; closeSheet(overlay); _openEditOriginal(root); }
     }, ['Editează textul original']),
     el('button', {
       class: 'btn btn--wide',
       onclick: async () => {
-        overlay.remove();
+        closeSheet(overlay);
         if (!_song.originalText || !_song.originalText.trim()) {
           toast('Adaugă mai întâi textul original.', { kind: 'error' });
           return;
@@ -459,21 +465,21 @@ function _openSongMenu(root) {
     el('button', {
       class: 'btn btn--wide btn--danger',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; overlay.remove(); _confirmDeleteSong(); }
+      onclick: () => { if (!canEdit) return; closeSheet(overlay); _confirmDeleteSong(); }
     }, ['Șterge melodia'])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 function _openRenameSong(root) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const titleInput = el('input', { class: 'field__input', type: 'text', value: _song.title || '' });
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Redenumește melodia']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
@@ -482,7 +488,7 @@ function _openRenameSong(root) {
           try {
             await window.Db.updateSong(_song.id, { title });
             _song.title = title;
-            overlay.remove();
+            closeSheet(overlay);
             _renderShell(root);
           } catch (err) {
             toast('Nu am putut redenumi melodia: ' + err.message, { kind: 'error' });
@@ -491,26 +497,26 @@ function _openRenameSong(root) {
       }, ['Salvează'])
     ])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
   titleInput.focus();
   titleInput.select();
 }
 
 function _confirmDeleteSong() {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Ștergi melodia?']),
     el('p', { class: 'sheet__text' }, [
       `Sigur vrei să ștergi „${_song.title || 'Fără titlu'}”? Textul original și toate versiunile de traducere se pierd definitiv.`
     ]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
         class: 'btn btn--danger-solid',
         onclick: async () => {
           try {
             await window.Db.deleteSong(_song.id);
-            overlay.remove();
+            closeSheet(overlay);
             location.hash = '#/';
           } catch (err) {
             toast('Nu am putut șterge melodia: ' + err.message, { kind: 'error' });
@@ -519,7 +525,7 @@ function _confirmDeleteSong() {
       }, ['Șterge'])
     ])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 // Re-fetches the song + its versions from Firestore — there are no live
@@ -547,7 +553,7 @@ async function _refreshSong(root) {
 }
 
 function _openEditOriginal(root) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const textInput = el('textarea', { class: 'field__input field__input--textarea', rows: 10 });
   textInput.value = _song.originalText || '';
 
@@ -555,14 +561,14 @@ function _openEditOriginal(root) {
     el('h2', { class: 'sheet__title' }, ['Editează textul original']),
     el('label', { class: 'field' }, [textInput]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
           try {
             await window.Db.updateSong(_song.id, { originalText: textInput.value });
             _song.originalText = textInput.value;
-            overlay.remove();
+            closeSheet(overlay);
             _renderShell(root);
             if (_song.originalText.trim()) _offerMotAMot(root);
           } catch (err) {
@@ -573,29 +579,29 @@ function _openEditOriginal(root) {
     ])
   ]);
   overlay.appendChild(sheet);
-  document.body.appendChild(overlay);
+  openSheet(overlay);
   textInput.focus();
 }
 
 function _offerMotAMot(root) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const generateBtn = el('button', { class: 'btn btn--primary' }, ['Da, generează']);
   generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
     generateBtn.textContent = 'Se generează…';
     await _generateMotAMot(root);
-    overlay.remove();
+    closeSheet(overlay);
   });
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
     el('p', { class: 'sheet__text' }, ['Textul original s-a schimbat. Vrei să (re)generezi versiunea „Mot-a-mot” cu Google Translate?']),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Nu, mulțumesc']),
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Nu, mulțumesc']),
       generateBtn
     ])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 // Calls Google Translate and creates/updates the "Mot-a-mot" version, from

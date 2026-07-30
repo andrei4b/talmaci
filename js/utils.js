@@ -69,6 +69,40 @@ async function copyToClipboard(text) {
   }
 }
 
-window.Utils = { $, $all, el, escapeHtml, toast, debounce, copyToClipboard };
+// ---- Sheet/modal stack + hardware back button support (same pattern as
+// worship-setlist) ----
+// Opening a sheet pushes a history entry, so the phone's back button or
+// swipe-back gesture closes it instead of leaving the page/app. Closing it
+// ourselves (Anulează, tapping the backdrop, a completed action) consumes
+// that entry with history.back() — _skipNextPopstates tells the popstate
+// listener the resulting event is our own doing, not a real back press, so
+// it doesn't try to close the sheet a second time.
+const _sheetStack = [];
+let _skipNextPopstates = 0;
+
+function openSheet(sheetEl) {
+  document.body.appendChild(sheetEl);
+  _sheetStack.push(sheetEl);
+  history.pushState({ sheet: true }, '');
+}
+
+function closeSheet(sheetEl, _fromPopstate) {
+  const idx = _sheetStack.lastIndexOf(sheetEl);
+  if (idx !== -1) _sheetStack.splice(idx, 1);
+  sheetEl.remove();
+  if (!_fromPopstate) {
+    _skipNextPopstates++;
+    history.back();
+  }
+}
+
+window.addEventListener('popstate', () => {
+  if (_skipNextPopstates > 0) { _skipNextPopstates--; return; }
+  if (_sheetStack.length) {
+    closeSheet(_sheetStack[_sheetStack.length - 1], true);
+  }
+});
+
+window.Utils = { $, $all, el, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet };
 
 })();

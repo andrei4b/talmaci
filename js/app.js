@@ -1,6 +1,6 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
-const { $, el, toast, copyToClipboard } = window.Utils;
+const { $, el, toast, copyToClipboard, openSheet, closeSheet } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
 // accessory bar (the key/card/location icon row) ----
@@ -128,12 +128,12 @@ function _renderJoinGroup(root) {
 
 function openAccountMenu() {
   const user = window.Auth.currentUser();
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const items = [
     el('div', { class: 'sheet__user' }, [user.displayName || user.email]),
     el('button', {
       class: 'btn btn--wide',
-      onclick: () => { overlay.remove(); window.Songs.refresh(); }
+      onclick: () => { closeSheet(overlay); window.Songs.refresh(); }
     }, ['Reîmprospătează'])
   ];
 
@@ -143,7 +143,7 @@ function openAccountMenu() {
       onclick: async () => {
         try {
           const code = await window.Auth.createInvite();
-          overlay.remove();
+          closeSheet(overlay);
           _openInviteCode(code);
         } catch (err) {
           toast(err.message, { kind: 'error' });
@@ -153,21 +153,21 @@ function openAccountMenu() {
 
     items.push(el('button', {
       class: 'btn btn--wide',
-      onclick: () => { overlay.remove(); _openManageMembers(); }
+      onclick: () => { closeSheet(overlay); _openManageMembers(); }
     }, ['Gestionează membrii']));
   }
 
   items.push(el('button', {
     class: 'btn btn--wide',
-    onclick: async () => { await window.Auth.signOut(); overlay.remove(); }
+    onclick: async () => { await window.Auth.signOut(); closeSheet(overlay); }
   }, ['Deconectează-te']));
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 function _openInviteCode(code) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const copyBtn = el('button', { class: 'btn btn--wide' }, ['Copiază codul']);
   copyBtn.addEventListener('click', async () => {
     const ok = await copyToClipboard(code);
@@ -179,11 +179,11 @@ function _openInviteCode(code) {
     el('div', { class: 'invite-code' }, [code]),
     copyBtn
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 async function _openManageMembers() {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const listEl = el('div', { class: 'member-list' }, [
     el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' })])
   ]);
@@ -191,7 +191,7 @@ async function _openManageMembers() {
     el('h2', { class: 'sheet__title' }, ['Membri']),
     listEl
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 
   let members;
   try {
@@ -233,7 +233,7 @@ async function _toggleMemberRole(btn, member, members, me, overlay) {
       toast('Ești singurul admin — fă pe altcineva admin mai întâi.', { kind: 'error' });
       return;
     }
-    overlay.remove();
+    closeSheet(overlay);
     _confirmSelfDemote(member);
     return;
   }
@@ -242,18 +242,18 @@ async function _toggleMemberRole(btn, member, members, me, overlay) {
 }
 
 function _confirmSelfDemote(member) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Renunți la rolul de admin?']),
     el('p', { class: 'sheet__text' }, ['Nu vei mai putea genera coduri de invitație sau gestiona membrii, până când altcineva te face din nou admin.']),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { overlay.remove(); _openManageMembers(); } }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openManageMembers(); } }, ['Anulează']),
       el('button', {
         class: 'btn btn--danger-solid',
         onclick: async () => {
           try {
             await window.Auth.setMemberRole(member.uid, 'user');
-            overlay.remove();
+            closeSheet(overlay);
             _openManageMembers();
           } catch (err) {
             toast(err.message, { kind: 'error' });
@@ -262,14 +262,14 @@ function _confirmSelfDemote(member) {
       }, ['Renunță'])
     ])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 async function _setMemberRole(btn, member, nextRole, overlay) {
   btn.disabled = true;
   try {
     await window.Auth.setMemberRole(member.uid, nextRole);
-    overlay.remove();
+    closeSheet(overlay);
     _openManageMembers();
   } catch (err) {
     toast(err.message, { kind: 'error' });

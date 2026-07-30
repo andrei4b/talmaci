@@ -1,6 +1,6 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, toast, debounce } = window.Utils;
+const { $, el, toast, debounce, openSheet, closeSheet } = window.Utils;
 
 let _songs = [];
 let _query = '';
@@ -87,7 +87,7 @@ function _renderList(listWrap) {
 }
 
 function _openAddSong() {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const titleInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Titlul melodiei', autofocus: true });
   const textInput = el('textarea', { class: 'field__input field__input--textarea', placeholder: 'Textul original (engleză)', rows: 6 });
 
@@ -96,7 +96,7 @@ function _openAddSong() {
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Text original']), textInput]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => overlay.remove() }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
@@ -110,7 +110,7 @@ function _openAddSong() {
               groupId: window.Auth.currentGroupId(),
               createdBy: window.Auth.currentUser().uid
             });
-            overlay.remove();
+            closeSheet(overlay);
             if (originalText.trim()) {
               _offerMotAMot(id, originalText);
             } else {
@@ -124,13 +124,13 @@ function _openAddSong() {
     ])
   ]);
   overlay.appendChild(sheet);
-  document.body.appendChild(overlay);
+  openSheet(overlay);
   titleInput.focus();
 }
 
 function _offerMotAMot(songId, originalText) {
   const goToSong = () => { location.hash = `#/song/${songId}`; };
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { overlay.remove(); goToSong(); } } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { closeSheet(overlay); goToSong(); } } });
   const generateBtn = el('button', { class: 'btn btn--primary' }, ['Da, generează']);
   generateBtn.addEventListener('click', async () => {
     generateBtn.disabled = true;
@@ -140,7 +140,7 @@ function _offerMotAMot(songId, originalText) {
     } catch (err) {
       toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
     }
-    overlay.remove();
+    closeSheet(overlay);
     goToSong();
   });
 
@@ -148,11 +148,11 @@ function _offerMotAMot(songId, originalText) {
     el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
     el('p', { class: 'sheet__text' }, ['Vrei o traducere generată automat cu Google Translate, ca punct de plecare?']),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { overlay.remove(); goToSong(); } }, ['Nu, mulțumesc']),
+      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); goToSong(); } }, ['Nu, mulțumesc']),
       generateBtn
     ])
   ]));
-  document.body.appendChild(overlay);
+  openSheet(overlay);
 }
 
 window.Songs = { render, refresh };
