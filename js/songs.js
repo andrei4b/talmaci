@@ -1,6 +1,6 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, toast, debounce, openSheet, closeSheet } = window.Utils;
+const { $, el, toast, debounce, openSheet, closeSheet, icons } = window.Utils;
 
 let _songs = [];
 let _query = '';
@@ -10,7 +10,7 @@ async function render(root) {
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('h1', { class: 'topbar__title' }, ['Tălmaci']),
-    el('button', { class: 'btn btn--icon', 'aria-label': 'Cont', onclick: () => window.App.openAccountMenu() }, ['⋮'])
+    el('button', { class: 'btn btn--icon', 'aria-label': 'Cont', html: icons.kebab, onclick: () => window.App.openAccountMenu() })
   ]));
 
   _listWrap = el('div', { class: 'song-list-wrap' });

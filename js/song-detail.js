@@ -11,7 +11,7 @@
  * people can draft in parallel) via the version switcher above the
  * translation box — see db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet, icons } = window.Utils;
 
 const ICONS = {
   text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
@@ -74,7 +74,7 @@ async function render(root, songId) {
   _activeTab = 'text';
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
-    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
+    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi', html: icons.back }),
     el('h1', { class: 'topbar__title' }, ['Se încarcă…'])
   ]));
   root.appendChild(el('div', { class: 'loading-state' }, [
@@ -118,13 +118,14 @@ async function render(root, songId) {
 function _renderShell(root) {
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
-    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi' }, ['←']),
+    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi', html: icons.back }),
     el('h1', { class: 'topbar__title' }, [_song.title || 'Fără titlu']),
     el('button', {
       class: 'btn btn--icon',
       'aria-label': 'Meniu melodie',
+      html: icons.kebab,
       onclick: () => _openSongMenu(root)
-    }, ['⋮'])
+    })
   ]));
 
   const tabBar = el('div', { class: 'tab-bar', role: 'tablist' });
