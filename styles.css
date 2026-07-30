@@ -335,11 +335,13 @@ a { color: inherit; text-decoration: none; }
   .text-tab { flex-direction: row; gap: 20px; }
 }
 
-/* Version switcher — a single button under the translation box, opening
-   the version list sheet (rename/delete/switch live there instead). */
-.version-switcher { flex-shrink: 0; margin-top: 8px; }
+/* Version switcher — a row under the translation box: the version button
+   (opens the version list sheet — rename/delete/switch live there),
+   shrunk to make room for undo/redo on the right. */
+.version-switcher { flex-shrink: 0; margin-top: 8px; display: flex; gap: 6px; }
 .version-switcher__current {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 36px;
   padding: 0 12px;
   border: 1px solid var(--color-border);
@@ -355,6 +357,21 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 .version-switcher__current:disabled { opacity: 0.5; cursor: default; }
+.version-switcher__nav {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.version-switcher__nav svg { width: 18px; height: 18px; }
+.version-switcher__nav:disabled { opacity: 0.35; cursor: default; }
 
 /* Version list sheet rows */
 .version-list { display: flex; flex-direction: column; gap: 8px; }

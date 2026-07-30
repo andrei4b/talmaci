@@ -25,6 +25,11 @@ const ROW_ICONS = {
   delete: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`
 };
 
+const UNDO_REDO_ICONS = {
+  undo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>`,
+  redo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>`
+};
+
 const TABS = [
   { id: 'text', label: 'Text' },
   { id: 'rime', label: 'Rime' },
@@ -36,6 +41,16 @@ let _activeTab = 'text';
 let _song = null;
 let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
 let _activeVersionId = null;
+
+// Undo/redo history for the translation textarea — scoped to whichever
+// version is active, reset when the active version actually changes (see
+// _syncUndoState), but preserved across incidental re-renders of the same
+// version (e.g. after renaming it).
+let _undoStateVersionId;
+let _undoStack = [];
+let _redoStack = [];
+let _lastText = '';
+let _checkpointPending = false;
 
 async function render(root, songId) {
   _activeTab = 'text';
@@ -134,9 +149,35 @@ function _canEditVersion(version) {
   return version.createdBy === window.Auth.currentUser().uid;
 }
 
+// Resets the undo/redo history whenever the active version actually
+// changes, but leaves it alone on incidental re-renders of the same
+// version (e.g. after renaming it), so in-progress undo history survives.
+function _syncUndoState(active) {
+  if (_undoStateVersionId === _activeVersionId) return;
+  _undoStateVersionId = _activeVersionId;
+  _undoStack = [];
+  _redoStack = [];
+  _lastText = active ? (active.text || '') : '';
+  _checkpointPending = false;
+}
+
 function _renderTextTab(content) {
   const active = _activeVersion();
   const canEdit = _canEditVersion(active);
+  _syncUndoState(active);
+
+  const undoBtn = el('button', {
+    class: 'version-switcher__nav',
+    'aria-label': 'Anulează',
+    html: UNDO_REDO_ICONS.undo,
+    disabled: !canEdit || !_undoStack.length
+  });
+  const redoBtn = el('button', {
+    class: 'version-switcher__nav',
+    'aria-label': 'Refă',
+    html: UNDO_REDO_ICONS.redo,
+    disabled: !canEdit || !_redoStack.length
+  });
 
   const switcher = el('div', { class: 'version-switcher' }, [
     el('button', {
@@ -144,18 +185,56 @@ function _renderTextTab(content) {
       disabled: !_versions.length,
       onclick: () => _openVersionList(content)
     }, [active ? (active.title || 'Fără titlu') : 'Nicio versiune']),
+    undoBtn,
+    redoBtn
   ]);
 
   let placeholder = 'Creează o versiune pentru a începe traducerea.';
   if (active) placeholder = canEdit ? 'Traducerea în română…' : 'Doar creatorul sau un admin poate edita această versiune.';
 
+  const debouncedSave = debounce((text) => _saveVersionText(text), 600);
   const translation = el('textarea', {
     class: 'field__input text-tab__translation',
     placeholder,
     disabled: !active || !canEdit,
-    oninput: debounce((e) => _saveVersionText(e.target.value), 600)
+    oninput: (e) => {
+      // One undo checkpoint per pause in typing (matches the save debounce
+      // below), not one per keystroke — otherwise undo would only ever
+      // step back a single character at a time.
+      if (!_checkpointPending) {
+        _undoStack.push(_lastText);
+        _redoStack = [];
+        _checkpointPending = true;
+        undoBtn.disabled = !canEdit || !_undoStack.length;
+        redoBtn.disabled = true;
+      }
+      debouncedSave(e.target.value);
+    }
   });
   translation.value = active ? (active.text || '') : '';
+
+  undoBtn.onclick = () => {
+    if (!_undoStack.length) return;
+    _redoStack.push(translation.value);
+    const prev = _undoStack.pop();
+    translation.value = prev;
+    _lastText = prev;
+    _checkpointPending = false;
+    _saveVersionText(prev);
+    undoBtn.disabled = !_undoStack.length;
+    redoBtn.disabled = !_redoStack.length;
+  };
+  redoBtn.onclick = () => {
+    if (!_redoStack.length) return;
+    _undoStack.push(translation.value);
+    const next = _redoStack.pop();
+    translation.value = next;
+    _lastText = next;
+    _checkpointPending = false;
+    _saveVersionText(next);
+    undoBtn.disabled = !_undoStack.length;
+    redoBtn.disabled = !_redoStack.length;
+  };
 
   const textTab = el('div', { class: 'text-tab' }, [
     el('div', { class: 'text-tab__col' }, [
@@ -183,6 +262,8 @@ async function _saveVersionText(text) {
     await window.Db.updateVersion(_song.id, _activeVersionId, { text });
     const v = _activeVersion();
     if (v) v.text = text;
+    _lastText = text;
+    _checkpointPending = false;
   } catch (err) {
     toast('Nu am putut salva traducerea: ' + err.message, { kind: 'error' });
   }
