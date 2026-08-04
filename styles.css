@@ -213,7 +213,23 @@ a { color: inherit; text-decoration: none; }
 }
 .sheet__title { font-family: var(--font-heading); margin: 0 0 4px; }
 .sheet__text { margin: 0; color: var(--color-text-muted); line-height: 1.5; }
-.sheet__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+.sheet__actions {
+  /* Sticky, not just at the end of the flow — otherwise a tall field (a
+     multi-line textarea) plus the keyboard can push these below the
+     visible/scrolled area, effectively hiding them until you notice you
+     need to scroll further. Negative margin cancels .sheet's own padding
+     so this sits flush at the true bottom edge; its own padding restores
+     the spacing (and respects the safe area) on top of that. */
+  position: sticky;
+  bottom: calc(-24px - env(safe-area-inset-bottom));
+  margin: 8px -20px calc(-24px - env(safe-area-inset-bottom));
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
 .sheet__user { font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); }
 .invite-code {
   font-family: var(--font-heading);
