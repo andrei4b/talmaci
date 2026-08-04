@@ -74,7 +74,18 @@ async function render(root, songId) {
   _activeTab = 'text';
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
-    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi', html: icons.back }),
+    el('button', {
+      class: 'btn btn--icon',
+      'aria-label': 'Înapoi',
+      html: icons.back,
+      // Real history.back() instead of location.hash = '#/': every song
+      // page is reached by navigating from the list, which already pushed
+      // a history entry for it — going back to a *new* '#/' entry instead
+      // of reusing that one is what let the stack grow unbounded (list,
+      // song A, list, song B, list, ...), so the hardware back button from
+      // the list kept resurfacing old songs instead of closing the app.
+      onclick: () => history.back()
+    }),
     el('h1', { class: 'topbar__title' }, ['Se încarcă…'])
   ]));
   root.appendChild(el('div', { class: 'loading-state' }, [
@@ -118,7 +129,18 @@ async function render(root, songId) {
 function _renderShell(root) {
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
-    el('a', { href: '#/', class: 'btn btn--icon', 'aria-label': 'Înapoi', html: icons.back }),
+    el('button', {
+      class: 'btn btn--icon',
+      'aria-label': 'Înapoi',
+      html: icons.back,
+      // Real history.back() instead of location.hash = '#/': every song
+      // page is reached by navigating from the list, which already pushed
+      // a history entry for it — going back to a *new* '#/' entry instead
+      // of reusing that one is what let the stack grow unbounded (list,
+      // song A, list, song B, list, ...), so the hardware back button from
+      // the list kept resurfacing old songs instead of closing the app.
+      onclick: () => history.back()
+    }),
     el('h1', { class: 'topbar__title' }, [_song.title || 'Fără titlu']),
     el('button', {
       class: 'btn btn--icon',
