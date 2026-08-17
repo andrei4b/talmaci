@@ -68,14 +68,9 @@ const LIQUIDS = new Set(['l', 'r']);
 // open vowels comes next. Before "e" it stays syllabic (see toPhonemes).
 const SOFTENER_FOLLOWERS = new Set(['a', 'ă', 'â', 'o', 'u']);
 
-// Vowel-letter groups that stay inside ONE syllable. Anything not listed
-// here is hiatus and splits ("aer" -> a-er, "poet" -> po-et), which is what
-// keeps syllable counts honest.
-const TRIPHTHONGS = new Set(['eai','eau','iai','iau','iei','ieu','ioa','iou','oai','eoa','uai','uau']);
-const DIPHTHONGS = new Set([
-  'ai','au','ăi','ău','âi','âu','ei','eu','ii','oi','ou','ui','iu',
-  'ea','eo','ia','ie','io','oa','ua','uă','ue','îi','îu'
-]);
+// Vowels that can act as a glide BEFORE the nucleus (rising diphthongs
+// like ea/oa/ia/ua). After the nucleus only i/u qualify — see markNuclei.
+const GLIDE_ONSETS = new Set(['i', 'u', 'o', 'e']);
 
 function isVowelLetter(ch) { return 'aăâeiîou'.indexOf(ch) >= 0; }
 
@@ -157,8 +152,11 @@ function markNuclei(tokens, wordLettersNorm, stressTokenIdx) {
   const t = tokens.slice();
   const isNucleus = new Array(t.length).fill(false);
 
+  // A stressed final i is a real syllable, never a glide or a whisper:
+  // "su'i" is su-i, not /suj/. Without this guard the rule below would
+  // demote it before segmentation ever sees the stress mark.
   const last = t.length - 1;
-  if (last >= 1 && t[last] === 'i') {
+  if (last >= 1 && t[last] === 'i' && last !== stressTokenIdx) {
     const prev = t[last - 1];
     const prev2 = last >= 2 ? t[last - 2] : null;
     if (VOWELS.has(prev)) {
@@ -170,64 +168,57 @@ function markNuclei(tokens, wordLettersNorm, stressTokenIdx) {
     }
   }
 
-  // Letter-level vowel runs drive the diphthong segmentation, so walk the
-  // normalized letters in parallel with the token array.
-  const letters = wordLettersNorm.replace(/'/g, '');
-  let li = 0;
+  // Segment each vowel run around its nucleus. Glide eligibility is
+  // DIRECTIONAL, which is the part a symmetric diphthong table cannot
+  // express and what made "mântu'ire" come out as 3 syllables:
+  //
+  //   before the nucleus  glide only if strictly less sonorous, so "plo'aie"
+  //                       gives o<a -> glide (ploa-ie) while "mântu'ire"
+  //                       gives u=i -> no glide, i.e. hiatus (mân-tu-i-re)
+  //   after the nucleus   glide only for i/u, the true semivowels, so
+  //                       "v'iu" -> /viw/ but "bucur'ie" keeps e syllabic
+  //                       (bu-cu-ri-e) and "d'ouă" keeps ă syllabic (do-uă)
+  //
+  // An attested stress mark simply picks the nucleus; everything else falls
+  // out of the two rules above.
+  function glideFor(v) { return (v === 'u' || v === 'o') ? 'w' : 'j'; }
+
+  function segment(from, to, stressIdx) {
+    if (from > to) return;
+
+    let nuc;
+    if (stressIdx >= from && stressIdx <= to) {
+      nuc = stressIdx;
+    } else {
+      nuc = from;
+      let bs = SONORITY[t[from]] || 0;
+      for (let x = from + 1; x <= to; x++) {
+        const s = SONORITY[t[x]] || 0;
+        if (s > bs) { nuc = x; bs = s; }
+      }
+    }
+    isNucleus[nuc] = true;
+    const nucSon = SONORITY[t[nuc]] || 0;
+
+    let L = nuc - 1;
+    while (L >= from && GLIDE_ONSETS.has(t[L]) && (SONORITY[t[L]] || 0) < nucSon) {
+      t[L] = glideFor(t[L]); L--;
+    }
+    if (L >= from) segment(from, L, -1);
+
+    let R = nuc + 1;
+    while (R <= to && (t[R] === 'i' || t[R] === 'u')) {
+      t[R] = glideFor(t[R]); R++;
+    }
+    if (R <= to) segment(R, to, -1);
+  }
+
   let k = 0;
   while (k < t.length) {
     if (!VOWELS.has(t[k])) { k++; continue; }
-
     let end = k;
     while (end + 1 < t.length && VOWELS.has(t[end + 1])) end++;
-
-    // Collect the corresponding vowel letters for this token run.
-    const runLen = end - k + 1;
-    let vletters = '';
-    let scanned = 0;
-    for (let x = li; x < letters.length && scanned < runLen; x++) {
-      if (isVowelLetter(letters[x])) { vletters += letters[x]; scanned++; }
-    }
-    li += vletters.length;
-
-    // Greedy longest match: triphthong, then diphthong, then single vowel.
-    let pos = 0, tokPos = k;
-    while (pos < runLen) {
-      let take = 1;
-      const three = vletters.substr(pos, 3);
-      const two = vletters.substr(pos, 2);
-      if (three.length === 3 && TRIPHTHONGS.has(three)) take = 3;
-      else if (two.length === 2 && DIPHTHONGS.has(two)) take = 2;
-
-      function nucleusOf(from, len) {
-        let b = from, bs = SONORITY[t[from]] || 0;
-        for (let x = from + 1; x < from + len && x < t.length; x++) {
-          const s = SONORITY[t[x]] || 0;
-          if (s > bs) { b = x; bs = s; }
-        }
-        return b;
-      }
-
-      // An attested stress mark outranks the sonority heuristic. If the
-      // marked vowel would otherwise be demoted to a glide, the group is
-      // really hiatus, so cut the segment short and let the marked vowel
-      // stand as its own syllable. This is exactly what separates
-      // "bucur'ie" (bu-cu-ri-e) from "p'iele" (pie-le) — same letters,
-      // different syllable counts, told apart only by where the stress sits.
-      if (stressTokenIdx >= tokPos && stressTokenIdx < tokPos + take &&
-          nucleusOf(tokPos, take) !== stressTokenIdx) {
-        take = stressTokenIdx - tokPos + 1;
-      }
-
-      let best = nucleusOf(tokPos, take);
-      if (stressTokenIdx >= tokPos && stressTokenIdx < tokPos + take) best = stressTokenIdx;
-      isNucleus[best] = true;
-      for (let x = tokPos; x < tokPos + take && x < t.length; x++) {
-        if (x === best) continue;
-        t[x] = (t[x] === 'u' || t[x] === 'o') ? 'w' : 'j';
-      }
-      pos += take; tokPos += take;
-    }
+    segment(k, end, stressTokenIdx);
     k = end + 1;
   }
 
@@ -276,14 +267,27 @@ function analyze(word, opts) {
   const g2p = toPhonemes(raw);
   if (!g2p.tokens.length) return null;
 
-  const marked = markNuclei(g2p.tokens, raw, g2p.stressTokenIdx);
+  // dexonline also writes an apostrophe before a word-final "-i" that
+  // follows a consonant, even when that i is NOT the stressed nucleus —
+  // "lup'i" is /lupʲ/ and "codr'i" is CO-dri. It does so inconsistently
+  // ("pomi" carries no marker at all), so the mark is only trustworthy
+  // after a vowel, where it genuinely distinguishes "su'i" (su-i) from
+  // "c'ui" (/kuj/). Elsewhere drop it and let the rules decide.
+  let stressTok = g2p.stressTokenIdx;
+  const tk = g2p.tokens;
+  if (stressTok >= 1 && stressTok === tk.length - 1 &&
+      tk[stressTok] === 'i' && !VOWELS.has(tk[stressTok - 1])) {
+    stressTok = -1;
+  }
+
+  const marked = markNuclei(g2p.tokens, raw, stressTok);
   const nuclei = nucleusIndices(marked.isNucleus);
   if (!nuclei.length) return null;
 
   let stressIdx;
   if (opts && typeof opts.stressIndex === 'number') {
     stressIdx = Math.max(0, Math.min(nuclei.length - 1, opts.stressIndex));
-  } else if (g2p.stressTokenIdx >= 0) {
+  } else if (stressTok >= 0) {
     // Map the marked token to its nucleus. If the marked vowel became a
     // glide (it sat inside a diphthong), fall back to that segment's actual
     // nucleus — the nearest one at or after the marker.
