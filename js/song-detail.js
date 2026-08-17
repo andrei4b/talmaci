@@ -42,6 +42,12 @@ let _song = null;
 let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
 let _activeVersionId = null;
 
+// Rime tab state, kept across tab switches so you don't lose a search by
+// glancing at the Text tab.
+let _rimeQuery = '';
+let _rimeMode = 'exact';  // 'exact' | 'asson'
+let _rimeSyll = 0;        // 0 = any
+
 // Remembers which version was last viewed, per song, per device — a
 // personal UI preference, not shared team data, so this is localStorage
 // rather than Firestore. Falls back to the most recently created version
@@ -177,7 +183,138 @@ function _renderShell(root) {
 function _renderTab(content) {
   content.innerHTML = '';
   if (_activeTab === 'text') return _renderTextTab(content);
+  if (_activeTab === 'rime') return _renderRimeTab(content);
   return content.appendChild(_placeholderPanel(_activeTab));
+}
+
+/* ---------- Rime tab ---------- */
+function _renderRimeTab(content) {
+  const wrap = el('div', { class: 'rime' });
+  content.appendChild(wrap);
+
+  const input = el('input', {
+    class: 'field__input rime__input',
+    type: 'text',
+    placeholder: 'Scrie un cuvânt…',
+    value: _rimeQuery,
+    oninput: debounce((e) => { _rimeQuery = e.target.value; _runRimeSearch(wrap); }, 250)
+  });
+  wrap.appendChild(el('div', { class: 'rime__search' }, [input]));
+
+  // Mode + syllable filters
+  const modeRow = el('div', { class: 'rime__filters' }, [
+    _segButton('Rime perfecte', _rimeMode === 'exact', () => { _rimeMode = 'exact'; _renderRimeTabKeepFocus(content); }),
+    _segButton('Asonanțe', _rimeMode === 'asson', () => { _rimeMode = 'asson'; _renderRimeTabKeepFocus(content); })
+  ]);
+  wrap.appendChild(modeRow);
+
+  const sylRow = el('div', { class: 'rime__filters rime__filters--syll' }, [
+    el('span', { class: 'rime__filters-label' }, ['Silabe']),
+    _segButton('Orice', _rimeSyll === 0, () => { _rimeSyll = 0; _renderRimeTabKeepFocus(content); })
+  ]);
+  [1, 2, 3, 4, 5].forEach(n => {
+    sylRow.appendChild(_segButton(String(n), _rimeSyll === n, () => { _rimeSyll = n; _renderRimeTabKeepFocus(content); }));
+  });
+  wrap.appendChild(sylRow);
+
+  wrap.appendChild(el('div', { class: 'rime__body' }));
+  _runRimeSearch(wrap);
+  return wrap;
+}
+
+function _renderRimeTabKeepFocus(content) {
+  content.innerHTML = '';
+  _renderRimeTab(content);
+}
+
+function _segButton(label, active, onclick) {
+  return el('button', {
+    class: 'rime__seg' + (active ? ' rime__seg--active' : ''),
+    onclick: onclick
+  }, [label]);
+}
+
+async function _runRimeSearch(wrap) {
+  const body = wrap.querySelector('.rime__body');
+  if (!body) return;
+  const q = (_rimeQuery || '').trim();
+
+  if (!q) {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'empty-state' }, [
+      el('p', {}, ['Scrie un cuvânt ca să vezi cu ce rimează.'])
+    ]));
+    return;
+  }
+
+  // The index is several megabytes, so it loads on demand the first time
+  // you actually search — never at app boot.
+  if (window.Rhyme.state() !== 'ready') {
+    body.innerHTML = '';
+    const pct = el('div', { class: 'empty-state__hint' }, ['0%']);
+    body.appendChild(el('div', { class: 'loading-state' }, [
+      el('div', { class: 'spinner' }),
+      'Se încarcă dicționarul de rime…',
+      pct
+    ]));
+    try {
+      await window.Rhyme.load((p) => { pct.textContent = Math.round(p * 100) + '%'; });
+    } catch (err) {
+      body.innerHTML = '';
+      body.appendChild(el('div', { class: 'empty-state' }, [
+        'Nu am putut încărca dicționarul: ' + window.Rhyme.errorMessage()
+      ]));
+      return;
+    }
+    if ((_rimeQuery || '').trim() !== q) return;   // query changed while loading
+  }
+
+  const res = window.Rhyme.lookup(q, { mode: _rimeMode, syllables: _rimeSyll });
+  body.innerHTML = '';
+
+  if (!res.ok || !res.analysis) {
+    body.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut analiza cuvântul.']));
+    return;
+  }
+
+  const a = res.analysis;
+  body.appendChild(el('div', { class: 'rime__analysis' }, [
+    el('strong', {}, [a.word]),
+    ' · ' + a.syllables + (a.syllables === 1 ? ' silabă' : ' silabe') +
+    ' · accent pe silaba ' + (a.stressIndex + 1) +
+    (a.attested ? '' : ' (estimat)')
+  ]));
+
+  if (res.tooBroad) {
+    body.appendChild(el('div', { class: 'empty-state' }, [
+      el('p', {}, ['Asonanțele au sens doar pentru cuvinte cu mai multe silabe.']),
+      el('p', { class: 'empty-state__hint' }, ['Încearcă „Rime perfecte" pentru acest cuvânt.'])
+    ]));
+    return;
+  }
+
+  if (!res.results.length) {
+    body.appendChild(el('div', { class: 'empty-state' }, [
+      el('p', {}, ['Niciun rezultat.']),
+      el('p', { class: 'empty-state__hint' }, [
+        _rimeSyll ? 'Încearcă fără filtrul de silabe.' : 'Încearcă „Asonanțe".'
+      ])
+    ]));
+    return;
+  }
+
+  const list = el('div', { class: 'rime__results' });
+  res.results.forEach(r => {
+    list.appendChild(el('button', {
+      class: 'rime__word' + (r.common ? '' : ' rime__word--rare'),
+      title: r.syllables + ' silabe',
+      onclick: async () => {
+        const ok = await window.Utils.copyToClipboard(r.word);
+        toast(ok ? '„' + r.word + '” copiat.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
+      }
+    }, [r.word]));
+  });
+  body.appendChild(list);
 }
 
 function _activeVersion() {

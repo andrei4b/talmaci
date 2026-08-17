@@ -22,6 +22,8 @@ const SHELL_FILES = [
   './js/auth.js',
   './js/db.js',
   './js/translate.js',
+  './js/ro-phonetics.js',
+  './js/rhyme.js',
   './js/songs.js',
   './js/song-detail.js',
   './js/app.js',

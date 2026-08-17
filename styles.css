@@ -449,6 +449,59 @@ a { color: inherit; text-decoration: none; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 
+/* Rime tab */
+.rime { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.rime__search { flex-shrink: 0; }
+.rime__input { width: 100%; }
+.rime__filters {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rime__filters-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-right: 2px;
+}
+.rime__seg {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rime__seg--active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-bg);
+}
+/* Own scroll container so the search field and filters stay put while
+   results scroll under them. */
+.rime__body { flex: 1; min-height: 0; overflow-y: auto; }
+.rime__analysis {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  padding: 2px 0 10px;
+}
+.rime__results { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; }
+.rime__word {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 7px 11px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+/* Words absent from the frequency corpus — real words, but rare enough
+   that they're worth visually de-emphasizing rather than hiding. */
+.rime__word--rare { color: var(--color-text-muted); border-style: dashed; }
+
 /* Toast */
 .toast-root {
   position: fixed;

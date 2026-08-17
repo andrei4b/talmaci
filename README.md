@@ -136,25 +136,51 @@ js/firebase-config.js        Your Firebase project's public web config
 js/auth.js                    Firebase Auth + user profile (role, group)
 js/db.js                       Firestore data layer (songs, versions)
 js/translate.js                 Client for the translateText function
-js/utils.js                      DOM helpers, toast
-js/songs.js                       Main page: song list, search, add song
-js/song-detail.js                  Song page: Text/Rime/Sinonime/Biblie tabs
-js/app.js                           Sign-in/join gating, routing, account menu
-functions/index.js                   Cloud Function: Google Translate proxy
-                                       (optional, see "Google Translate
-                                       Mot-a-mot" above)
-icons/                                 App icons (192, 512, maskable 512 —
-                                        placeholder "T" mark, swap for real
-                                        artwork)
+js/utils.js                      DOM helpers, toast, sheet stack
+js/ro-phonetics.js                Romanian G2P, syllables, stress — shared
+                                    by the app AND the index build script
+js/rhyme.js                        Loads the rhyme index, answers queries
+js/songs.js                         Main page: song list, search, add song
+js/song-detail.js                    Song page: Text/Rime/Sinonime/Biblie
+js/app.js                             Sign-in/join gating, routing, account
+functions/index.js                     Cloud Function: Google Translate proxy
+                                         (optional, see above)
+tools/rhyme/                            Offline build for the rhyme index —
+                                          dev-only, never ships
+data/rhyme-index.json                    Generated rhyme dataset (GPL v2+,
+                                           see RHYME-INDEX-LICENSE.md)
+icons/                                    App icons (192, 512, maskable 512 —
+                                            placeholder "T" mark)
 ```
 
 No npm install, no bundler — open `index.html` in a browser (via a local
 server, not `file://`, since service workers require http/https) and it
 runs.
 
+## Rime (rhyme finder)
+
+Romanian words rhyme when they sound identical from the last **stressed**
+vowel onward — and Romanian never writes stress, which is the whole
+difficulty. Matching word endings is not enough: *cámeră* and *himéră* share
+"-eră" but are stressed differently and do not rhyme.
+
+The Rime tab solves that with a prebuilt index of ~1.5M inflected forms,
+93.6% of them carrying stress attested by dexonline rather than guessed.
+Results are sorted by how common the word actually is, so ordinary
+vocabulary comes first and rare forms stay reachable at the bottom.
+
+- **Rime perfecte** — identical from the stressed vowel on.
+- **Asonanțe** — matching vowels, differing consonants. Disabled for
+  one-syllable words, where a single vowel matches nearly everything.
+- **Silabe** — restrict results to a syllable count, for fitting a fixed
+  metrical slot.
+
+The index (~5.3 MB) loads the first time you open the tab, never at app
+boot, and is cached afterwards. See `tools/rhyme/README.md` to rebuild it
+and `data/RHYME-INDEX-LICENSE.md` for sources and attribution.
+
 ## What's next
 
-- **Rime** tab: rhyme lookup for Romanian words in the translation.
-- **Sinonime** tab: synonym lookup for Romanian words in the translation.
+- **Sinonime** tab: synonym lookup (RoWordNet is MIT-licensed and fits).
 - **Biblie** tab: Bible cross-references relevant to the text.
 - Real app icons (the current ones are a generated placeholder).
