@@ -204,10 +204,21 @@ function readingLabels(word) {
   if (id < 0) return [];
   const all = readingsFor(id);
   if (all.length < 2) return [];
-  return all.map((r, i) => {
+  // Two readings can land on different letters of the same syllable and so
+  // look identical on screen — a picker showing the same division twice is
+  // just confusing. Collapse them, keeping the leading one.
+  const seen = new Set();
+  const out = [];
+  all.forEach((r, i) => {
     const a = analyzeWord(word, i);
-    return a ? { parts: a.syllableParts || [norm], stressIndex: a.stressIndex } : null;
-  }).filter(Boolean);
+    if (!a) return;
+    const parts = a.syllableParts || [norm];
+    const sig = parts.join('-') + '|' + a.stressIndex;
+    if (seen.has(sig)) return;
+    seen.add(sig);
+    out.push({ parts: parts, stressIndex: a.stressIndex, reading: i });
+  });
+  return out.length > 1 ? out : [];
 }
 
 /* Replaces the phonologically-derived syllable split with the one stored in

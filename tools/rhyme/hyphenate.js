@@ -75,6 +75,28 @@ const IUNE_CONSONANTS = 'țstzxnlvpbdmrfș';
 const VOWEL_LETTERS = 'aăâeiîou';
 function isVowelCh(c) { return VOWEL_LETTERS.indexOf(c) >= 0; }
 
+/* A stressed final "i" after a vowel carries its own nucleus, so it is a
+ * syllable of its own: "tră-i", "ar-cu-i", "chib-zu-i", "con-stru-i",
+ * "bi-ne-vo-i", and "î-na-po-i" for the verb "a înapoi".
+ *
+ * Letter-based grouping cannot see this — it reads "ăi", "ui" and "oi" as
+ * one vowel group and leaves the word whole — and the whispered-i rules only
+ * ever look at an UNSTRESSED final "i". Nothing can be built around a
+ * stressed vowel except a syllable.
+ *
+ * Applied to imported divisions too, not just pattern-derived ones.
+ * dexonline records one division per headword, against its usual reading,
+ * so the adverb "înap'oi" gets "î-na-poi" — but the verb "înapo'i" shares
+ * that spelling and needs "î-na-po-i". Without this the two readings of a
+ * word could differ in stress yet come out looking identical. */
+function splitStressedFinalI(word, cuts, stressOffset) {
+  const n = word.length;
+  if (stressOffset !== n - 1 || word[n - 1] !== 'i' || n < 3) return cuts;
+  if (!isVowelCh(word[n - 2])) return cuts;
+  if (cuts.indexOf(n - 1) >= 0) return cuts;
+  return cuts.concat([n - 1]).sort((x, y) => x - y);
+}
+
 /* Applies the exception layer to pattern-derived cuts. */
 function applyExceptions(word, cuts, stressOffset, head) {
   const n = word.length;
@@ -169,16 +191,7 @@ function applyExceptions(word, cuts, stressOffset, head) {
     }
   }
 
-  // A stressed final "i" after a vowel carries its own nucleus, so it is a
-  // syllable of its own: "tră-i", "ar-cu-i", "chib-zu-i", "con-stru-i",
-  // "bi-ne-vo-i". Letter-based grouping cannot see this — it reads "ăi" and
-  // "ui" as one vowel group and leaves the word whole — and the whispered-i
-  // rules only ever look at an UNstressed final "i". Nothing can be built
-  // around a stressed vowel except a syllable.
-  if (stressOffset === n - 1 && word[n - 1] === 'i' && n >= 3 &&
-      isVowelCh(word[n - 2]) && cuts.indexOf(n - 1) < 0) {
-    cuts = cuts.concat([n - 1]).sort((x, y) => x - y);
-  }
+  cuts = splitStressedFinalI(word, cuts, stressOffset);
 
   // The "crăciun" stem keeps its softener: "cră-ciun", and so "cră-ciu-nul",
   // "cră-ciu-nu-lui". The base form and most derivatives are already right
@@ -591,8 +604,10 @@ function enforceOneNucleus(word, cuts, stressOffset) {
  * given. Only the orthographic-versus-sung correction is applied, plus the
  * vowel-less guard as a safety net. */
 function finishImported(word, cuts, stressOffset) {
-  return mergeWhisperedFinalI(word, mergeVowellessPieces(word, cuts.slice()),
-                              stressOffset);
+  return splitStressedFinalI(word,
+    mergeWhisperedFinalI(word, mergeVowellessPieces(word, cuts.slice()),
+                         stressOffset),
+    stressOffset);
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,

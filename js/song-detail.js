@@ -325,7 +325,10 @@ async function _runRimeSearch(wrap) {
     const row = el('div', { class: 'rime__filters rime__filters--readings' }, [
       el('span', { class: 'rime__filters-label' }, ['Accent'])
     ]);
-    readings.forEach((r, i) => {
+    readings.forEach((r) => {
+      // r.reading is the reading's real index; the picker may have collapsed
+      // ones that read the same, so a button's position is not its index.
+      const i = r.reading;
       const label = el('span', {});
       r.parts.forEach((p, k) => {
         if (k) label.appendChild(el('span', { class: 'rime__syl-sep' }, ['-']));
