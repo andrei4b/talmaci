@@ -238,7 +238,7 @@ function mergeVowellessPieces(word, cuts) {
  * This only ever splits BETWEEN vowel groups, never inside one, so the
  * diphthong-vs-hiatus decisions made by the patterns and the exception layer
  * above are left untouched. */
-function splitMultiNucleusPieces(word, cuts) {
+function splitMultiNucleusPieces(word, cuts, stressOffset) {
   const VOW = 'aăâeiîouy';
   const isV = c => VOW.indexOf(c) >= 0;
   const OBSTR = 'pbtdcgfv';
@@ -266,7 +266,15 @@ function splitMultiNucleusPieces(word, cuts) {
       // not a syllable ("lupi", "a-ici"). Counting it as a nucleus made this
       // split "a-ici" into "a-i-ci". It stays syllabic after an
       // obstruent+liquid cluster, which is why "co-dri" keeps two.
-      if (end === word.length && groups.length > 1) {
+      //
+      // A stressed final "i" is always a nucleus, whatever precedes it: no
+      // syllable can be built around a palatalization. Spelling alone cannot
+      // tell these apart — "b'oli" (the noun, boa-lă's plural) is one
+      // syllable while "bol'i" and "abol'i" (the verbs) end on a stressed
+      // vowel, so "aboli" is a-bo-li. dexonline's marker is what separates
+      // them, so consult it before treating the letter as whispered.
+      const stressedFinalI = stressOffset === word.length - 1;
+      if (end === word.length && groups.length > 1 && !stressedFinalI) {
         const lastG = groups[groups.length - 1];
         if (lastG[0] === lastG[1] && piece[lastG[0]] === 'i' &&
             lastG[0] === piece.length - 1 && lastG[0] > 0 && !isV(piece[lastG[0] - 1])) {
@@ -316,7 +324,7 @@ function cutsFromSplit(split) {
 }
 
 /* Returns cut offsets into `word`: a new syllable starts at each offset. */
-function cutPoints(word, table) {
+function cutPoints(word, table, stressOffset) {
   const manual = WORD_EXCEPTIONS[word];
   if (manual) return cutsFromSplit(manual);
 
@@ -476,11 +484,12 @@ function phoneticOnsets(word, cuts) {
 }
 
   return placeGlideBoundaries(word, phoneticOnsets(word,
-    mergeVowellessPieces(word, splitMultiNucleusPieces(word, applyExceptions(word, cuts)))));
+    mergeVowellessPieces(word,
+      splitMultiNucleusPieces(word, applyExceptions(word, cuts), stressOffset))));
 }
 
-function syllables(word, table) {
-  const cuts = cutPoints(word, table);
+function syllables(word, table, stressOffset) {
+  const cuts = cutPoints(word, table, stressOffset);
   const out = [];
   let prev = 0;
   for (const c of cuts) { out.push(word.slice(prev, c)); prev = c; }
@@ -488,7 +497,19 @@ function syllables(word, table) {
   return out.filter(s => s.length);
 }
 
-module.exports = { loadPatterns, cutPoints, syllables };
+/* Applies only the structural invariant, for divisions that came from
+ * somewhere other than the patterns. dexonline's hyphenation column is
+ * authoritative on diphthong against hiatus, so its choices are left alone —
+ * but it divides compounds structurally ("nici-cum", "cinci-zeci") and
+ * loanwords on their source-language morphemes ("after-school"), leaving
+ * syllables with two nuclei. This project wants the phonetic division
+ * throughout, so those get broken up: "ni-ci-cum", "cin-ci-zeci". */
+function enforceOneNucleus(word, cuts, stressOffset) {
+  return mergeVowellessPieces(word,
+    splitMultiNucleusPieces(word, cuts.slice(), stressOffset));
+}
+
+module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus };
 
 // CLI: node hyphenate.js <hyph_ro_RO.dic> word [word...]
 if (require.main === module) {

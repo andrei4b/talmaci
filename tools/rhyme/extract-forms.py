@@ -18,7 +18,14 @@ Two passes are required. A mysqldump writes tables alphabetically, so every
 InflectedForm row appears before the first Lexeme row; resolving lexemeId in
 one pass silently yields nothing.
 
-    python3 extract-forms.py dex-database.sql.gz > forms_typed.txt
+    python3 extract-forms.py dex-database.sql.gz hyphenations.txt > forms_typed.txt
+
+The optional second argument writes the Lexeme.hyphenations column as
+`form<TAB>value`. dexonline records the division for ~20k headwords, and
+where it does it is authoritative — see build-index.js. Values may be
+partial ("-ti-e"), may list alternatives separated by commas, and mark the
+structural variant with a doubled hyphen ("a-e-ro--trans-port"); the plain
+single-hyphen form is the phonetic one this project wants.
 """
 import sys, gzip, io
 
@@ -72,14 +79,23 @@ def is_noise(model):
     return type_ in NOISE_TYPES or (type_ == 'I' and num in NOISE_I)
 
 
-def main(dump):
+def main(dump, hyph_out=None):
     lex = {}                                     # lexemeId -> "TYPE/NUMBER"
+    hyph = []                                    # (form, hyphenation)
     for line in stream(dump):
         if line.startswith('INSERT INTO `Lexeme`'):
             for t in tuples(line):
                 if len(t) >= 16:
                     lex[t[0]] = t[14] + '/' + t[15]
+                    if hyph_out and t[10] and t[10] != 'NULL':
+                        hyph.append((t[1], t[10]))
     print(f"lexemes: {len(lex)}", file=sys.stderr)
+
+    if hyph_out:
+        with open(hyph_out, 'w', encoding='utf-8') as fh:
+            for form, value in hyph:
+                fh.write(f"{form}\t{value}\n")
+        print(f"hyphenations: {len(hyph)}", file=sys.stderr)
 
     # A spelling can belong to several lexemes. Keep a real part of speech
     # over a provisional one, so "cruce" (F/122 and I/3) is not mistaken for
@@ -103,6 +119,7 @@ def main(dump):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        sys.exit('usage: extract-forms.py <dex-database.sql.gz>  > forms_typed.txt')
-    main(sys.argv[1])
+    if len(sys.argv) not in (2, 3):
+        sys.exit('usage: extract-forms.py <dex-database.sql.gz> [hyphenations.txt]'
+                 '  > forms_typed.txt')
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) == 3 else None)

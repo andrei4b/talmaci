@@ -27,7 +27,8 @@ from a word — see "Names" below. Definitions are never parsed.
    ```bash
    curl -sL -o dex-database.sql.gz \
      https://dexonline.ro/static/download/dex-database.sql.gz
-   python3 extract-forms.py dex-database.sql.gz > forms_typed.txt
+   python3 extract-forms.py dex-database.sql.gz hyphenations.txt \
+     > forms_typed.txt
    ```
 
    `extract-forms.py` reads only `InflectedForm` and `Lexeme`, and writes
@@ -118,3 +119,36 @@ limbă*) and `I/6` (*abreviere, simbol, siglă*). A spelling goes only when
 worship songs, so biblical names are working vocabulary; without the list
 `isus`, `hristos`, `ierusalim` and `betleem` all vanish. Add to it if you
 hit a gap.
+
+## Syllable division
+
+Two sources, in this order.
+
+**dexonline's `hyphenations` column** wins wherever it has a whole-word
+value — about 5700 of the indexed words. It is a dictionary, and checking
+against it found 1485 words wrong out of the 6563 it covers, almost all of
+them diphthong against hiatus in both directions: `al-bi-an` and `a-fi-on`
+where the patterns ran two vowels together, `a-leu-rit` and `a-mia-ză`
+where they split a diphthong that holds. Which way a word goes is lexical,
+so no rule recovers it.
+
+Its values need filtering. Many cover only the interesting fragment
+(`-ți-e`, `a-bi-e-`), some list alternatives separated by commas, and a
+doubled hyphen marks the structural variant (`a-e-ro--trans-port`). Only
+whole-word single-hyphen values that reconstruct the word are used.
+dexonline also disagrees with itself on about a dozen words, recording both
+`cu-ri-e` and `cu-rie`; the first is taken.
+
+Even so its divisions are not adopted blind. It splits compounds
+structurally without marking them — `nici-cum`, `cinci-zeci` — and
+loanwords on their source-language morphemes (`after-school`), which leaves
+syllables holding two nuclei. `enforceOneNucleus` breaks those up, giving
+`ni-ci-cum`, `cin-ci-zeci`, `af-ter-school`.
+
+**The rospell patterns**, plus the exception layer in `hyphenate.js`, cover
+everything else.
+
+`cutPoints` takes the stressed vowel's offset, because a word-final `i` is
+whispered in `b'oli` (the noun, one syllable) but a nucleus in `abol'i` and
+`bol'i` (the verbs, `a-bo-li`). Nothing in the spelling distinguishes them —
+only dexonline's stress marker does.

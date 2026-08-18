@@ -52,8 +52,9 @@ const formsPath = process.argv[2];
 const freqPath = process.argv[3];
 const wikiFreqPath = process.argv[4];   // optional second corpus
 const hyphPath = process.argv[5];       // optional hyph_ro_RO.dic
+const dexHyphPath = process.argv[6];    // optional hyphenations.txt
 if (!formsPath || !freqPath) {
-  console.error('usage: build-index.js <forms_typed.txt> <ro_freq.txt> [ro_wiki_freq.txt] [hyph_ro_RO.dic]');
+  console.error('usage: build-index.js <forms_typed.txt> <ro_freq.txt> [ro_wiki_freq.txt] [hyph_ro_RO.dic] [hyphenations.txt]');
   process.exit(1);
 }
 
@@ -299,17 +300,73 @@ function build(keyName, cap) {
 const exact = build('exact', MAX_EXACT);
 const asson = build('asson', MAX_ASSON);
 
+/* ---- dexonline's own syllable divisions ----
+ * The patterns derive a division; dexonline records one. Where it does, it
+ * wins — it is a dictionary, and checking our output against it found 1485
+ * words we split wrongly out of 6563 it covers.
+ *
+ * Almost all of those are diphthong against hiatus, in both directions:
+ * "al-bi-an" and "a-fi-on" where we ran the vowels together, "a-leu-rit"
+ * and "a-mia-ză" where we split a diphthong that holds. Which way a given
+ * word goes is lexical, so no rule recovers it — only the dictionary does.
+ *
+ * Values need filtering. Many are fragments covering just the interesting
+ * part ("-ți-e", "a-bi-e-"), several list alternatives separated by commas,
+ * and a doubled hyphen marks the structural variant ("a-e-ro--trans-port")
+ * that this project explicitly does not want. Only whole-word, single-
+ * hyphen values that reconstruct the word exactly are taken. */
+function loadDexHyphenations(pathname) {
+  const map = Object.create(null);     // "constructor" is a Romanian word
+  if (!pathname || !fs.existsSync(pathname)) {
+    console.error('dexonline hyphenations: (not provided)');
+    return map;
+  }
+  let kept = 0;
+  for (const line of fs.readFileSync(pathname, 'utf8').split('\n')) {
+    const tab = line.indexOf('\t');
+    if (tab < 0) continue;
+    const form = P.normalize(line.slice(0, tab)).replace(/'/g, '');
+    for (const raw of line.slice(tab + 1).split(',')) {
+      const v = P.normalize(raw.trim()).replace(/'/g, '');
+      if (!v || v.indexOf('--') >= 0) continue;          // structural variant
+      if (v.startsWith('-') || v.endsWith('-')) continue; // partial fragment
+      if (v.replace(/-/g, '') !== form) continue;         // must reconstruct
+      const cuts = [];
+      let at = 0;
+      for (const piece of v.split('-').slice(0, -1)) { at += piece.length; cuts.push(at); }
+      if (!(form in map)) { map[form] = cuts; kept++; }
+      break;
+    }
+  }
+  console.error(`dexonline hyphenations: ${kept} usable whole-word divisions`);
+  return map;
+}
+const dexHyph = loadDexHyphenations(dexHyphPath);
+
 /* ---- per-word scalars ---- */
 // Cut offsets per word, base36, one word per line. Syllable counts are
 // taken from these rather than from nucleus detection, because the
 // phonological pass mis-analyses hiatus in words like "superior" and
 // "scriitor" — it turns the i into a glide and undercounts.
+let dexUsed = 0;
 const cutsPerWord = words.map(w => {
   if (!hyphTable) return '';
-  const cs = H.cutPoints(w, hyphTable);
+  // Pass the stressed vowel's offset: it is the only thing that separates a
+  // whispered final "i" from a stressed one, so "b'oli" stays one syllable
+  // while "abol'i" divides a-bo-li.
+  const fromDex = dexHyph[w];
+  const rc = rec.get(w);
+  const stress = rc && rc.spos >= 0 ? rc.spos : -1;
+  if (fromDex) {
+    dexUsed++;
+    const fixed = H.enforceOneNucleus(w, fromDex, stress);
+    return fixed.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
+  }
+  const cs = H.cutPoints(w, hyphTable, stress);
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
 });
 const cuts = cutsPerWord.join('\n');
+console.error(`  divisions taken from dexonline: ${dexUsed} of ${words.length}`);
 
 const syll = words.map((w, i) => {
   const n = hyphTable ? cutsPerWord[i].length + 1 : rec.get(w).syll;
