@@ -58,13 +58,19 @@ function loadPatterns(dicPath) {
 // of undefined and crash the lookup.
 const WORD_EXCEPTIONS = Object.create(null);
 
+// e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
+
 // Prefixes ending in "o" that keep their hiatus before a vowel-initial stem.
 // Full strings, not just the final "o": matching only the last two letters
 // would misread "bas-to-a-ne" and "a-na-lo-a-ga" as prefixed.
 const O_PREFIXES = ['co', 'auto', 'arheo', 'neo', 'proto', 'termo', 'electro',
   'hidro', 'macro', 'micro', 'foto', 'radio', 'video', 'bio', 'geo', 'paleo',
   'socio', 'psiho'];
-// e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
+
+// Consonants after which an "i" has no softening role, so the "i" of the
+// "-iune" suffix has to be carrying its own nucleus. "c", "g" and "h" are
+// deliberately absent — see the suffix rule below.
+const IUNE_CONSONANTS = 'țstzxnlvpbdmrfș';
 
 const VOWEL_LETTERS = 'aăâeiîou';
 function isVowelCh(c) { return VOWEL_LETTERS.indexOf(c) >= 0; }
@@ -109,6 +115,26 @@ function applyExceptions(word, cuts) {
     const stem = word.slice(0, i + 1);
     const isPrefixHiatus = O_PREFIXES.some(px => stem.endsWith(px));
     if (!isPrefixHiatus) cuts = cuts.filter(c => c !== i + 1);
+  }
+
+  // The learned suffix "-iune" is hiatus: "ac-ți-u-ne", "mi-si-u-ne",
+  // "vi-zi-u-ne", "u-ni-u-ne", "ches-ti-u-ne". The patterns run the two
+  // vowels together instead ("ac-țiu-ne"), losing a syllable.
+  //
+  // Restricted to consonants where "i" cannot be doing anything else. After
+  // "c" and "g" an "i" may be a softener spelling /t͡ʃ/ and /d͡ʒ/, and whether
+  // it also carries a nucleus is lexical, not orthographic: "ru-gă-ciu-ne",
+  // "slă-bi-ciu-ne" and "cră-ciun" have a pure softener, while "so-ci-al",
+  // "spe-ci-a-le", "e-ner-gi-e" and "ser-vi-ci-ul" have a syllabic "i" in
+  // the very same environment. The patterns already carry that knowledge,
+  // so the whole c/g/ch family is left to them — which is also what keeps
+  // "ni-ciun" and "ran-chiu-ne" intact.
+  if (/(iune|iuni|iunea|iunii|iunile|iunilor)$/.test(word)) {
+    const i = word.lastIndexOf('iun');
+    if (i > 0 && IUNE_CONSONANTS.indexOf(word[i - 1]) >= 0 &&
+        cuts.indexOf(i + 1) < 0) {
+      cuts = cuts.concat([i + 1]).sort((x, y) => x - y);
+    }
   }
 
   // Word-initial "eu" is the Greek prefix and one syllable: "eu-ca-lipt",
