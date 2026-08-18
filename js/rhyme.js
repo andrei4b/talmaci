@@ -223,11 +223,19 @@ function lookup(word, opts) {
   const table = mode === 'asson' ? _asson : _exact;
   const ids = decodeDeltas(table[key]);
 
+  // syllablesOrMore turns the filter into a lower bound, which is what the
+  // last bucket in the UI ("5+") needs. Counts are stored one digit per
+  // word and saturate at 9, so a lower bound still catches the handful of
+  // words longer than that, while an exact match on 9 would not mean 9.
   const wantSyll = o.syllables | 0;
+  const orMore = !!o.syllablesOrMore;
   const out = [];
   for (const idv of ids) {
     if (idv === a.id) continue;
-    if (wantSyll && (+_syll[idv]) !== wantSyll) continue;
+    if (wantSyll) {
+      const n = +_syll[idv];
+      if (orMore ? n < wantSyll : n !== wantSyll) continue;
+    }
     out.push(idv);
   }
   out.sort((x, y) => rankOf(x) - rankOf(y));

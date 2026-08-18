@@ -50,6 +50,8 @@ let _rimeSyll = 0;        // 0 = any
 // productive endings like -ire match several hundred words, and rendering
 // them all at once is a lot of DOM for results you rarely scroll to.
 const RIME_PAGE = 120;
+// Highest syllable bucket offered; it filters as "this many or more".
+const RIME_SYLL_MAX = 5;
 let _rimeShown = RIME_PAGE;
 
 // Remembers which version was last viewed, per song, per device — a
@@ -212,10 +214,13 @@ function _renderRimeTab(content) {
   // Only perfect rhymes are offered, so there is no mode to choose.
   const sylRow = el('div', { class: 'rime__filters rime__filters--syll' }, [
     el('span', { class: 'rime__filters-label' }, ['Silabe']),
-    _segButton('Orice', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
+    _segButton('Toate', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
   ]);
-  [1, 2, 3, 4, 5].forEach(n => {
-    sylRow.appendChild(_segButton(String(n), _rimeSyll === n, () => { _rimeSyll = n; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }));
+  // The last bucket is open-ended: long rhymes are rare enough that giving
+  // 6, 7 and 8 their own buttons would mostly show empty result lists.
+  [1, 2, 3, 4, RIME_SYLL_MAX].forEach(n => {
+    const label = n === RIME_SYLL_MAX ? n + '+' : String(n);
+    sylRow.appendChild(_segButton(label, _rimeSyll === n, () => { _rimeSyll = n; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }));
   });
   wrap.appendChild(sylRow);
 
@@ -271,7 +276,10 @@ async function _runRimeSearch(wrap) {
     if ((_rimeQuery || '').trim() !== q) return;   // query changed while loading
   }
 
-  const res = window.Rhyme.lookup(q, { syllables: _rimeSyll });
+  const res = window.Rhyme.lookup(q, {
+    syllables: _rimeSyll,
+    syllablesOrMore: _rimeSyll === RIME_SYLL_MAX
+  });
   body.innerHTML = '';
 
   if (!res.ok || !res.analysis) {
