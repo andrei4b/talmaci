@@ -145,6 +145,29 @@ function applyExceptions(word, cuts) {
     cuts = cuts.filter(c => c !== 1);
   }
 
+  // The "crăciun" stem keeps its softener: "cră-ciun", and so "cră-ciu-nul",
+  // "cră-ciu-nu-lui". The base form and most derivatives are already right
+  // ("cră-ciu-na", "cră-ciu-nean", "cră-ciu-ni-ța"), but the forms built on
+  // the plain stem plus an ending lost it and came out "cră-ci-u-nul" —
+  // the same "ciu" the patterns handle correctly in "ni-ciu-nul". Only the
+  // cut between the softener and its vowel needs removing.
+  if (word.startsWith('crăciun')) {
+    cuts = cuts.filter(c => c !== 5);
+  }
+
+  // The "conex" family is divided "con-ex", but a single consonant between
+  // two vowels belongs to the following syllable: "co-nex", "co-ne-xă",
+  // "co-ne-xi-u-ne". Romanian does keep a prefix-final consonant on the left
+  // ("dez-as-tru", "in-e-vi-ta-bil"), which is why this is not a general
+  // rule — but "conex" is not read as a prefix plus a Romanian stem, and it
+  // is the only "con" + vowel family the patterns cut this way. All 15 of
+  // its forms take the same correction.
+  if (word.startsWith('conex')) {
+    cuts = cuts.filter(c => c !== 3);
+    if (cuts.indexOf(2) < 0) cuts = cuts.concat([2]);
+    cuts.sort((x, y) => x - y);
+  }
+
   // "nici" + vowel divides ni-cio / ni-ciun, but the patterns either leave
   // it whole or cut after "nici". Move the boundary to where it belongs.
   if (/^nici[ou]/.test(word)) {
