@@ -39,8 +39,12 @@ const fs = require('fs');
 const path = require('path');
 const P = require(path.join(__dirname, '..', '..', 'js', 'ro-phonetics.js'));
 
-const MAX_EXACT = 400;   // perfect rhymes kept per key
-const MAX_ASSON = 200;   // assonance matches kept per key
+// One more than the round number actually wanted on screen. A key's posting
+// list includes the query word itself (every word rhymes with itself), and
+// the app filters it out at lookup time, so storing 401 is what yields 400
+// usable suggestions rather than 399.
+const MAX_EXACT = 401;   // perfect rhymes kept per key -> 400 shown
+const MAX_ASSON = 201;   // assonance matches kept per key -> 200 shown
 
 const formsPath = process.argv[2];
 const freqPath = process.argv[3];
