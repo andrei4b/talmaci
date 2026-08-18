@@ -478,6 +478,11 @@ let dexFull = 0, dexFrag = 0, dexStem = 0;
  * division follows the stress: "b'oli" is one syllable, "abol'i" is
  * a-bo-li. */
 function cutsFor(w, stress) {
+  // headOf only records a head that differs from the form, so a word that
+  // heads its own lexeme has none. It is its own head: without this,
+  // "creangă" arrives headless and the "crea" rule below, which treats a
+  // missing head as unknown, hands it a hiatus it should not have.
+  const head = headOf[w] || w;
   if (!hyphTable) return '';
   let fromDex = dexHyph[w];
   let viaStem = false;
@@ -516,7 +521,7 @@ function cutsFor(w, stress) {
     }
     cs = Array.from(new Set(cs)).sort((a, b) => a - b);
   } else {
-    cs = H.cutPoints(w, hyphTable, stress);
+    cs = H.cutPoints(w, hyphTable, stress, head);
   }
   cs = fromDex ? H.finishImported(w, cs, stress)
                : H.enforceOneNucleus(w, cs, stress);

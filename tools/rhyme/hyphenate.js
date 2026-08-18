@@ -76,7 +76,7 @@ const VOWEL_LETTERS = 'aăâeiîou';
 function isVowelCh(c) { return VOWEL_LETTERS.indexOf(c) >= 0; }
 
 /* Applies the exception layer to pattern-derived cuts. */
-function applyExceptions(word, cuts) {
+function applyExceptions(word, cuts, stressOffset, head) {
   const n = word.length;
 
   // "ea" is a rising diphthong and one syllable in the overwhelming
@@ -105,9 +105,26 @@ function applyExceptions(word, cuts) {
     if (word[i] !== 'e' || word[i + 1] !== 'a') continue;
     const mutaCumLiquida = i >= 2 &&
       OBSTR.indexOf(word[i - 2]) >= 0 && LIQ.indexOf(word[i - 1]) >= 0;
+    // The stems only mean hiatus when something follows them: "re-a-li-zat"
+    // and "re-a-bi-li-ta" are the prefix, but "rea" on its own is the
+    // feminine of "rău" and a plain diphthong.
+    const reStem = i === 1 && word.startsWith('rea') && word.length > 3;
+
+    // "crea" is not enough either. Forms of "a crea" take the hiatus —
+    // "cre-a-re", "cre-at", "cre-a-sem" — while "creadă" belongs to "a
+    // crede", "crească" to "a crește", and "creangă" and "creanță" are
+    // nouns; all four keep the diphthong. Spelling cannot separate them
+    // ("cre-ase" against "creas-că"), so the headword decides: the "a crea"
+    // family heads are "crea" itself and its "crea" + r/t/ț/s derivatives,
+    // which is what leaves "creangă" and "creanță" out.
+    const creaStem = i === 2 && word.startsWith('crea') &&
+      (!head || head === 'crea' ||
+       (head.startsWith('crea') && 'rtțs'.indexOf(head.charAt(4)) >= 0));
+
     const isStemHiatus =
-      (i === 1 && word.startsWith('rea')) ||
-      (i === 2 && (word.startsWith('crea') || word.startsWith('idea'))) ||
+      reStem ||
+      creaStem ||
+      (i === 2 && word.startsWith('idea')) ||
       (!mutaCumLiquida &&
        /^ea[lrt](ă|e|i|ul|ului|ele|elor)?$/.test(word.slice(i)));
     if (!isStemHiatus) cuts = cuts.filter(c => c !== i + 1);
@@ -150,6 +167,17 @@ function applyExceptions(word, cuts) {
         cuts.indexOf(i + 1) < 0) {
       cuts = cuts.concat([i + 1]).sort((x, y) => x - y);
     }
+  }
+
+  // A stressed final "i" after a vowel carries its own nucleus, so it is a
+  // syllable of its own: "tră-i", "ar-cu-i", "chib-zu-i", "con-stru-i",
+  // "bi-ne-vo-i". Letter-based grouping cannot see this — it reads "ăi" and
+  // "ui" as one vowel group and leaves the word whole — and the whispered-i
+  // rules only ever look at an UNstressed final "i". Nothing can be built
+  // around a stressed vowel except a syllable.
+  if (stressOffset === n - 1 && word[n - 1] === 'i' && n >= 3 &&
+      isVowelCh(word[n - 2]) && cuts.indexOf(n - 1) < 0) {
+    cuts = cuts.concat([n - 1]).sort((x, y) => x - y);
   }
 
   // The "crăciun" stem keeps its softener: "cră-ciun", and so "cră-ciu-nul",
@@ -331,7 +359,7 @@ function cutsFromSplit(split) {
 }
 
 /* Returns cut offsets into `word`: a new syllable starts at each offset. */
-function cutPoints(word, table, stressOffset) {
+function cutPoints(word, table, stressOffset, head) {
   const manual = WORD_EXCEPTIONS[word];
   if (manual) return cutsFromSplit(manual);
 
@@ -492,11 +520,12 @@ function phoneticOnsets(word, cuts) {
 
   return placeGlideBoundaries(word, phoneticOnsets(word,
     mergeVowellessPieces(word,
-      splitMultiNucleusPieces(word, applyExceptions(word, cuts), stressOffset))));
+      splitMultiNucleusPieces(word, applyExceptions(word, cuts, stressOffset, head),
+        stressOffset))));
 }
 
-function syllables(word, table, stressOffset) {
-  const cuts = cutPoints(word, table, stressOffset);
+function syllables(word, table, stressOffset, head) {
+  const cuts = cutPoints(word, table, stressOffset, head);
   const out = [];
   let prev = 0;
   for (const c of cuts) { out.push(word.slice(prev, c)); prev = c; }
