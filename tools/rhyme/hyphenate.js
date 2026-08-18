@@ -542,7 +542,25 @@ function enforceOneNucleus(word, cuts, stressOffset) {
     stressOffset);
 }
 
-module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus };
+/* Finishes a division that came from dexonline rather than the patterns.
+ *
+ * Deliberately does NOT enforce one nucleus per syllable. That rule counts
+ * vowel letters, which is blind to a word-internal whispered "i": "cinci"
+ * and "ori" are single syllables (/t͡ʃint͡ʃʲ/, /orʲ/), so dexonline's
+ * "cinci-spre-ze-ce", "ori-și-ca-re", "nici-cum" and "cinci-zeci" are
+ * right, and running the rule over them produced "cin-ci-spre-ze-ce" and
+ * "o-ri-și-ca-re", which are not.
+ *
+ * dexonline is a dictionary; where it states a division it is taken as
+ * given. Only the orthographic-versus-sung correction is applied, plus the
+ * vowel-less guard as a safety net. */
+function finishImported(word, cuts, stressOffset) {
+  return mergeWhisperedFinalI(word, mergeVowellessPieces(word, cuts.slice()),
+                              stressOffset);
+}
+
+module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
+                   finishImported };
 
 // CLI: node hyphenate.js <hyph_ro_RO.dic> word [word...]
 if (require.main === module) {

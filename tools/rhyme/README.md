@@ -135,9 +135,14 @@ so no rule recovers it.
 Most values are fragments rather than whole words, covering only the part
 dexonline thought worth recording, and those are used too. A leading hyphen
 anchors the fragment to the end of the word (`-ți-e`), a trailing one to the
-start (`a-bi-e-`). A fragment asserts two things and both are applied: where
-its internal boundaries fall, and that there are no others across its span —
-so a pattern-derived cut inside it is removed. Values hyphenated at both
+start (`a-bi-e-`). A fragment fixes its own span, and the rest of the word is
+divided separately, as its own string, with the two concatenated. Merging a
+fragment into a full-word pattern division instead lets the two disagree at
+the seam: for `biospeologic` the fragment `bi-o-` opens a syllable at
+`speologic` while the patterns wanted a break after the `s`, leaving a
+vowel-less piece that merged the wrong way and gave `bi-os-pe-o-lo-gic`.
+Divided on its own, `speologic` gives `spe-o-lo-gic` and `sp` stays the
+onset it is. Values hyphenated at both
 ends have nothing to anchor them and are skipped.
 
 Fragments roughly double the reach: 5693 words take a whole-word division,
@@ -148,12 +153,16 @@ skipped, and alternatives separated by commas are tried in order. dexonline
 also disagrees with itself on about a dozen words, recording both `cu-ri-e`
 and `cu-rie`; the first is taken.
 
-Even so its divisions are not adopted blind. It splits compounds
-structurally without marking them — `nici-cum`, `cinci-zeci`, `ori-și-` —
-and loanwords on their source-language morphemes (`after-school`), which
-leaves syllables holding two nuclei. `enforceOneNucleus` breaks those up,
-giving `ni-ci-cum`, `cin-ci-zeci`, `o-ri-și-ca-re`, `af-ter-school`. That
-divergence is the whole of the residual disagreement, and it is deliberate.
+Even so its divisions are not adopted blind. Where it states a division it is
+taken as given: `finishImported` applies only the sung-syllable correction
+below and a vowel-less guard, and deliberately does **not** enforce one
+nucleus per syllable.
+
+That rule counts vowel letters, so it cannot see a word-internal whispered
+`i`. `cinci` and `ori` are single syllables (/t͡ʃint͡ʃʲ/, /orʲ/), which makes
+`cinci-spre-ze-ce`, `ori-și-ca-re`, `nici-cum` and `cinci-zeci` correct —
+running the rule over them produced `cin-ci-spre-ze-ce` and `o-ri-și-ca-re`,
+which are not.
 
 **The rospell patterns**, plus the exception layer in `hyphenate.js`, cover
 everything else.

@@ -469,18 +469,31 @@ const cutsPerWord = words.map(w => {
     cs = fromDex.cuts;
   } else if (fromDex) {
     if (viaStem) dexStem++; else dexFrag++;
-    // A fragment overrides the patterns only across the span it covers: its
-    // own boundaries go in, and any pattern boundary inside that span which
-    // it did not record comes out, since the fragment shows those letters
-    // grouped into whole syllables.
-    const own = new Set(fromDex.cuts);
-    const kept = H.cutPoints(w, hyphTable, stress)
-      .filter(c => c <= fromDex.from || c >= fromDex.to || own.has(c));
-    cs = Array.from(new Set(kept.concat(fromDex.cuts))).sort((a, b) => a - b);
+    // The fragment fixes its own span; the rest of the word is divided on
+    // its own, as a separate string, and the two are concatenated.
+    //
+    // Merging the fragment into a full-word pattern division instead lets
+    // the two disagree at the seam: for "biospeologic" the fragment "bi-o-"
+    // opens a syllable at "speologic" while the patterns wanted a break
+    // after the "s", which left a vowel-less piece that then merged the
+    // wrong way and gave "bi-os-pe-o-lo-gic". Dividing "speologic" by
+    // itself gives "spe-o-lo-gic", and "sp" stays the onset it is.
+    const own = fromDex.cuts.slice();
+    if (fromDex.from === 0) {
+      const tail = w.slice(fromDex.to);
+      const tailCuts = tail.length > 1 ? H.cutPoints(tail, hyphTable, -1) : [];
+      cs = own.concat(tailCuts.map(c => c + fromDex.to));
+    } else {
+      const headPart = w.slice(0, fromDex.from);
+      const headCuts = headPart.length > 1 ? H.cutPoints(headPart, hyphTable, -1) : [];
+      cs = headCuts.concat(own);
+    }
+    cs = Array.from(new Set(cs)).sort((a, b) => a - b);
   } else {
     cs = H.cutPoints(w, hyphTable, stress);
   }
-  cs = H.enforceOneNucleus(w, cs, stress);
+  cs = fromDex ? H.finishImported(w, cs, stress)
+               : H.enforceOneNucleus(w, cs, stress);
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
 });
 const cuts = cutsPerWord.join('\n');
