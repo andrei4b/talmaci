@@ -476,8 +476,10 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 /* The stress-reading picker: each button shows a whole division, so it
-   needs more room than the single-word syllable filters above it. */
-.rime__filters--readings { margin-top: 8px; }
+   needs more room than the single-word syllable filters above it. Sits
+   outside .rime__body, so it holds its place while the results scroll. */
+.rime__readings { flex-shrink: 0; }
+.rime__filters--readings { margin-top: 6px; }
 .rime__filters--readings .rime__seg { font-weight: 500; }
 .rime__filters--readings .rime__syl-sep { opacity: 0.45; }
 .rime__filters--readings .rime__syl--stressed {

@@ -226,6 +226,11 @@ function _renderRimeTab(content) {
   });
   wrap.appendChild(sylRow);
 
+  // Filled in by the search, once the word is known to have more than one
+  // reading. It lives here rather than inside .rime__body so it stays put
+  // with the other filters instead of scrolling away with the results.
+  wrap.appendChild(el('div', { class: 'rime__readings' }));
+
   wrap.appendChild(el('div', { class: 'rime__body' }));
   _runRimeSearch(wrap);
   return wrap;
@@ -246,6 +251,8 @@ function _segButton(label, active, onclick) {
 async function _runRimeSearch(wrap) {
   const body = wrap.querySelector('.rime__body');
   if (!body) return;
+  const readingsRow = wrap.querySelector('.rime__readings');
+  if (readingsRow) readingsRow.innerHTML = '';
   const q = (_rimeQuery || '').trim();
 
   if (!q) {
@@ -314,7 +321,7 @@ async function _runRimeSearch(wrap) {
   // house against "cas'a" the verb — and they rhyme differently. Offer each
   // reading rather than silently picking one.
   const readings = window.Rhyme.readingLabels(q);
-  if (readings.length > 1) {
+  if (readingsRow && readings.length > 1) {
     const row = el('div', { class: 'rime__filters rime__filters--readings' }, [
       el('span', { class: 'rime__filters-label' }, ['Accent'])
     ]);
@@ -331,14 +338,14 @@ async function _runRimeSearch(wrap) {
         onclick: () => {
           _rimeReading = i;
           _rimeShown = RIME_PAGE;
-          // The picker sits inside .rime__body, which this rebuilds, so the
-          // search field above it keeps both its text and its focus.
+          // Rebuilds the results and this row itself. The search field is
+          // a sibling of both, so it keeps its text and its focus.
           _runRimeSearch(wrap);
         }
       }, [label]);
       row.appendChild(btn);
     });
-    body.appendChild(row);
+    readingsRow.appendChild(row);
   }
 
   if (!res.results.length) {
