@@ -7,7 +7,11 @@ funded and cannot be relicensed, so nothing definitional leaves this script.
 
 Emits one line per distinct accented form:
 
-    cuv'ant<TAB>M/24
+    cuv'ant<TAB>M/24<TAB>cuv'ant
+
+The third column is the lexeme's own headword. dexonline records
+hyphenations against headwords, while the index is mostly inflected forms,
+so the link is what lets a recorded division reach "albia" from "albie".
 
 The model type is what lets the build tell a name from a word. dexonline
 classifies every lexeme, and "T" (temporar), "SP" (substantiv propriu),
@@ -80,13 +84,13 @@ def is_noise(model):
 
 
 def main(dump, hyph_out=None):
-    lex = {}                                     # lexemeId -> "TYPE/NUMBER"
+    lex = {}                                     # lexemeId -> ("TYPE/NUMBER", headword)
     hyph = []                                    # (form, hyphenation)
     for line in stream(dump):
         if line.startswith('INSERT INTO `Lexeme`'):
             for t in tuples(line):
                 if len(t) >= 16:
-                    lex[t[0]] = t[14] + '/' + t[15]
+                    lex[t[0]] = (t[14] + '/' + t[15], t[1])
                     if hyph_out and t[10] and t[10] != 'NULL':
                         hyph.append((t[1], t[10]))
     print(f"lexemes: {len(lex)}", file=sys.stderr)
@@ -106,14 +110,15 @@ def main(dump, hyph_out=None):
             for t in tuples(line):
                 if len(t) < 5:
                     continue
-                form, model = t[1], lex.get(t[4], '')
+                form = t[1]
+                model, head = lex.get(t[4], ('', ''))
                 prev = seen.get(form)
-                if prev is None or (is_noise(prev) and not is_noise(model)):
-                    seen[form] = model
+                if prev is None or (is_noise(prev[0]) and not is_noise(model)):
+                    seen[form] = (model, head)
 
     out = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    for form, model in seen.items():
-        out.write(f"{form}\t{model}\n")
+    for form, (model, head) in seen.items():
+        out.write(f"{form}\t{model}\t{head}\n")
     out.flush()
     print(f"forms: {len(seen)}", file=sys.stderr)
 

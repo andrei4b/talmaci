@@ -504,9 +504,42 @@ function syllables(word, table, stressOffset) {
  * loanwords on their source-language morphemes ("after-school"), leaving
  * syllables with two nuclei. This project wants the phonetic division
  * throughout, so those get broken up: "ni-ci-cum", "cin-ci-zeci". */
+/* Re-attaches a final "i șoptit" that an imported division split off.
+ *
+ * dexonline's hyphenation column is for breaking lines, not for counting
+ * syllables you sing, and the two part company on the whispered final "i":
+ * "lu-pi", "o-chi" and "mul-ți" are legitimate places to break a word, but
+ * each is a single sung syllable (/lupʲ/, /okʲ/, /multsʲ/). Left alone, they
+ * inflate both the division shown in the Rime tab and the syllable count its
+ * filter runs on.
+ *
+ * Only a last piece whose sole vowel IS that final "i" merges back, so
+ * "zil-nici" keeps its two syllables — its last piece has a nucleus of its
+ * own. A stressed final "i" is a nucleus and stays ("a-bo-li"), and so does
+ * one after an obstruent+liquid cluster ("co-dri", "mem-bri"). */
+function mergeWhisperedFinalI(word, cuts, stressOffset) {
+  if (!cuts.length) return cuts;
+  if (stressOffset === word.length - 1) return cuts;
+
+  // "y" counts as a vowel here, as it does everywhere else in this file: it
+  // carries the nucleus in the loanwords the Wikipedia corpus drags in, so
+  // "dandyi" and "pennyi" are not a consonant cluster plus a whispered "i".
+  const last = word.slice(cuts[cuts.length - 1]);
+  if (!/^[^aăâeiîouy]+i$/.test(last)) return cuts;
+
+  const OBSTR = 'pbtdcgfv', LIQ = 'lr';
+  if (last.length >= 3 &&
+      OBSTR.indexOf(last[last.length - 3]) >= 0 &&
+      LIQ.indexOf(last[last.length - 2]) >= 0) return cuts;
+
+  return cuts.slice(0, -1);
+}
+
 function enforceOneNucleus(word, cuts, stressOffset) {
-  return mergeVowellessPieces(word,
-    splitMultiNucleusPieces(word, cuts.slice(), stressOffset));
+  return mergeWhisperedFinalI(word,
+    mergeVowellessPieces(word,
+      splitMultiNucleusPieces(word, cuts.slice(), stressOffset)),
+    stressOffset);
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus };

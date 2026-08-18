@@ -170,14 +170,16 @@ const KEEP_NAMES = new Set([
   'egipt', 'israel', 'avraam', 'moise', 'ilie', 'iehova', 'savaot'
 ]);
 
+function isNoiseModel(m) {
+  const slash = m.indexOf('/');
+  const type = slash < 0 ? m : m.slice(0, slash);
+  const num = slash < 0 ? '' : m.slice(slash + 1);
+  return type === 'T' || type === 'SP' ||
+         (type === 'I' && (num === '3' || num === '4' || num === '6'));
+}
+
 function isNameOnly(models) {
-  return models.every(m => {
-    const slash = m.indexOf('/');
-    const type = slash < 0 ? m : m.slice(0, slash);
-    const num = slash < 0 ? '' : m.slice(slash + 1);
-    return type === 'T' || type === 'SP' ||
-           (type === 'I' && (num === '3' || num === '4' || num === '6'));
-  });
+  return models.every(isNoiseModel);
 }
 
 const rec = new Map();
@@ -185,22 +187,28 @@ let scanned = 0, skipped = 0;
 // Pass 1: collect every model type each spelling is attested with, so the
 // name test below can ask about the spelling as a whole rather than one row.
 const modelsFor = Object.create(null);   // "constructor" is a Romanian word
+const headOf = Object.create(null);      // inflected form -> its headword
 for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const line = lineRaw.trim();
   if (!line) continue;
-  const tab = line.lastIndexOf('\t');
-  if (tab < 0) continue;
-  const clean = P.normalize(line.slice(0, tab)).replace(/'/g, '');
-  (modelsFor[clean] || (modelsFor[clean] = [])).push(line.slice(tab + 1));
+  const col = line.split('\t');
+  if (col.length < 2) continue;
+  const clean = P.normalize(col[0]).replace(/'/g, '');
+  (modelsFor[clean] || (modelsFor[clean] = [])).push(col[1]);
+  if (col[2]) {
+    const head = P.normalize(col[2]).replace(/'/g, '');
+    if (head && head !== clean && !(clean in headOf)) headOf[clean] = head;
+  }
 }
 
 let namesDropped = 0;
 for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const lineFull = lineRaw.trim();
   if (!lineFull) continue;
-  const tab = lineFull.lastIndexOf('\t');
-  if (tab < 0) continue;
-  const line = lineFull.slice(0, tab);
+  const cols = lineFull.split('\t');
+  if (cols.length < 2) continue;
+  const line = cols[0];
+  const model = cols[1];
   scanned++;
   const norm = P.normalize(line);
   const clean = norm.replace(/'/g, '');
@@ -217,14 +225,29 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const subRate = rateOf(subs, clean);
   const wikiRate = rateOf(wiki, clean);
 
-  // ~8% of dexonline forms carry no accent marker, and the same spelling can
-  // appear both with and without one. Keeping whichever came first let an
-  // unaccented duplicate shadow the accented entry, silently downgrading the
-  // word to rule-guessed stress — so only skip when we already have a
-  // marked form.
+  // The same spelling turns up on several lexemes, and they disagree about
+  // where the stress falls. Score the candidates and keep the best rather
+  // than whichever the file happened to list first.
+  //
+  //  * a form with an accent marker beats one without — ~8% carry none, and
+  //    letting an unmarked duplicate win silently downgrades the word to
+  //    rule-guessed stress;
+  //  * a real lexeme beats a provisional one — "lup'i" is the name Lupi and
+  //    "codr'i" likewise, and neither should set the stress for the nouns
+  //    "l'upi" and "c'odri";
+  //  * stress anywhere else beats stress on a final "i". Where a noun and a
+  //    verb share a spelling, the noun is the commoner reading and the one
+  //    a lyricist wants: "'ochi" and "p'omi" over the infinitives "och'i"
+  //    and "pom'i". A verb with no competing form, like "abol'i", is
+  //    unaffected and still divides a-bo-li.
+  const aposAt = norm.indexOf("'");
+  const stressedFinalI = aposAt >= 0 && aposAt === clean.length - 1 &&
+                         clean[clean.length - 1] === 'i';
+  const score = (aposAt >= 0 ? 4 : 0) +
+                (isNoiseModel(model) ? 0 : 2) +
+                (stressedFinalI ? 0 : 1);
   const existing = rec.get(clean);
-  if (existing && existing.spos >= 0) continue;
-  if (existing && norm.indexOf("'") < 0) continue;
+  if (existing && existing.score >= score) continue;
 
   let a = null;
   try { a = P.analyze(norm); } catch (e) { /* ignore */ }
@@ -239,7 +262,7 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   // than the one the app derives from the bare word.
   const apos = norm.indexOf("'");
   rec.set(clean, { exact: a.exactKey, asson: a.assonanceKey,
-                   syll: a.syllables, spos: apos,
+                   syll: a.syllables, spos: apos, score: score,
                    subRate: subRate, wikiRate: wikiRate });
 }
 console.error(`forms scanned: ${scanned}, usable: ${rec.size}, skipped: ${skipped}`);
@@ -386,6 +409,35 @@ function loadDexHyphenations(pathname) {
   return map;
 }
 
+/* Carries a headword's division onto its inflected forms.
+ *
+ * dexonline records hyphenations against headwords while the index is
+ * mostly inflected forms, so "albie" has a division and "albia", "albii"
+ * and "albiile" do not — though they share the stem where the interesting
+ * decision was made.
+ *
+ * Only the shared prefix is carried over, and only the part of it the
+ * headword's value actually covers. Everything past the point where the two
+ * forms diverge is left to the patterns, since that is the ending, which
+ * they handle well. A boundary landing exactly on the divergence point is
+ * kept: it says the stem's last syllable closes there, which stays true
+ * whatever ending follows. */
+function propagateFromHead(word, head, parsed) {
+  let shared = 0;
+  while (shared < word.length && shared < head.length &&
+         word[shared] === head[shared]) shared++;
+  if (shared < 2) return null;
+
+  const from = parsed.from;
+  const to = Math.min(parsed.to, shared);
+  if (to <= from) return null;
+
+  const cuts = parsed.cuts.filter(c => c > 0 && c < word.length &&
+                                       c >= from && c <= to);
+  if (!cuts.length) return null;
+  return { cuts: cuts, from: from, to: to };
+}
+
 const dexHyph = loadDexHyphenations(dexHyphPath);
 
 /* ---- per-word scalars ---- */
@@ -393,25 +445,34 @@ const dexHyph = loadDexHyphenations(dexHyphPath);
 // taken from these rather than from nucleus detection, because the
 // phonological pass mis-analyses hiatus in words like "superior" and
 // "scriitor" — it turns the i into a glide and undercounts.
-let dexFull = 0, dexFrag = 0;
+let dexFull = 0, dexFrag = 0, dexStem = 0;
 const cutsPerWord = words.map(w => {
   if (!hyphTable) return '';
   // Pass the stressed vowel's offset: it is the only thing that separates a
   // whispered final "i" from a stressed one, so "b'oli" stays one syllable
   // while "abol'i" divides a-bo-li.
-  const fromDex = dexHyph[w];
   const rc = rec.get(w);
   const stress = rc && rc.spos >= 0 ? rc.spos : -1;
+  let fromDex = dexHyph[w];
+  let viaStem = false;
+  if (!fromDex) {
+    const head = headOf[w];
+    const headHyph = head && dexHyph[head];
+    if (headHyph) {
+      fromDex = propagateFromHead(w, head, headHyph);
+      viaStem = !!fromDex;
+    }
+  }
   let cs;
-  if (fromDex && fromDex.from === 0 && fromDex.to === w.length) {
+  if (fromDex && !viaStem && fromDex.from === 0 && fromDex.to === w.length) {
     dexFull++;
     cs = fromDex.cuts;
   } else if (fromDex) {
+    if (viaStem) dexStem++; else dexFrag++;
     // A fragment overrides the patterns only across the span it covers: its
     // own boundaries go in, and any pattern boundary inside that span which
     // it did not record comes out, since the fragment shows those letters
     // grouped into whole syllables.
-    dexFrag++;
     const own = new Set(fromDex.cuts);
     const kept = H.cutPoints(w, hyphTable, stress)
       .filter(c => c <= fromDex.from || c >= fromDex.to || own.has(c));
@@ -423,7 +484,7 @@ const cutsPerWord = words.map(w => {
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
 });
 const cuts = cutsPerWord.join('\n');
-console.error(`  from dexonline: ${dexFull} whole-word, ${dexFrag} via fragment, of ${words.length}`);
+console.error(`  from dexonline: ${dexFull} whole-word, ${dexFrag} via fragment, ${dexStem} via stem — ${dexFull + dexFrag + dexStem} of ${words.length}`);
 
 const syll = words.map((w, i) => {
   const n = hyphTable ? cutsPerWord[i].length + 1 : rec.get(w).syll;

@@ -162,3 +162,37 @@ everything else.
 whispered in `b'oli` (the noun, one syllable) but a nucleus in `abol'i` and
 `bol'i` (the verbs, `a-bo-li`). Nothing in the spelling distinguishes them —
 only dexonline's stress marker does.
+
+### Reaching inflected forms
+
+dexonline records divisions against headwords, while the index is mostly
+inflected forms — `albie` has one and `albia`, `albii`, `albiile` do not,
+though they share the stem where the interesting decision was made. The
+third column of `forms_typed.txt` carries each form's headword, and the
+division is propagated across the shared prefix; everything past the point
+where the two forms diverge is left to the patterns, since that is the
+ending. Coverage goes from 11415 words to 39704.
+
+Tested by taking words that have both a headword division and one of their
+own, discarding the latter, and checking whether propagation reproduces it:
+96.6%, against 83.5% for the patterns alone.
+
+### Line breaks are not sung syllables
+
+dexonline's column is orthographic — it says where a word may break across
+a line. That parts company with syllable counting on the whispered final
+`i`: `lu-pi`, `o-chi` and `mul-ți` are legitimate breaks but each is one
+sung syllable. `mergeWhisperedFinalI` puts them back together, leaving
+`zil-nici` alone because its last piece has a nucleus of its own, and
+`co-dri` because an obstruent+liquid cluster keeps the `i` syllabic.
+
+### Choosing among homographs
+
+A spelling turns up on several lexemes and they disagree about the stress,
+so candidates are scored rather than taking whichever the dump listed
+first. An accented form beats an unaccented one; a real lexeme beats a
+provisional one, so the name `lup'i` does not set the stress for the noun
+`l'upi`; and stress anywhere else beats stress on a final `i`, so the nouns
+`'ochi` and `p'omi` win over the infinitives `och'i` and `pom'i`. A verb
+with no competing form, like `abol'i`, keeps its final stress and still
+divides `a-bo-li`.
