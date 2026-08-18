@@ -22,6 +22,7 @@ let _offsets = null;        // Int32Array, start index of each word
 let _count = 0;
 let _syll = '';
 let _spos = '';             // base36 stressed-vowel offset, +1 ('0' = none)
+let _cuts = null;           // per-word syllable cut offsets, base36
 let _exact = null;
 let _asson = null;
 let _rank = null;           // Map wordId -> frequency rank (attested only)
@@ -95,6 +96,7 @@ async function load(onProgress) {
       _raw = data.words;
       _syll = data.syll;
       _spos = data.spos;
+      _cuts = data.cuts ? data.cuts.split('\n') : null;
       _exact = data.exact;
       _asson = data.asson;
 
@@ -148,13 +150,54 @@ function analyzeWord(word) {
         ? norm.slice(0, off - 1) + "'" + norm.slice(off - 1)
         : norm;
       const a = P.analyze(marked);
-      if (a) { a.attested = off > 0; a.id = id; }
+      if (a) {
+        a.attested = off > 0;
+        a.id = id;
+        applyStoredSyllables(a, id, off);
+      }
       return a;
     }
   }
   const a = P.analyze(norm);
   if (a) { a.attested = false; a.id = -1; }
   return a;
+}
+
+/* Replaces the phonologically-derived syllable split with the one stored in
+ * the index, which comes from hyphenation patterns and is far more reliable:
+ * rules cannot tell "pie-le" from "su-pe-ri-or", and undercount hiatus in
+ * words like "scriitor". The stressed syllable is whichever piece contains
+ * the attested stressed-vowel offset. */
+function applyStoredSyllables(a, id, off) {
+  if (!_cuts) return;
+  const raw = _cuts[id];
+  if (raw === undefined) return;
+
+  const cuts = [];
+  for (const ch of raw) cuts.push(parseInt(ch, 36));
+
+  const parts = [];
+  let prev = 0;
+  for (const c of cuts) {
+    if (c > prev && c < a.word.length) { parts.push(a.word.slice(prev, c)); prev = c; }
+  }
+  parts.push(a.word.slice(prev));
+  if (!parts.length) return;
+
+  a.syllableParts = parts;
+  a.syllables = parts.length;
+
+  if (off > 0) {
+    const target = off - 1;             // character offset of stressed vowel
+    let at = 0;
+    for (let i = 0; i < parts.length; i++) {
+      const end = at + parts[i].length;
+      if (target < end) { a.stressIndex = i; break; }
+      at = end;
+    }
+  } else if (a.stressIndex >= parts.length) {
+    a.stressIndex = parts.length - 1;
+  }
 }
 
 function rankOf(id) {

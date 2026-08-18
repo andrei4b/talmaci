@@ -46,12 +46,27 @@ const P = require(path.join(__dirname, '..', '..', 'js', 'ro-phonetics.js'));
 const MAX_EXACT = 401;   // perfect rhymes kept per key -> 400 shown
 const MAX_ASSON = 201;   // assonance matches kept per key -> 200 shown
 
+const H = require(path.join(__dirname, 'hyphenate.js'));
+
 const formsPath = process.argv[2];
 const freqPath = process.argv[3];
 const wikiFreqPath = process.argv[4];   // optional second corpus
+const hyphPath = process.argv[5];       // optional hyph_ro_RO.dic
 if (!formsPath || !freqPath) {
-  console.error('usage: build-index.js <forms_accented.txt> <ro_freq.txt> [ro_wiki_freq.txt]');
+  console.error('usage: build-index.js <forms_accented.txt> <ro_freq.txt> [ro_wiki_freq.txt] [hyph_ro_RO.dic]');
   process.exit(1);
+}
+
+// Syllable division is looked up from hyphenation patterns rather than
+// derived phonologically: "pie-le" vs "su-pe-ri-or" and "cre-ion" vs
+// "scri-i-tor" divide differently despite identical letter sequences, which
+// no spelling rule can predict. Applied here so the patterns never ship.
+let hyphTable = null;
+if (hyphPath && fs.existsSync(hyphPath)) {
+  hyphTable = H.loadPatterns(hyphPath);
+  console.error(`hyphenation patterns: ${hyphTable.pats.size}`);
+} else {
+  console.error('hyphenation patterns: (not provided — falling back to nucleus counts)');
 }
 
 /* ---- frequency ----
@@ -219,7 +234,21 @@ const exact = build('exact', MAX_EXACT);
 const asson = build('asson', MAX_ASSON);
 
 /* ---- per-word scalars ---- */
-const syll = words.map(w => String(Math.min(9, rec.get(w).syll))).join('');
+// Cut offsets per word, base36, one word per line. Syllable counts are
+// taken from these rather than from nucleus detection, because the
+// phonological pass mis-analyses hiatus in words like "superior" and
+// "scriitor" — it turns the i into a glide and undercounts.
+const cutsPerWord = words.map(w => {
+  if (!hyphTable) return '';
+  const cs = H.cutPoints(w, hyphTable);
+  return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
+});
+const cuts = cutsPerWord.join('\n');
+
+const syll = words.map((w, i) => {
+  const n = hyphTable ? cutsPerWord[i].length + 1 : rec.get(w).syll;
+  return String(Math.min(9, n));
+}).join('');
 // Base36, offset by one so '0' means "no attested marker, fall back to
 // rules". Keeps this to a single character per word.
 const spos = words.map(w => {
@@ -234,10 +263,11 @@ const outDir = path.join(__dirname, '..', '..', 'data');
 fs.mkdirSync(outDir, { recursive: true });
 const outFile = path.join(outDir, 'rhyme-index.json');
 fs.writeFileSync(outFile, JSON.stringify({
-  version: 3,
+  version: 4,
   count: words.length,
   words: words.join('\n'),
   syll: syll,
+  cuts: cuts,
   spos: spos,
   rank: rankDeltas.join(','),
   exact: exact,
