@@ -43,8 +43,65 @@ function loadPatterns(dicPath) {
   return { pats, exceptions };
 }
 
+/* ---- exceptions ----
+ * Gaps in the rospell pattern set. Keep these few and justified: the
+ * patterns are right far more often than any rule written here, so anything
+ * added should be verified against real vocabulary first, not assumed.
+ *
+ * WORD_EXCEPTIONS is for genuine one-offs, keyed by the whole word with the
+ * intended division as the value. Prefer a class rule below when the same
+ * gap affects a whole family of words — it is the difference between
+ * fixing "lua" and fixing the 48 words that share its shape. */
+// Object.create(null), not {}: a plain object inherits Object.prototype, so
+// looking up an ordinary Romanian word that happens to share a name with a
+// built-in ("constructor" is a word here) would return that function instead
+// of undefined and crash the lookup.
+const WORD_EXCEPTIONS = Object.create(null);
+// e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
+
+const VOWEL_LETTERS = 'aăâeiîou';
+function isVowelCh(c) { return VOWEL_LETTERS.indexOf(c) >= 0; }
+
+/* Applies the exception layer to pattern-derived cuts. */
+function applyExceptions(word, cuts) {
+  const n = word.length;
+
+  // Word-final "ea" is a rising diphthong and one syllable ("bea", "vrea",
+  // "ca-fea", "per-dea"), but the pattern set carries a general "e1a1" rule
+  // that would strand the final "a". Only word-final: interior "ea" varies,
+  // and joining it everywhere would wreck "re-al".
+  if (n >= 2 && word[n - 1] === 'a' && word[n - 2] === 'e') {
+    cuts = cuts.filter(c => c !== n - 1);
+  }
+
+  // The pattern set has "u1o" but no "u1a", so word-final "u"+"a" hiatus is
+  // never split: "lua", "e-va-lua", "po-lua". A blanket u-a rule is wrong
+  // though — it would split the definite-article forms ("bas-ma-ua",
+  // "an-drea-ua") where "ua" really is one syllable. What separates them is
+  // what precedes: a consonant means the u is its own nucleus (lu-a), a
+  // vowel means "ua" is the article and stays whole (ma-ua). Verified
+  // against the indexed vocabulary: 48 words take the split, 143 keep it.
+  if (n >= 3 && word[n - 1] === 'a' && word[n - 2] === 'u' &&
+      !isVowelCh(word[n - 3]) && cuts.indexOf(n - 1) < 0) {
+    cuts = cuts.concat([n - 1]).sort((x, y) => x - y);
+  }
+
+  return cuts;
+}
+
+function cutsFromSplit(split) {
+  const parts = split.split('-');
+  const cuts = [];
+  let at = 0;
+  for (let i = 0; i < parts.length - 1; i++) { at += parts[i].length; cuts.push(at); }
+  return cuts;
+}
+
 /* Returns cut offsets into `word`: a new syllable starts at each offset. */
 function cutPoints(word, table) {
+  const manual = WORD_EXCEPTIONS[word];
+  if (manual) return cutsFromSplit(manual);
+
   const exc = table.exceptions.get(word);
   if (exc) {
     const cuts = [];
@@ -77,17 +134,7 @@ function cutPoints(word, table) {
     if (points[c + 1] % 2 === 1) cuts.push(c);
   }
 
-  // The pattern set carries a general "e1a1" rule, which is right for
-  // hiatus ("re-al", "a-le-a") but wrong for the rising diphthong "ea".
-  // Word-finally, "ea" is reliably a diphthong and one syllable — "bea",
-  // "vrea", "ca-fea", "per-dea" — so drop a cut that would strand that
-  // final "a". Restricted to word-final position on purpose: interior "ea"
-  // can go either way, and blanket-joining it would wreck "re-al".
-  const last = word.length - 1;
-  if (last >= 1 && word[last] === 'a' && word[last - 1] === 'e') {
-    return cuts.filter(c => c !== last);
-  }
-  return cuts;
+  return applyExceptions(word, cuts);
 }
 
 function syllables(word, table) {
