@@ -57,6 +57,13 @@ function loadPatterns(dicPath) {
 // built-in ("constructor" is a word here) would return that function instead
 // of undefined and crash the lookup.
 const WORD_EXCEPTIONS = Object.create(null);
+
+// Prefixes ending in "o" that keep their hiatus before a vowel-initial stem.
+// Full strings, not just the final "o": matching only the last two letters
+// would misread "bas-to-a-ne" and "a-na-lo-a-ga" as prefixed.
+const O_PREFIXES = ['co', 'auto', 'arheo', 'neo', 'proto', 'termo', 'electro',
+  'hidro', 'macro', 'micro', 'foto', 'radio', 'video', 'bio', 'geo', 'paleo',
+  'socio', 'psiho'];
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
 
 const VOWEL_LETTERS = 'aăâeiîou';
@@ -83,6 +90,33 @@ function applyExceptions(word, cuts) {
       (i === 1 && word.startsWith('rea')) ||
       (i === 2 && (word.startsWith('crea') || word.startsWith('idea')));
     if (!isStemHiatus) cuts = cuts.filter(c => c !== i + 1);
+  }
+
+  // "oa" behaves exactly like "ea": a rising diphthong in the overwhelming
+  // majority of words — "zboa-ră", "bom-boa-ne", "roa-gă", "pis-toa-le",
+  // "boa-be", "răz-boa-ie" — while the patterns split it everywhere.
+  //
+  // The genuine "o-a" hiatus is compounding: a prefix ending in "o" meeting
+  // a vowel-initial stem, as in "co-a-gu-la", "an-ti-co-a-gu-lant",
+  // "au-to-a-gre-si-u-ne", "ar-he-o-as-tro-no-mi-a". Matching the prefix
+  // where the "o" actually sits (not just at the word's start) is what lets
+  // "anticoagulant" keep its hiatus while "coboară" loses its false one —
+  // "cobo" does not end in the "co" prefix, it ends in "bo".
+  // Verified against the indexed vocabulary: 363 words take the diphthong,
+  // 30 the hiatus.
+  for (let i = 0; i + 1 < n; i++) {
+    if (word[i] !== 'o' || word[i + 1] !== 'a') continue;
+    const stem = word.slice(0, i + 1);
+    const isPrefixHiatus = O_PREFIXES.some(px => stem.endsWith(px));
+    if (!isPrefixHiatus) cuts = cuts.filter(c => c !== i + 1);
+  }
+
+  // Word-initial "eu" is the Greek prefix and one syllable: "eu-ca-lipt",
+  // "eu-ro-pa", "eu-ca-ri-ot". The patterns split all 339 such words, while
+  // leaving the bare pronoun "eu" whole. Anchored at the start, so the real
+  // "e-u" hiatus of "re-u-nit", "ne-u-tru" and "pre-o-cu-pat" is unaffected.
+  if (n > 2 && word[0] === 'e' && word[1] === 'u') {
+    cuts = cuts.filter(c => c !== 1);
   }
 
   // "nici" + vowel divides ni-cio / ni-ciun, but the patterns either leave
@@ -282,7 +316,96 @@ function cutPoints(word, table) {
     if (points[c + 1] % 2 === 1) cuts.push(c);
   }
 
-  return mergeVowellessPieces(word, splitMultiNucleusPieces(word, applyExceptions(word, cuts)));
+/* Places the syllable boundary around a glide.
+ *
+ * A vowel-flanked "i"/"u" spells a consonantal glide (/j/, /w/) and can
+ * never be a syllable on its own, but the patterns strand it ("bă-i-at",
+ * "răz-bo-i-ul") or attach it backwards ("mai-or", "pui-ul", "hai-os").
+ *
+ * Runs last, on piece boundaries rather than on letters. An earlier attempt
+ * worked letter by letter and broke on runs of three or more vowels: in
+ * "biciuia" both the "u" and the "i" look vowel-flanked, so the second pass
+ * put back the cut the first had removed and left "bi-ci-u-ia". Working on
+ * boundaries also means this only ever shifts a cut inside a vowel run, so
+ * it cannot strand a consonant or create a second nucleus, and the two
+ * invariant passes above stay satisfied.
+ *
+ * Direction is decided by what the following piece opens with. If its first
+ * vowel is its own nucleus ("ul", "at", "or"), the glide is that syllable's
+ * onset and moves forward: "răz-bo-iul", "bă-iat", "ma-ior". If it instead
+ * opens with its own glide+vowel pair ("ia", "ie", "iat"), the stranded
+ * letter closes the syllable before it: "bi-ciu-ia", "chiu-ie",
+ * "în-greu-iat", "chi-și-nău-ian".
+ *
+ * A letter after a consonant is a nucleus, not a glide, so "lu-a", "fi-ul",
+ * "scri-i-tor" and "su-pe-ri-or" are left alone. */
+function placeGlideBoundaries(word, cuts) {
+  const isV = c => VOWEL_LETTERS.indexOf(c) >= 0;
+
+  const build = cs => {
+    const parts = [];
+    let prev = 0;
+    for (const c of cs) { parts.push(word.slice(prev, c)); prev = c; }
+    parts.push(word.slice(prev));
+    return parts;
+  };
+
+  // Pull a trailing glide forward: "mai|or" -> "ma|ior".
+  for (let guard = 0; guard < 40; guard++) {
+    const parts = build(cuts);
+    let moved = false;
+    let at = 0;
+    for (let i = 0; i + 1 < parts.length; i++) {
+      at += parts[i].length;
+      const p = parts[i];
+      if (p.length < 2) continue;
+      const last = p[p.length - 1];
+      if (last !== 'i' && last !== 'u') continue;
+      if (!isV(p[p.length - 2])) continue;          // nucleus, not a glide
+      const nxt = parts[i + 1];
+      if (!isV(nxt[0])) continue;                   // no vowel to be onset of
+      // If the next piece already opens with its own glide+vowel pair, it
+      // has an onset and this letter belongs where it is: "bi-ciu|ia" must
+      // not become "bi-ci|uia".
+      if (nxt.length >= 2 && (nxt[0] === 'i' || nxt[0] === 'u') && isV(nxt[1])) continue;
+      const k = cuts.indexOf(at);
+      if (k < 0 || cuts.indexOf(at - 1) >= 0) continue;
+      cuts = cuts.slice(0, k).concat([at - 1], cuts.slice(k + 1));
+      moved = true;
+      break;
+    }
+    if (!moved) break;
+  }
+
+  // Absorb a glide left stranded as its own piece.
+  for (let guard = 0; guard < 40; guard++) {
+    const parts = build(cuts);
+    let at = 0;
+    let drop = -1;
+    for (let i = 0; i < parts.length && drop < 0; i++) {
+      const p = parts[i];
+      if (i > 0 && i + 1 < parts.length && p.length === 1 &&
+          (p === 'i' || p === 'u') &&
+          isV(parts[i - 1][parts[i - 1].length - 1]) && isV(parts[i + 1][0])) {
+        const nxt = parts[i + 1];
+        const nextOpensWithGlide =
+          nxt.length >= 2 && (nxt[0] === 'i' || nxt[0] === 'u') && isV(nxt[1]);
+        // forward -> drop the cut after the glide; backward -> the one before
+        drop = nextOpensWithGlide ? at : at + 1;
+      }
+      at += p.length;
+    }
+    if (drop < 0) break;
+    const k = cuts.indexOf(drop);
+    if (k < 0) break;
+    cuts = cuts.slice(0, k).concat(cuts.slice(k + 1));
+  }
+
+  return cuts;
+}
+
+  return placeGlideBoundaries(word,
+    mergeVowellessPieces(word, splitMultiNucleusPieces(word, applyExceptions(word, cuts))));
 }
 
 function syllables(word, table) {
