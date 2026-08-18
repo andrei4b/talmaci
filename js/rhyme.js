@@ -189,11 +189,16 @@ function lookup(word, opts) {
   }
   out.sort((x, y) => rankOf(x) - rankOf(y));
 
-  const limit = o.limit || 120;
+  // Return everything that matched. The caller decides how much to render;
+  // capping here silently hid ~36% of the stored postings, so a word like
+  // "nemulțumire" (rank 120 for /ire/) could not be found at all unless a
+  // syllable filter happened to promote it into view.
+  const limit = o.limit || out.length;
   return {
     ok: true,
     analysis: a,
     tooBroad: false,
+    total: out.length,
     results: out.slice(0, limit).map(i => ({
       word: wordAt(i),
       syllables: +_syll[i],

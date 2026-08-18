@@ -47,6 +47,11 @@ let _activeVersionId = null;
 let _rimeQuery = '';
 let _rimeMode = 'exact';  // 'exact' | 'asson'
 let _rimeSyll = 0;        // 0 = any
+// How many results are currently rendered. Grows via "arată mai multe" —
+// productive endings like -ire match several hundred words, and rendering
+// them all at once is a lot of DOM for results you rarely scroll to.
+const RIME_PAGE = 120;
+let _rimeShown = RIME_PAGE;
 
 // Remembers which version was last viewed, per song, per device — a
 // personal UI preference, not shared team data, so this is localStorage
@@ -197,23 +202,27 @@ function _renderRimeTab(content) {
     type: 'text',
     placeholder: 'Scrie un cuvânt…',
     value: _rimeQuery,
-    oninput: debounce((e) => { _rimeQuery = e.target.value; _runRimeSearch(wrap); }, 250)
+    oninput: debounce((e) => {
+      _rimeQuery = e.target.value;
+      _rimeShown = RIME_PAGE;   // new search starts from the top again
+      _runRimeSearch(wrap);
+    }, 250)
   });
   wrap.appendChild(el('div', { class: 'rime__search' }, [input]));
 
   // Mode + syllable filters
   const modeRow = el('div', { class: 'rime__filters' }, [
-    _segButton('Rime perfecte', _rimeMode === 'exact', () => { _rimeMode = 'exact'; _renderRimeTabKeepFocus(content); }),
-    _segButton('Asonanțe', _rimeMode === 'asson', () => { _rimeMode = 'asson'; _renderRimeTabKeepFocus(content); })
+    _segButton('Rime perfecte', _rimeMode === 'exact', () => { _rimeMode = 'exact'; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }),
+    _segButton('Asonanțe', _rimeMode === 'asson', () => { _rimeMode = 'asson'; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
   ]);
   wrap.appendChild(modeRow);
 
   const sylRow = el('div', { class: 'rime__filters rime__filters--syll' }, [
     el('span', { class: 'rime__filters-label' }, ['Silabe']),
-    _segButton('Orice', _rimeSyll === 0, () => { _rimeSyll = 0; _renderRimeTabKeepFocus(content); })
+    _segButton('Orice', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
   ]);
   [1, 2, 3, 4, 5].forEach(n => {
-    sylRow.appendChild(_segButton(String(n), _rimeSyll === n, () => { _rimeSyll = n; _renderRimeTabKeepFocus(content); }));
+    sylRow.appendChild(_segButton(String(n), _rimeSyll === n, () => { _rimeSyll = n; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }));
   });
   wrap.appendChild(sylRow);
 
@@ -278,11 +287,13 @@ async function _runRimeSearch(wrap) {
   }
 
   const a = res.analysis;
+  const total = res.total || 0;
   body.appendChild(el('div', { class: 'rime__analysis' }, [
     el('strong', {}, [a.word]),
     ' · ' + a.syllables + (a.syllables === 1 ? ' silabă' : ' silabe') +
     ' · accent pe silaba ' + (a.stressIndex + 1) +
-    (a.attested ? '' : ' (estimat)')
+    (a.attested ? '' : ' (estimat)') +
+    (total ? ' · ' + total + (total === 1 ? ' rezultat' : ' rezultate') : '')
   ]));
 
   if (res.tooBroad) {
@@ -303,8 +314,9 @@ async function _runRimeSearch(wrap) {
     return;
   }
 
+  const shown = res.results.slice(0, _rimeShown);
   const list = el('div', { class: 'rime__results' });
-  res.results.forEach(r => {
+  shown.forEach(r => {
     list.appendChild(el('button', {
       class: 'rime__word' + (r.common ? '' : ' rime__word--rare'),
       title: r.syllables + ' silabe',
@@ -315,6 +327,14 @@ async function _runRimeSearch(wrap) {
     }, [r.word]));
   });
   body.appendChild(list);
+
+  const remaining = res.total - shown.length;
+  if (remaining > 0) {
+    body.appendChild(el('button', {
+      class: 'btn btn--wide',
+      onclick: () => { _rimeShown += RIME_PAGE; _runRimeSearch(wrap); }
+    }, ['Arată mai multe (' + remaining + ')']));
+  }
 }
 
 function _activeVersion() {
