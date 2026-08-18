@@ -138,7 +138,13 @@ function mergeVowellessPieces(word, cuts) {
     if (bad < 0) return cuts;
 
     // parts[i] starts at cuts[i-1] and ends at cuts[i].
-    const mergeForward = (bad < parts.length - 1) && hasVowel(parts[bad + 1][0] || '');
+    // A piece at either end has only one direction available: "b-jornson"
+    // and "ch-loris" have nothing to their left, and the piece to their
+    // right opens with a consonant, so the vowel test below would strand
+    // them forever. Force the only possible merge in those positions.
+    const mergeForward = (bad === 0)
+      ? true
+      : (bad < parts.length - 1) && hasVowel(parts[bad + 1][0] || '');
     const dropIdx = mergeForward ? bad : bad - 1;
     if (dropIdx < 0 || dropIdx >= cuts.length) {
       // Nothing left to merge into (single vowel-less token); give up rather
@@ -146,6 +152,87 @@ function mergeVowellessPieces(word, cuts) {
       return cuts.slice(0, Math.max(0, cuts.length - 1));
     }
     cuts = cuts.slice(0, dropIdx).concat(cuts.slice(dropIdx + 1));
+  }
+  return cuts;
+}
+
+/* The complement of mergeVowellessPieces: no syllable may contain TWO vowel
+ * groups separated by consonants.
+ *
+ * The rospell patterns have coverage gaps for certain consonant sequences —
+ * "op-tim" and "sep-tim" divide correctly but "poftim" does not, because
+ * "pt" has patterns and "ft" has none; likewise m+n ("domnilor") and several
+ * clusters after ă/â ("pământ", "rămâne", "săptămâni"). Where the patterns
+ * are silent, fall back to the standard rules.
+ *
+ * This only ever splits BETWEEN vowel groups, never inside one, so the
+ * diphthong-vs-hiatus decisions made by the patterns and the exception layer
+ * above are left untouched. */
+function splitMultiNucleusPieces(word, cuts) {
+  const VOW = 'aăâeiîouy';
+  const isV = c => VOW.indexOf(c) >= 0;
+  const OBSTR = 'pbtdcgfv';
+  const LIQ = 'lr';
+
+  for (let guard = 0; guard < 40; guard++) {
+    const bounds = [0].concat(cuts, [word.length]);
+    let added = -1;
+
+    for (let b = 0; b + 1 < bounds.length && added < 0; b++) {
+      const start = bounds[b], end = bounds[b + 1];
+      const piece = word.slice(start, end);
+
+      // Locate vowel groups within the piece.
+      const groups = [];
+      for (let i = 0; i < piece.length; i++) {
+        if (!isV(piece[i])) continue;
+        let j = i;
+        while (j + 1 < piece.length && isV(piece[j + 1])) j++;
+        groups.push([i, j]);
+        i = j;
+      }
+
+      // A word-final "i" after a consonant is "i șoptit" — palatalization,
+      // not a syllable ("lupi", "a-ici"). Counting it as a nucleus made this
+      // split "a-ici" into "a-i-ci". It stays syllabic after an
+      // obstruent+liquid cluster, which is why "co-dri" keeps two.
+      if (end === word.length && groups.length > 1) {
+        const lastG = groups[groups.length - 1];
+        if (lastG[0] === lastG[1] && piece[lastG[0]] === 'i' &&
+            lastG[0] === piece.length - 1 && lastG[0] > 0 && !isV(piece[lastG[0] - 1])) {
+          const c1 = piece[lastG[0] - 1];
+          const c2 = lastG[0] >= 2 ? piece[lastG[0] - 2] : '';
+          const mutaCumLiquida = LIQ.indexOf(c1) >= 0 && OBSTR.indexOf(c2) >= 0;
+          if (!mutaCumLiquida) groups.pop();
+        }
+      }
+
+      if (groups.length < 2) continue;
+
+      // Consonants between the first two groups decide where the cut goes.
+      const cStart = groups[0][1] + 1;
+      const cEnd = groups[1][0];          // exclusive
+      const cons = piece.slice(cStart, cEnd);
+      if (!cons.length) continue;         // adjacent groups: a vowel question, leave it
+
+      let rel;
+      if (cons.length === 1) {
+        rel = cStart;                                   // V-CV  -> ca-să
+      } else if (cons.length === 2) {
+        // "ch"/"gh" are single sounds and never split.
+        if (cons === 'ch' || cons === 'gh') rel = cStart;
+        else if (OBSTR.indexOf(cons[0]) >= 0 && LIQ.indexOf(cons[1]) >= 0) rel = cStart;  // co-dri
+        else rel = cStart + 1;                          // V-CCV -> car-te
+      } else {
+        rel = cStart + 1;                               // V-CCCV -> mun-te
+      }
+
+      const abs = start + rel;
+      if (abs > start && abs < end && cuts.indexOf(abs) < 0) added = abs;
+    }
+
+    if (added < 0) return cuts;
+    cuts = cuts.concat([added]).sort((x, y) => x - y);
   }
   return cuts;
 }
@@ -195,7 +282,7 @@ function cutPoints(word, table) {
     if (points[c + 1] % 2 === 1) cuts.push(c);
   }
 
-  return mergeVowellessPieces(word, applyExceptions(word, cuts));
+  return mergeVowellessPieces(word, splitMultiNucleusPieces(word, applyExceptions(word, cuts)));
 }
 
 function syllables(word, table) {
