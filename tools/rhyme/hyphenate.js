@@ -66,12 +66,31 @@ function isVowelCh(c) { return VOWEL_LETTERS.indexOf(c) >= 0; }
 function applyExceptions(word, cuts) {
   const n = word.length;
 
-  // Word-final "ea" is a rising diphthong and one syllable ("bea", "vrea",
-  // "ca-fea", "per-dea"), but the pattern set carries a general "e1a1" rule
-  // that would strand the final "a". Only word-final: interior "ea" varies,
-  // and joining it everywhere would wreck "re-al".
-  if (n >= 2 && word[n - 1] === 'a' && word[n - 2] === 'e') {
-    cuts = cuts.filter(c => c !== n - 1);
+  // "ea" is a rising diphthong and one syllable in the overwhelming
+  // majority of Romanian words — "bea", "ca-fea", "trea-ba", "chea-mă",
+  // "mear-gă", "ur-mea-ză" — but the pattern set carries a general "e1a1"
+  // rule that splits it everywhere. So drop the e|a cut by default.
+  //
+  // Genuine "e-a" hiatus does exist, and it is confined to neologisms built
+  // on the re-/cre-/ide- stems, where the "e" closes the stem and the "a"
+  // opens the next morpheme: "re-al", "re-a-li-zat", "cre-at", "i-de-al".
+  // Those are kept by matching the stem at the word's start, which is where
+  // that morpheme boundary always sits. A word like "treaba" shares the
+  // letters but not the structure, so it correctly keeps its diphthong.
+  for (let i = 0; i + 1 < n; i++) {
+    if (word[i] !== 'e' || word[i + 1] !== 'a') continue;
+    const isStemHiatus =
+      (i === 1 && word.startsWith('rea')) ||
+      (i === 2 && (word.startsWith('crea') || word.startsWith('idea')));
+    if (!isStemHiatus) cuts = cuts.filter(c => c !== i + 1);
+  }
+
+  // "nici" + vowel divides ni-cio / ni-ciun, but the patterns either leave
+  // it whole or cut after "nici". Move the boundary to where it belongs.
+  if (/^nici[ou]/.test(word)) {
+    cuts = cuts.filter(c => c !== 4);
+    if (cuts.indexOf(2) < 0) cuts = cuts.concat([2]);
+    cuts.sort((x, y) => x - y);
   }
 
   // The pattern set has "u1o" but no "u1a", so word-final "u"+"a" hiatus is
