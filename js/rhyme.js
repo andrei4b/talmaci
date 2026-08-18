@@ -277,7 +277,15 @@ function lookup(word, opts) {
   }
 
   const table = mode === 'asson' ? _asson : _exact;
-  const ids = decodeDeltas(table[key]);
+  // Two tiers, separated by "|": words that rhyme under their usual reading,
+  // then words that rhyme only under a secondary one. The second tier is
+  // ranked on its own and appended, so a rare sense like the verb
+  // "perfect'ă" stays reachable without displacing ordinary rhymes.
+  const raw = table[key] || '';
+  const bar = raw.indexOf('|');
+  const tiers = bar < 0
+    ? [decodeDeltas(raw), []]
+    : [decodeDeltas(raw.slice(0, bar)), decodeDeltas(raw.slice(bar + 1))];
 
   // syllablesOrMore turns the filter into a lower bound, which is what the
   // last bucket in the UI ("5+") needs. Counts are stored one digit per
@@ -286,15 +294,19 @@ function lookup(word, opts) {
   const wantSyll = o.syllables | 0;
   const orMore = !!o.syllablesOrMore;
   const out = [];
-  for (const idv of ids) {
-    if (idv === a.id) continue;
-    if (wantSyll) {
-      const n = +_syll[idv];
-      if (orMore ? n < wantSyll : n !== wantSyll) continue;
+  for (const tier of tiers) {
+    const group = [];
+    for (const idv of tier) {
+      if (idv === a.id) continue;
+      if (wantSyll) {
+        const n = +_syll[idv];
+        if (orMore ? n < wantSyll : n !== wantSyll) continue;
+      }
+      group.push(idv);
     }
-    out.push(idv);
+    group.sort((x, y) => rankOf(x) - rankOf(y));
+    for (const idv of group) out.push(idv);
   }
-  out.sort((x, y) => rankOf(x) - rankOf(y));
 
   // Return everything that matched. The caller decides how much to render;
   // capping here silently hid ~36% of the stored postings, so a word like

@@ -313,36 +313,60 @@ rankedWords.forEach((w, i) => rankOf.set(w, i));
 console.error(`ranked vocabulary: ${rankedWords.length}`);
 
 /* ---- posting lists ---- */
+/* Posting lists, in two tiers.
+ *
+ * Every reading of a word contributes its key, so "casa" turns up among the
+ * rhymes for "c'asă" and among those for "cas'a". But a word's secondary
+ * reading is usually its rarer sense — "perfect'ă" is the verb "a perfecta",
+ * not the everyday adjective — and letting those sit among the results for
+ * an unrelated query reads as noise: searching "mo-bi-LĂ" turned up
+ * "perfectă", which rhymes only under a reading almost nobody means.
+ *
+ * They stay reachable, but behind. Each key stores its primary-reading
+ * postings, then "|", then the ones that only rhyme under a secondary
+ * reading. Both tiers are ranked by frequency at query time; the second is
+ * simply appended after the first. */
 function build(keyName, cap) {
-  const map = new Map();
+  const map = new Map();   // key -> { primary: Set, secondary: Set }
+  const bucket = (k) => {
+    let b = map.get(k);
+    if (!b) { b = { primary: new Set(), secondary: new Set() }; map.set(k, b); }
+    return b;
+  };
   for (const w of words) {
-    // Every reading contributes its own key, so "casa" turns up both among
-    // the rhymes for "c'asă" and among those for "cas'a".
-    const keys = new Set();
-    const primary = rec.get(w)[keyName];
-    if (primary) keys.add(primary);
+    const rc = rec.get(w);
+    const primary = rc[keyName];
+    if (primary) bucket(primary).primary.add(w);
     const vm = variantsOf.get(w);
-    if (vm) for (const v of vm.values()) if (v[keyName]) keys.add(v[keyName]);
-    for (const k of keys) {
-      let arr = map.get(k);
-      if (!arr) { arr = []; map.set(k, arr); }
-      arr.push(w);
+    if (vm) {
+      for (const [off, v] of vm) {
+        if (off === rc.spos) continue;            // that is the primary
+        if (!v[keyName] || v[keyName] === primary) continue;
+        bucket(v[keyName]).secondary.add(w);
+      }
     }
   }
   const out = {};
-  let kept = 0;
-  for (const [k, arr] of map) {
-    // Keep the most frequent `cap` words, then store them in ascending id
-    // order so deltas stay small and positive.
-    arr.sort((a, b) => rankOf.get(a) - rankOf.get(b));
-    const top = arr.slice(0, cap).map(w => id.get(w)).sort((x, y) => x - y);
+  let kept = 0, secondaryKept = 0;
+  const encode = (set, room) => {
+    // Keep the most frequent, then store in ascending id order so the
+    // deltas stay small and positive.
+    const arr = Array.from(set).sort((a, b) => rankOf.get(a) - rankOf.get(b));
+    const top = arr.slice(0, room).map(w => id.get(w)).sort((x, y) => x - y);
     let prev = 0;
     const deltas = new Array(top.length);
     for (let i = 0; i < top.length; i++) { deltas[i] = top[i] - prev; prev = top[i]; }
-    out[k] = deltas.join(',');
-    kept += top.length;
+    return { text: deltas.join(','), n: top.length };
+  };
+  for (const [k, b] of map) {
+    const first = encode(b.primary, cap);
+    const second = encode(b.secondary, Math.max(0, cap - first.n));
+    out[k] = second.n ? first.text + '|' + second.text : first.text;
+    kept += first.n + second.n;
+    secondaryKept += second.n;
   }
-  console.error(`  ${keyName}: ${map.size} keys, ${kept} postings kept`);
+  console.error(`  ${keyName}: ${map.size} keys, ${kept} postings kept` +
+                ` (${secondaryKept} behind a secondary reading)`);
   return out;
 }
 
@@ -573,7 +597,7 @@ console.error(`  secondary stress readings: ${varsOut.length} on ${
   new Set(varsOut.map(v => v.split('~')[0])).size} words`);
 
 fs.writeFileSync(outFile, JSON.stringify({
-  version: 5,
+  version: 6,
   count: words.length,
   words: words.join('\n'),
   syll: syll,

@@ -262,3 +262,17 @@ is stored per reading too, because it follows the stress: `a-uzi` against
 
 The Rime tab shows a picker when a word has several, each labelled with its
 own division and stressed syllable.
+
+### Ranking the readings
+
+A word's secondary reading is usually its rarer sense — `perfect'ă` is the
+verb *a perfecta*, not the everyday adjective — and letting those sit among
+ordinary results reads as noise: searching `mo-bi-LĂ` used to turn up
+`perfectă`, which rhymes only under a reading almost nobody means.
+
+So each posting list has two tiers, separated by `|`: words that rhyme under
+their usual reading, then words that rhyme only under a secondary one. Both
+are ranked by frequency at query time and the second is appended after the
+first, so nothing is lost — searching the verb reading of `înapoi` leads with
+`trebui`, `trăi` and `construi`, and still reaches `voi` and `noi` further
+down.
