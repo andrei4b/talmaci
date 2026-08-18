@@ -44,22 +44,70 @@ const MAX_ASSON = 200;   // assonance matches kept per key
 
 const formsPath = process.argv[2];
 const freqPath = process.argv[3];
+const wikiFreqPath = process.argv[4];   // optional second corpus
 if (!formsPath || !freqPath) {
-  console.error('usage: build-index.js <forms_accented.txt> <ro_freq.txt>');
+  console.error('usage: build-index.js <forms_accented.txt> <ro_freq.txt> [ro_wiki_freq.txt]');
   process.exit(1);
 }
 
-/* ---- frequency ---- */
-const freq = new Map();
-for (const line of fs.readFileSync(freqPath, 'utf8').split('\n')) {
-  const sp = line.indexOf(' ');
-  if (sp <= 0) continue;
-  const w = P.normalize(line.slice(0, sp));
-  const n = parseInt(line.slice(sp + 1), 10);
-  if (!w || !n) continue;
-  freq.set(w, (freq.get(w) || 0) + n);   // merges cedilla/comma spellings
+/* ---- frequency ----
+ * Two corpora with very different registers. Subtitles capture everyday
+ * spoken Romanian; Wikipedia captures written/literary Romanian. Neither
+ * alone is adequate here: perfectly ordinary words like "preamărit" or
+ * "nemărginit" simply never occur in film dialogue, and were being ranked
+ * dead last purely for that.
+ *
+ * The two corpora are used for DIFFERENT jobs rather than merged into one
+ * score:
+ *
+ *   inclusion — a word is kept if it appears in EITHER corpus, which is
+ *               what rescues "preamărit" and "nemărginit";
+ *   ranking   — subtitle frequency orders the results, and words found only
+ *               in Wikipedia are tiered after all subtitle-attested ones.
+ *
+ * Ranking deliberately ignores the Wikipedia counts because they are
+ * contaminated by markup that survives naive stripping: "categorie" scores
+ * 2.25M there (inflated by [[Categorie:...]] links) against 103k for "fie",
+ * and tokens like quot/gt/ref/style/align rank in the millions. Blending
+ * those rates pushed encyclopedic vocabulary (demografie, etnografie,
+ * arheologie) above ordinary words in the results. Subtitle counts have no
+ * such contamination, and spoken register is the better match for lyrics
+ * anyway. */
+function loadFreq(pathname, label) {
+  const m = new Map();
+  let total = 0;
+  if (!pathname || !fs.existsSync(pathname)) {
+    console.error(`  ${label}: (not provided)`);
+    return { map: m, total: 0 };
+  }
+  for (const line of fs.readFileSync(pathname, 'utf8').split('\n')) {
+    const sp = line.indexOf(' ');
+    if (sp <= 0) continue;
+    const w = P.normalize(line.slice(0, sp));
+    const n = parseInt(line.slice(sp + 1), 10);
+    if (!w || !n) continue;
+    m.set(w, (m.get(w) || 0) + n);       // merges cedilla/comma spellings
+    total += n;
+  }
+  console.error(`  ${label}: ${m.size} types, ${total} tokens`);
+  return { map: m, total: total };
 }
-console.error(`frequency entries (normalized+merged): ${freq.size}`);
+
+console.error('frequency corpora:');
+const subs = loadFreq(freqPath, 'subtitles');
+const wiki = loadFreq(wikiFreqPath, 'wikipedia');
+
+const PM = 1000000;
+function rateOf(src, w) {
+  if (!src.total) return 0;
+  const n = src.map.get(w);
+  return n ? (n / src.total) * PM : 0;
+}
+// Vocabulary = union of both corpora; ranking is decided later, per tier.
+const vocab = new Set();
+for (const w of subs.map.keys()) vocab.add(w);
+for (const w of wiki.map.keys()) vocab.add(w);
+console.error(`  combined vocabulary: ${vocab.size} words`);
 
 /* ---- analyze every dexonline form ---- */
 // Plain Romanian lowercase only: drops proper nouns, abbreviations and
@@ -75,6 +123,15 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const norm = P.normalize(line);
   const clean = norm.replace(/'/g, '');
   if (!OK.test(clean) || clean.length < 2) { skipped++; continue; }
+
+  // Forms attested in NEITHER corpus are dropped outright. dexonline lists
+  // every inflected form of every headword, including archaic and regional
+  // ones, and surfacing those as rhyme suggestions was mostly noise. Tested
+  // before analyze() since it rejects the large majority of rows.
+  if (!vocab.has(clean)) { skipped++; continue; }
+  const subRate = rateOf(subs, clean);
+  const wikiRate = rateOf(wiki, clean);
+
   // ~8% of dexonline forms carry no accent marker, and the same spelling can
   // appear both with and without one. Keeping whichever came first let an
   // unaccented duplicate shadow the accented entry, silently downgrading the
@@ -83,6 +140,7 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const existing = rec.get(clean);
   if (existing && existing.spos >= 0) continue;
   if (existing && norm.indexOf("'") < 0) continue;
+
   let a = null;
   try { a = P.analyze(norm); } catch (e) { /* ignore */ }
   if (!a || !a.exactKey) { skipped++; continue; }
@@ -97,7 +155,7 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const apos = norm.indexOf("'");
   rec.set(clean, { exact: a.exactKey, asson: a.assonanceKey,
                    syll: a.syllables, spos: apos,
-                   freq: freq.get(clean) || 0 });
+                   subRate: subRate, wikiRate: wikiRate });
 }
 console.error(`forms scanned: ${scanned}, usable: ${rec.size}, skipped: ${skipped}`);
 
@@ -106,13 +164,25 @@ const words = Array.from(rec.keys()).sort();
 const id = new Map();
 words.forEach((w, i) => id.set(w, i));
 
-/* ---- frequency ranking ---- */
-const attestedWords = words.filter(w => rec.get(w).freq > 0)
-                           .sort((a, b) => rec.get(b).freq - rec.get(a).freq);
+/* ---- frequency ranking ----
+ * Two tiers: words attested in the (clean) subtitle corpus come first,
+ * ordered by spoken frequency; Wikipedia-only words follow, ordered by
+ * their Wikipedia rate. Tiering rather than blending keeps Wikipedia's
+ * markup contamination out of the ordering while still letting it decide
+ * membership. Everything here is attested somewhere, so there is no
+ * "unknown, ranked last" bucket — those forms were dropped above. */
+const rankedWords = words.slice().sort((a, b) => {
+  const ra = rec.get(a), rb = rec.get(b);
+  const ta = ra.subRate > 0 ? 0 : 1;
+  const tb = rb.subRate > 0 ? 0 : 1;
+  if (ta !== tb) return ta - tb;
+  return ta === 0 ? rb.subRate - ra.subRate : rb.wikiRate - ra.wikiRate;
+});
+const inSubs = words.filter(w => rec.get(w).subRate > 0).length;
+console.error(`  spoken-attested: ${inSubs}, wikipedia-only: ${words.length - inSubs}`);
 const rankOf = new Map();
-attestedWords.forEach((w, i) => rankOf.set(w, i));
-const WORST = Number.MAX_SAFE_INTEGER;
-console.error(`attested: ${attestedWords.length}, rare (rank last): ${words.length - attestedWords.length}`);
+rankedWords.forEach((w, i) => rankOf.set(w, i));
+console.error(`ranked vocabulary: ${rankedWords.length}`);
 
 /* ---- posting lists ---- */
 function build(keyName, cap) {
@@ -129,8 +199,7 @@ function build(keyName, cap) {
   for (const [k, arr] of map) {
     // Keep the most frequent `cap` words, then store them in ascending id
     // order so deltas stay small and positive.
-    arr.sort((a, b) => (rankOf.has(a) ? rankOf.get(a) : WORST) -
-                       (rankOf.has(b) ? rankOf.get(b) : WORST));
+    arr.sort((a, b) => rankOf.get(a) - rankOf.get(b));
     const top = arr.slice(0, cap).map(w => id.get(w)).sort((x, y) => x - y);
     let prev = 0;
     const deltas = new Array(top.length);
@@ -155,7 +224,7 @@ const spos = words.map(w => {
 }).join('');
 
 let prev = 0;
-const rankDeltas = attestedWords.map(w => { const i = id.get(w); const d = i - prev; prev = i; return d; });
+const rankDeltas = rankedWords.map(w => { const i = id.get(w); const d = i - prev; prev = i; return d; });
 
 const outDir = path.join(__dirname, '..', '..', 'data');
 fs.mkdirSync(outDir, { recursive: true });

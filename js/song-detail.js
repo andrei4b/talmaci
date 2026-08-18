@@ -318,7 +318,7 @@ async function _runRimeSearch(wrap) {
   const list = el('div', { class: 'rime__results' });
   shown.forEach(r => {
     list.appendChild(el('button', {
-      class: 'rime__word' + (r.common ? '' : ' rime__word--rare'),
+      class: 'rime__word',
       title: r.syllables + ' silabe',
       onclick: async () => {
         const ok = await window.Utils.copyToClipboard(r.word);

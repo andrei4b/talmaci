@@ -201,8 +201,7 @@ function lookup(word, opts) {
     total: out.length,
     results: out.slice(0, limit).map(i => ({
       word: wordAt(i),
-      syllables: +_syll[i],
-      common: _rank.has(i)
+      syllables: +_syll[i]
     }))
   };
 }

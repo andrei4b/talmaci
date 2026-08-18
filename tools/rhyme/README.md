@@ -29,18 +29,30 @@ possible; word forms and stress are all that is read from it.
    Then parse out column 2 (the accent-marked form), one per line, into
    `forms_accented.txt`.
 
-2. Download the frequency list:
+2. Download the spoken-register frequency list:
 
    ```bash
    curl -sL -o ro_freq.txt \
      https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ro/ro_50k.txt
    ```
 
-3. Build:
+3. Build the written-register frequency list from the Romanian Wikipedia
+   dump (see `wikifreq.py` notes below — this takes a while):
 
    ```bash
-   node --max-old-space-size=4096 tools/rhyme/build-index.js forms_accented.txt ro_freq.txt
+   curl -s https://dumps.wikimedia.org/rowiki/latest/rowiki-latest-pages-articles.xml.bz2 \
+     | bzcat | python3 wikifreq.py     # writes ro_wiki_freq.txt
    ```
+
+4. Build:
+
+   ```bash
+   node --max-old-space-size=4096 \
+     tools/rhyme/build-index.js forms_accented.txt ro_freq.txt ro_wiki_freq.txt
+   ```
+
+   The Wikipedia list is optional — omit it and the build still works, just
+   with subtitle frequencies only.
 
 Needs Node 18+ and roughly 4 GB of heap; the intermediate maps hold ~1.5M
 entries.
@@ -58,8 +70,15 @@ entries.
 - Posting lists are capped (`MAX_EXACT`, `MAX_ASSON`) by frequency rank. The
   UI never shows more than a screenful, and the uncapped lists for common
   endings ran to hundreds of thousands of entries.
-- Words absent from the frequency list keep rank "worst", so rare forms stay
-  searchable but never outrank ordinary vocabulary.
+- Forms attested in **neither** frequency corpus are dropped at build time,
+  not merely ranked last. dexonline lists every inflected form of every
+  headword, archaic and regional included, and those were noise as rhyme
+  suggestions.
+- The two corpora cover different registers and are blended by taking the
+  **max** of their per-million rates, not the average. Averaging would
+  penalize a word for being missing from one register, which is the exact
+  bias the second corpus exists to correct — words like "preamărit" and
+  "nemărginit" never appear in film subtitles.
 
 ## Current output
 

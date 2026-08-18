@@ -498,9 +498,6 @@ a { color: inherit; text-decoration: none; }
   font-size: 0.9rem;
   cursor: pointer;
 }
-/* Words absent from the frequency corpus — real words, but rare enough
-   that they're worth visually de-emphasizing rather than hiding. */
-.rime__word--rare { color: var(--color-text-muted); border-style: dashed; }
 
 /* Toast */
 .toast-root {

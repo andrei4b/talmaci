@@ -164,10 +164,17 @@ vowel onward — and Romanian never writes stress, which is the whole
 difficulty. Matching word endings is not enough: *cámeră* and *himéră* share
 "-eră" but are stressed differently and do not rhyme.
 
-The Rime tab solves that with a prebuilt index of ~1.5M inflected forms,
-93.6% of them carrying stress attested by dexonline rather than guessed.
-Results are sorted by how common the word actually is, so ordinary
-vocabulary comes first and rare forms stay reachable at the bottom.
+The Rime tab solves that with a prebuilt index of dexonline inflected
+forms, the great majority carrying stress attested rather than guessed.
+Results are sorted by how common the word actually is.
+
+Word frequency is blended from two corpora on purpose: OpenSubtitles for
+spoken Romanian and Wikipedia for written/literary Romanian. Subtitles
+alone rank words like *preamărit* or *nemărginit* dead last simply because
+they never occur in film dialogue — which is precisely the vocabulary a
+song text wants. Forms attested in neither corpus are dropped entirely,
+since dexonline lists every archaic and regional inflection and those were
+noise as suggestions.
 
 - **Rime perfecte** — identical from the stressed vowel on.
 - **Asonanțe** — matching vowels, differing consonants. Disabled for

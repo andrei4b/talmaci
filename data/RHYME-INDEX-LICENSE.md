@@ -31,13 +31,30 @@ Baza de date dexonline este distribuită sub **GNU GPL v2 sau ulterioară**.
 Prin urmare, `rhyme-index.json`, fiind derivat din ea, este distribuit sub
 aceeași licență: **GPL v2+**.
 
-### Frecvențe — OpenSubtitles
+### Frecvențe — două corpusuri
 
-Ordinea rezultatelor (cele mai frecvente cuvinte primele) folosește lista de
-frecvențe [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords)
-(`content/2018/ro/ro_50k.txt`), derivată din OpenSubtitles.
+Ordinea rezultatelor (cele mai frecvente cuvinte primele) și filtrarea
+cuvintelor neatestate folosesc două surse, pentru că niciuna singură nu
+acoperă registrul necesar:
 
-Licență: **MIT**.
+1. **OpenSubtitles**, prin
+   [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords)
+   (`content/2018/ro/ro_50k.txt`) — limba vorbită.
+   Licență: **MIT**.
+
+2. **Wikipedia în română**, frecvențe calculate local din dumpul oficial
+   `rowiki-latest-pages-articles.xml.bz2` — limba scrisă/literară.
+   Text sub **CC BY-SA 3.0/4.0**; a se atribui Wikipedia.
+
+Motivul pentru a doua sursă: cuvinte perfect obișnuite în scris, dar care
+nu apar în dialogul din filme (de exemplu „preamărit", „nemărginit"), erau
+clasate ultimele sau eliminate, deși sunt exact genul de cuvinte utile
+într-un text de cântec.
+
+Frecvențele sunt normalizate la apariții-pe-milion înainte de combinare,
+fiindcă cele două corpusuri diferă mult ca mărime. Se ia **maximul** celor
+două rate („frecvent în cel puțin un registru"), nu media, care ar
+penaliza tocmai cuvintele absente dintr-un registru.
 
 ## Ce conține fișierul
 
