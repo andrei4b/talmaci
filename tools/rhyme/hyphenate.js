@@ -155,19 +155,6 @@ function applyExceptions(word, cuts) {
     cuts = cuts.filter(c => c !== 5);
   }
 
-  // The "conex" family is divided "con-ex", but a single consonant between
-  // two vowels belongs to the following syllable: "co-nex", "co-ne-xă",
-  // "co-ne-xi-u-ne". Romanian does keep a prefix-final consonant on the left
-  // ("dez-as-tru", "in-e-vi-ta-bil"), which is why this is not a general
-  // rule — but "conex" is not read as a prefix plus a Romanian stem, and it
-  // is the only "con" + vowel family the patterns cut this way. All 15 of
-  // its forms take the same correction.
-  if (word.startsWith('conex')) {
-    cuts = cuts.filter(c => c !== 3);
-    if (cuts.indexOf(2) < 0) cuts = cuts.concat([2]);
-    cuts.sort((x, y) => x - y);
-  }
-
   // "nici" + vowel divides ni-cio / ni-ciun, but the patterns either leave
   // it whole or cut after "nici". Move the boundary to where it belongs.
   if (/^nici[ou]/.test(word)) {
@@ -453,8 +440,43 @@ function placeGlideBoundaries(word, cuts) {
   return cuts;
 }
 
-  return placeGlideBoundaries(word,
-    mergeVowellessPieces(word, splitMultiNucleusPieces(word, applyExceptions(word, cuts))));
+/* Gives a single intervocalic consonant to the syllable that follows it.
+ *
+ * Romanian permits two ways of dividing a word: the phonetic one, and a
+ * structural one that respects morpheme boundaries and keeps a prefix-final
+ * consonant on the left ("dez-as-tru", "in-e-vi-ta-bil", "con-ex"). The
+ * rospell patterns mix the two. This project wants the phonetic division
+ * everywhere, because syllables here are sung, not parsed: "de-zas-tru",
+ * "i-ne-vi-ta-bil", "co-nex".
+ *
+ * Applying it uniformly also removes the need to guess which leading
+ * letters are a real prefix — a guess that was wrong as often as right,
+ * since "canada", "tutun", "rotund" and "grenadă" were being divided
+ * "can-a-da", "tut-un", "rot-und" and "gren-a-dă" purely because their
+ * opening letters resembled one.
+ *
+ * Only a lone consonant moves. A cluster keeps its own division
+ * ("cas-tel", "mem-bri"), and an intervocalic "ch"/"gh" is a single sound
+ * spelled with two letters — no cut in the vocabulary currently falls
+ * inside one, and the guard below keeps it that way. */
+function phoneticOnsets(word, cuts) {
+  const isV = c => VOWEL_LETTERS.indexOf(c) >= 0;
+
+  return cuts.map(c => {
+    if (c < 2 || c >= word.length) return c;
+    if (!isV(word[c])) return c;                  // next syllable must open on a vowel
+    if (isV(word[c - 1])) return c;               // nothing to move
+    if (c >= 3 && word[c - 1] === 'h' &&
+        (word[c - 2] === 'c' || word[c - 2] === 'g') && isV(word[c - 3])) {
+      return c - 2;                               // the digraph moves whole
+    }
+    if (!isV(word[c - 2])) return c;              // a cluster, not a lone consonant
+    return c - 1;
+  }).sort((x, y) => x - y);
+}
+
+  return placeGlideBoundaries(word, phoneticOnsets(word,
+    mergeVowellessPieces(word, splitMultiNucleusPieces(word, applyExceptions(word, cuts)))));
 }
 
 function syllables(word, table) {
