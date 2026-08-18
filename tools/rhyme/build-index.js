@@ -53,7 +53,7 @@ const freqPath = process.argv[3];
 const wikiFreqPath = process.argv[4];   // optional second corpus
 const hyphPath = process.argv[5];       // optional hyph_ro_RO.dic
 if (!formsPath || !freqPath) {
-  console.error('usage: build-index.js <forms_accented.txt> <ro_freq.txt> [ro_wiki_freq.txt] [hyph_ro_RO.dic]');
+  console.error('usage: build-index.js <forms_typed.txt> <ro_freq.txt> [ro_wiki_freq.txt] [hyph_ro_RO.dic]');
   process.exit(1);
 }
 
@@ -129,19 +129,84 @@ for (const w of wiki.map.keys()) vocab.add(w);
 console.error(`  combined vocabulary: ${vocab.size} words`);
 
 /* ---- analyze every dexonline form ---- */
-// Plain Romanian lowercase only: drops proper nouns, abbreviations and
-// multi-word expressions, none of which are useful rhyme suggestions.
+// Plain Romanian letters only: drops abbreviations with periods, hyphenated
+// compounds and multi-word expressions.
+//
+// This deliberately does NOT try to screen out proper nouns. It used to be
+// described as doing so, but it never could: P.normalize() lowercases before
+// this runs, so "Kelly" arrives as "kelly" and the pattern sees nothing to
+// object to. Names are excluded by their dexonline model type instead, below.
 const OK = /^[a-zăâîșț]+$/;
+
+// dexonline classifies every lexeme, and the classification separates names
+// from words far better than spelling can. Dropped:
+//   T   "temporar"           provisional entries — where John, Kelly, Ray,
+//                            Londra and the stray English words sit
+//   SP  "substantiv propriu" proper nouns proper
+//   I/3 "nume propriu"       invariable proper nouns (George, Paris)
+//   I/4 "cuvânt din altă limbă"  unnaturalized foreign words (the, and, new)
+//   I/6 "abreviere, simbol, siglă"
+//
+// A spelling is dropped only when EVERY lexeme sharing it is one of these.
+// That distinction is the whole point: "crăciun" is N/24 as well as I/3, and
+// "cruce" is F/122 as well as I/3, so both survive on the strength of their
+// common-noun entry, while "george" has only I/3 and goes. Capitalization
+// could not make that call — "Dumnezeu" and "Crăciun" are capitalized for
+// the same reason "Kelly" is.
+// The one place this project overrides dexonline's classification. The app
+// translates worship songs, so biblical names are working vocabulary, not
+// noise — but dexonline files them as proper nouns (I/3, SP) exactly like
+// "george", and it is right to. Verified against the dump: without this
+// list, "isus", "hristos", "ierusalim" and "betleem" all disappear, while
+// "duh", "rai", "iad" and "golgota" survive only by the accident of also
+// carrying a common-noun lexeme.
+//
+// Only forms dexonline actually holds are listed; "isuse" and "hristoase"
+// are absent from the dump, so there is nothing to keep for them.
+const KEEP_NAMES = new Set([
+  'isus', 'iisus', 'hristos', 'cristos', 'mesia', 'emanuel',
+  'ierusalim', 'betleem', 'galileea', 'sion', 'ghetsimani', 'sinai',
+  'egipt', 'israel', 'avraam', 'moise', 'ilie', 'iehova', 'savaot'
+]);
+
+function isNameOnly(models) {
+  return models.every(m => {
+    const slash = m.indexOf('/');
+    const type = slash < 0 ? m : m.slice(0, slash);
+    const num = slash < 0 ? '' : m.slice(slash + 1);
+    return type === 'T' || type === 'SP' ||
+           (type === 'I' && (num === '3' || num === '4' || num === '6'));
+  });
+}
 
 const rec = new Map();
 let scanned = 0, skipped = 0;
+// Pass 1: collect every model type each spelling is attested with, so the
+// name test below can ask about the spelling as a whole rather than one row.
+const modelsFor = Object.create(null);   // "constructor" is a Romanian word
 for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const line = lineRaw.trim();
   if (!line) continue;
+  const tab = line.lastIndexOf('\t');
+  if (tab < 0) continue;
+  const clean = P.normalize(line.slice(0, tab)).replace(/'/g, '');
+  (modelsFor[clean] || (modelsFor[clean] = [])).push(line.slice(tab + 1));
+}
+
+let namesDropped = 0;
+for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
+  const lineFull = lineRaw.trim();
+  if (!lineFull) continue;
+  const tab = lineFull.lastIndexOf('\t');
+  if (tab < 0) continue;
+  const line = lineFull.slice(0, tab);
   scanned++;
   const norm = P.normalize(line);
   const clean = norm.replace(/'/g, '');
   if (!OK.test(clean) || clean.length < 2) { skipped++; continue; }
+
+  const models = modelsFor[clean];
+  if (models && isNameOnly(models) && !KEEP_NAMES.has(clean)) { skipped++; namesDropped++; continue; }
 
   // Forms attested in NEITHER corpus are dropped outright. dexonline lists
   // every inflected form of every headword, including archaic and regional
@@ -177,6 +242,7 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
                    subRate: subRate, wikiRate: wikiRate });
 }
 console.error(`forms scanned: ${scanned}, usable: ${rec.size}, skipped: ${skipped}`);
+console.error(`  of which names/foreign/abbrev dropped: ${namesDropped}`);
 
 /* ---- alphabetical ids ---- */
 const words = Array.from(rec.keys()).sort();

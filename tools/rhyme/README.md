@@ -12,7 +12,11 @@ Romanian rhyme means "identical sounds from the last **stressed** vowel
 onward", and Romanian never writes stress. So the index must be built from a
 source that records it. dexonline's `InflectedForm` table marks the stressed
 vowel with an apostrophe (`veșnic'ie`), which is what makes the whole thing
-possible; word forms and stress are all that is read from it.
+possible.
+
+Two tables are read: `InflectedForm` for the forms and their stress, and
+`Lexeme` for each entry's inflection model. The model is what tells a name
+from a word — see "Names" below. Definitions are never parsed.
 
 ## Rebuilding
 
@@ -21,13 +25,16 @@ possible; word forms and stress are all that is read from it.
    writing the multi-gigabyte decompressed dump to disk):
 
    ```bash
-   curl -s https://dexonline.ro/static/download/dex-database.sql.gz \
-     | gunzip -c \
-     | grep '^INSERT INTO `InflectedForm`' > InflectedForm.sql
+   curl -sL -o dex-database.sql.gz \
+     https://dexonline.ro/static/download/dex-database.sql.gz
+   python3 extract-forms.py dex-database.sql.gz > forms_typed.txt
    ```
 
-   Then parse out column 2 (the accent-marked form), one per line, into
-   `forms_accented.txt`.
+   `extract-forms.py` reads only `InflectedForm` and `Lexeme`, and writes
+   `form<TAB>MODEL` lines. It makes two passes over the archive: a mysqldump
+   orders tables alphabetically, so every `InflectedForm` row appears before
+   the first `Lexeme` row, and resolving `lexemeId` in one pass yields
+   nothing at all.
 
 2. Download the spoken-register frequency list:
 
@@ -84,3 +91,30 @@ entries.
 
 ~1.5M word forms, 93.6% with attested stress, ~5.3 MB gzipped over the wire.
 Loaded lazily the first time the Rime tab is used, never at app boot.
+
+## Names
+
+dexonline includes proper nouns, so without a filter the index fills up with
+`mary`, `harry`, `kelly`, `john` and stray English words like `the` and
+`new`. They pass the frequency check easily, because film subtitles are full
+of them.
+
+Spelling cannot sort this out. An earlier attempt relied on the lowercase
+test in `build-index.js` to do it, but `normalize()` lowercases first, so
+the test never saw a capital to reject — and capitalization would have been
+the wrong signal anyway: `Dumnezeu` and `Crăciun` are capitalized for the
+same reason `Kelly` is, and dropping every capitalized-only form removed
+20698 words including those two.
+
+The model type sorts it out properly. Dropped are `T` (*temporar*,
+provisional entries — where most of the English given names sit), `SP`
+(*substantiv propriu*), `I/3` (*nume propriu*), `I/4` (*cuvânt din altă
+limbă*) and `I/6` (*abreviere, simbol, siglă*). A spelling goes only when
+**every** lexeme sharing it is one of those, which is what saves `crăciun`
+(`N/24` as well as `I/3`) and `cruce` (`F/122` as well as `I/3`), while
+`george` (`I/3` alone) goes.
+
+`KEEP_NAMES` in `build-index.js` is the single override. This app translates
+worship songs, so biblical names are working vocabulary; without the list
+`isus`, `hristos`, `ierusalim` and `betleem` all vanish. Add to it if you
+hit a gap.
