@@ -132,18 +132,28 @@ where the patterns ran two vowels together, `a-leu-rit` and `a-mia-ză`
 where they split a diphthong that holds. Which way a word goes is lexical,
 so no rule recovers it.
 
-Its values need filtering. Many cover only the interesting fragment
-(`-ți-e`, `a-bi-e-`), some list alternatives separated by commas, and a
-doubled hyphen marks the structural variant (`a-e-ro--trans-port`). Only
-whole-word single-hyphen values that reconstruct the word are used.
-dexonline also disagrees with itself on about a dozen words, recording both
-`cu-ri-e` and `cu-rie`; the first is taken.
+Most values are fragments rather than whole words, covering only the part
+dexonline thought worth recording, and those are used too. A leading hyphen
+anchors the fragment to the end of the word (`-ți-e`), a trailing one to the
+start (`a-bi-e-`). A fragment asserts two things and both are applied: where
+its internal boundaries fall, and that there are no others across its span —
+so a pattern-derived cut inside it is removed. Values hyphenated at both
+ends have nothing to anchor them and are skipped.
+
+Fragments roughly double the reach: 5693 words take a whole-word division,
+another 5722 a fragment.
+
+A doubled hyphen marks the structural variant (`a-e-ro--trans-port`) and is
+skipped, and alternatives separated by commas are tried in order. dexonline
+also disagrees with itself on about a dozen words, recording both `cu-ri-e`
+and `cu-rie`; the first is taken.
 
 Even so its divisions are not adopted blind. It splits compounds
-structurally without marking them — `nici-cum`, `cinci-zeci` — and
-loanwords on their source-language morphemes (`after-school`), which leaves
-syllables holding two nuclei. `enforceOneNucleus` breaks those up, giving
-`ni-ci-cum`, `cin-ci-zeci`, `af-ter-school`.
+structurally without marking them — `nici-cum`, `cinci-zeci`, `ori-și-` —
+and loanwords on their source-language morphemes (`after-school`), which
+leaves syllables holding two nuclei. `enforceOneNucleus` breaks those up,
+giving `ni-ci-cum`, `cin-ci-zeci`, `o-ri-și-ca-re`, `af-ter-school`. That
+divergence is the whole of the residual disagreement, and it is deliberate.
 
 **The rospell patterns**, plus the exception layer in `hyphenate.js`, cover
 everything else.

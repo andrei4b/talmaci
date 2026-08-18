@@ -315,32 +315,77 @@ const asson = build('asson', MAX_ASSON);
  * and a doubled hyphen marks the structural variant ("a-e-ro--trans-port")
  * that this project explicitly does not want. Only whole-word, single-
  * hyphen values that reconstruct the word exactly are taken. */
+/* Parses one hyphenation value against a word.
+ *
+ * Whole-word values give the division outright. Most values are fragments
+ * though, covering only the part dexonline considered worth recording: a
+ * leading hyphen anchors the fragment to the end of the word ("-ți-e"), a
+ * trailing one to the start ("a-bi-e-"). A fragment says two things, and
+ * both matter — where the boundaries inside it fall, AND that there are no
+ * others within its span. Values hyphenated at both ends float free, with
+ * nothing to anchor them to, so they are skipped.
+ */
+function parseHyphValue(v, form) {
+  const asPrefix = v.endsWith('-');
+  const asSuffix = v.startsWith('-');
+  if (asPrefix && asSuffix) return null;
+  const core = v.replace(/^-+/, '').replace(/-+$/, '');
+  if (!core) return null;
+  const pieces = core.split('-');
+  if (pieces.some(p => !p)) return null;
+  const letters = pieces.join('');
+
+  if (!asPrefix && !asSuffix) {
+    if (letters !== form) return null;
+    const cuts = [];
+    let at = 0;
+    for (const p of pieces.slice(0, -1)) { at += p.length; cuts.push(at); }
+    return { cuts: cuts, from: 0, to: form.length };
+  }
+
+  if (asPrefix) {
+    if (letters.length >= form.length || !form.startsWith(letters)) return null;
+    const cuts = [];
+    let at = 0;
+    for (const p of pieces) { at += p.length; cuts.push(at); }
+    return { cuts: cuts, from: 0, to: letters.length };
+  }
+
+  if (letters.length >= form.length || !form.endsWith(letters)) return null;
+  const from = form.length - letters.length;
+  const cuts = [from];
+  let at = from;
+  for (const p of pieces.slice(0, -1)) { at += p.length; cuts.push(at); }
+  return { cuts: cuts, from: from, to: form.length };
+}
+
+/* Loads dexonline's divisions, whole-word and fragment alike. */
 function loadDexHyphenations(pathname) {
   const map = Object.create(null);     // "constructor" is a Romanian word
   if (!pathname || !fs.existsSync(pathname)) {
     console.error('dexonline hyphenations: (not provided)');
     return map;
   }
-  let kept = 0;
+  let full = 0, frag = 0;
   for (const line of fs.readFileSync(pathname, 'utf8').split('\n')) {
     const tab = line.indexOf('\t');
     if (tab < 0) continue;
     const form = P.normalize(line.slice(0, tab)).replace(/'/g, '');
+    if (form in map) continue;
     for (const raw of line.slice(tab + 1).split(',')) {
       const v = P.normalize(raw.trim()).replace(/'/g, '');
-      if (!v || v.indexOf('--') >= 0) continue;          // structural variant
-      if (v.startsWith('-') || v.endsWith('-')) continue; // partial fragment
-      if (v.replace(/-/g, '') !== form) continue;         // must reconstruct
-      const cuts = [];
-      let at = 0;
-      for (const piece of v.split('-').slice(0, -1)) { at += piece.length; cuts.push(at); }
-      if (!(form in map)) { map[form] = cuts; kept++; }
+      if (!v || v.indexOf('--') >= 0) continue;      // structural variant
+      const parsed = parseHyphValue(v, form);
+      if (!parsed) continue;
+      map[form] = parsed;
+      if (parsed.from === 0 && parsed.to === form.length) full++; else frag++;
       break;
     }
   }
-  console.error(`dexonline hyphenations: ${kept} usable whole-word divisions`);
+  console.error(`dexonline hyphenations: ${full} whole-word, ${frag} anchored fragments`);
   return map;
 }
+
 const dexHyph = loadDexHyphenations(dexHyphPath);
 
 /* ---- per-word scalars ---- */
@@ -348,7 +393,7 @@ const dexHyph = loadDexHyphenations(dexHyphPath);
 // taken from these rather than from nucleus detection, because the
 // phonological pass mis-analyses hiatus in words like "superior" and
 // "scriitor" — it turns the i into a glide and undercounts.
-let dexUsed = 0;
+let dexFull = 0, dexFrag = 0;
 const cutsPerWord = words.map(w => {
   if (!hyphTable) return '';
   // Pass the stressed vowel's offset: it is the only thing that separates a
@@ -357,16 +402,28 @@ const cutsPerWord = words.map(w => {
   const fromDex = dexHyph[w];
   const rc = rec.get(w);
   const stress = rc && rc.spos >= 0 ? rc.spos : -1;
-  if (fromDex) {
-    dexUsed++;
-    const fixed = H.enforceOneNucleus(w, fromDex, stress);
-    return fixed.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
+  let cs;
+  if (fromDex && fromDex.from === 0 && fromDex.to === w.length) {
+    dexFull++;
+    cs = fromDex.cuts;
+  } else if (fromDex) {
+    // A fragment overrides the patterns only across the span it covers: its
+    // own boundaries go in, and any pattern boundary inside that span which
+    // it did not record comes out, since the fragment shows those letters
+    // grouped into whole syllables.
+    dexFrag++;
+    const own = new Set(fromDex.cuts);
+    const kept = H.cutPoints(w, hyphTable, stress)
+      .filter(c => c <= fromDex.from || c >= fromDex.to || own.has(c));
+    cs = Array.from(new Set(kept.concat(fromDex.cuts))).sort((a, b) => a - b);
+  } else {
+    cs = H.cutPoints(w, hyphTable, stress);
   }
-  const cs = H.cutPoints(w, hyphTable, stress);
+  cs = H.enforceOneNucleus(w, cs, stress);
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
 });
 const cuts = cutsPerWord.join('\n');
-console.error(`  divisions taken from dexonline: ${dexUsed} of ${words.length}`);
+console.error(`  from dexonline: ${dexFull} whole-word, ${dexFrag} via fragment, of ${words.length}`);
 
 const syll = words.map((w, i) => {
   const n = hyphTable ? cutsPerWord[i].length + 1 : rec.get(w).syll;
