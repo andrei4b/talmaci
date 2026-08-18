@@ -89,6 +89,48 @@ function applyExceptions(word, cuts) {
   return cuts;
 }
 
+/* Enforces the one invariant a syllable cannot violate: it must contain a
+ * vowel. Liang patterns assume the left/right hyphen minimums are filtering
+ * out marginal breaks; dropping those minimums (needed so "veș-ni-ci-e" can
+ * end in a one-letter syllable) also lets through spurious cuts that strand
+ * bare consonants — "a-bu-n-da", "ab-sen-te-i-st", "a-bl-e-fa-ri-e".
+ *
+ * A stranded cluster attaches forwards when the next piece begins with a
+ * vowel, so it can serve as that syllable's onset ("bl" + "e" -> "ble"), and
+ * backwards otherwise, becoming a coda ("bun" + "dă"). Merging the wrong way
+ * would invent impossible syllables like "nda". */
+function mergeVowellessPieces(word, cuts) {
+  // 'y' counts here: it is not native Romanian, but it carries the nucleus
+  // in the loanwords the Wikipedia corpus drags in ("byrd", "bypassul"),
+  // and without it those get treated as vowel-less and mangled.
+  const VOW = 'aăâeiîouy';
+  const hasVowel = s => { for (const c of s) if (VOW.indexOf(c) >= 0) return true; return false; };
+
+  for (let guard = 0; guard < 40; guard++) {
+    const parts = [];
+    let prev = 0;
+    for (const c of cuts) { parts.push(word.slice(prev, c)); prev = c; }
+    parts.push(word.slice(prev));
+
+    let bad = -1;
+    for (let i = 0; i < parts.length; i++) {
+      if (!hasVowel(parts[i])) { bad = i; break; }
+    }
+    if (bad < 0) return cuts;
+
+    // parts[i] starts at cuts[i-1] and ends at cuts[i].
+    const mergeForward = (bad < parts.length - 1) && hasVowel(parts[bad + 1][0] || '');
+    const dropIdx = mergeForward ? bad : bad - 1;
+    if (dropIdx < 0 || dropIdx >= cuts.length) {
+      // Nothing left to merge into (single vowel-less token); give up rather
+      // than loop.
+      return cuts.slice(0, Math.max(0, cuts.length - 1));
+    }
+    cuts = cuts.slice(0, dropIdx).concat(cuts.slice(dropIdx + 1));
+  }
+  return cuts;
+}
+
 function cutsFromSplit(split) {
   const parts = split.split('-');
   const cuts = [];
@@ -134,7 +176,7 @@ function cutPoints(word, table) {
     if (points[c + 1] % 2 === 1) cuts.push(c);
   }
 
-  return applyExceptions(word, cuts);
+  return mergeVowellessPieces(word, applyExceptions(word, cuts));
 }
 
 function syllables(word, table) {
