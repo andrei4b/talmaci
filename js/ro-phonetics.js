@@ -78,14 +78,22 @@ function isVowelLetter(ch) { return 'aăâeiîou'.indexOf(ch) >= 0; }
  * apostrophe stress marker, the token index of the stressed vowel. */
 function toPhonemes(wordNorm) {
   const out = [];
+  // Letter offset (into the word WITHOUT stress markers) that each token
+  // came from, so syllable boundaries found in phoneme space can be mapped
+  // back onto the spelling for display — "cru-ce", not "kru-Ce".
+  const src = [];
   let stressTokenIdx = -1;
   let pendingStress = false;
   let i = 0;
+  let cleanPos = 0;
 
   while (i < wordNorm.length) {
     const ch = wordNorm[i];
 
     if (ch === "'") { pendingStress = true; i += 1; continue; }
+
+    const startClean = cleanPos;
+    const startRaw = i;
 
     // Look ahead PAST any stress marker: dexonline writes the apostrophe
     // before the stressed vowel, which lands inside digraphs like the "ci"
@@ -124,6 +132,13 @@ function toPhonemes(wordNorm) {
       i += 1;
     }
 
+    // Every token emitted this pass starts at the same spelling position.
+    for (let k = before; k < out.length; k++) src[k] = startClean;
+    // Advance by the letters actually consumed, ignoring stress markers.
+    let consumed = 0;
+    for (let r = startRaw; r < i; r++) if (wordNorm[r] !== "'") consumed++;
+    cleanPos = startClean + consumed;
+
     // Attach a pending stress marker to the first vowel token emitted.
     if (pendingStress && out.length > before) {
       for (let k = before; k < out.length; k++) {
@@ -132,7 +147,7 @@ function toPhonemes(wordNorm) {
     }
   }
 
-  return { tokens: out, stressTokenIdx: stressTokenIdx };
+  return { tokens: out, stressTokenIdx: stressTokenIdx, src: src };
 }
 
 /* Decides which phonemes are syllable nuclei.
@@ -225,6 +240,69 @@ function markNuclei(tokens, wordLettersNorm, stressTokenIdx) {
   return { tokens: t, isNucleus: isNucleus };
 }
 
+/* Splits the spelling into syllables, given the phoneme analysis.
+ *
+ * Boundary placement follows the standard Romanian rules, deciding by what
+ * sits between two nuclei:
+ *   V-V     hiatus, split between them          a-er
+ *   V-CV    consonant joins the next syllable   ca-să
+ *   V-CCV   split between the consonants        car-te
+ *           EXCEPT obstruent+liquid, which is indivisible ("muta cum
+ *           liquida") and moves as a unit       co-dri, a-flu
+ *   V-CCCV  first consonant closes the syllable  mun-te
+ * Glides stay with the nucleus they belong to, and a trailing palatalized
+ * i ("lupi") is not a syllable at all, so it rides along with the last one.
+ *
+ * Returns spelling fragments, e.g. ['cru','ce'] — not phonemes. */
+function syllabify(cleanWord, tokens, isNucleus, src) {
+  const nuclei = [];
+  for (let i = 0; i < tokens.length; i++) if (isNucleus[i]) nuclei.push(i);
+  if (nuclei.length <= 1) return [cleanWord];
+
+  const cuts = [];   // letter offsets where a new syllable starts
+  for (let n = 0; n + 1 < nuclei.length; n++) {
+    const a = nuclei[n], b = nuclei[n + 1];
+
+    // Consonants strictly between the two nuclei; glides belong to their
+    // own nucleus and never take part in the division.
+    const cons = [];
+    for (let x = a + 1; x < b; x++) {
+      const t = tokens[x];
+      if (t === 'j' || t === 'w' || t === "'") continue;
+      cons.push(x);
+    }
+
+    let cutToken;
+    if (cons.length === 0) {
+      // Nothing but glides (or nothing at all) between the two nuclei. A
+      // glide sitting directly before the next nucleus is that syllable's
+      // onset, not the previous syllable's coda — "două" divides do-uă,
+      // not dou-ă.
+      let g = b;
+      while (g - 1 > a && (tokens[g - 1] === 'j' || tokens[g - 1] === 'w')) g--;
+      cutToken = g;
+    } else if (cons.length === 1) {
+      cutToken = cons[0];                 // V-CV
+    } else if (cons.length === 2) {
+      const c1 = tokens[cons[0]], c2 = tokens[cons[1]];
+      cutToken = (OBSTRUENTS.has(c1) && LIQUIDS.has(c2)) ? cons[0] : cons[1];
+    } else {
+      cutToken = cons[1];                 // three or more: first one closes
+    }
+
+    const at = src[cutToken];
+    if (typeof at === 'number' && at > 0 && at < cleanWord.length) cuts.push(at);
+  }
+
+  const parts = [];
+  let prev = 0;
+  for (const c of cuts) {
+    if (c > prev) { parts.push(cleanWord.slice(prev, c)); prev = c; }
+  }
+  parts.push(cleanWord.slice(prev));
+  return parts.filter(p => p.length);
+}
+
 function nucleusIndices(isNucleus) {
   const out = [];
   for (let i = 0; i < isNucleus.length; i++) if (isNucleus[i]) out.push(i);
@@ -310,10 +388,15 @@ function analyze(word, opts) {
     if (marked.isNucleus[i]) vowelsOnly.push(marked.tokens[i]);
   }
 
+  const parts = syllabify(clean, marked.tokens, marked.isNucleus, g2p.src);
+
   return {
     word: clean,
     phonemes: marked.tokens,
     syllables: nuclei.length,
+    // Spelling split into syllables, for display ("cru", "ce"). Falls back
+    // to the whole word if the division and the nucleus count disagree.
+    syllableParts: (parts.length === nuclei.length) ? parts : [clean],
     stressIndex: stressIdx,
     // Exact rhyme: every phoneme from the stressed nucleus onward.
     exactKey: marked.tokens.slice(start).join(''),
