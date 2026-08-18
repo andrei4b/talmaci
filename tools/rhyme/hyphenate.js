@@ -84,17 +84,32 @@ function applyExceptions(word, cuts) {
   // "mear-gă", "ur-mea-ză" — but the pattern set carries a general "e1a1"
   // rule that splits it everywhere. So drop the e|a cut by default.
   //
-  // Genuine "e-a" hiatus does exist, and it is confined to neologisms built
-  // on the re-/cre-/ide- stems, where the "e" closes the stem and the "a"
-  // opens the next morpheme: "re-al", "re-a-li-zat", "cre-at", "i-de-al".
-  // Those are kept by matching the stem at the word's start, which is where
-  // that morpheme boundary always sits. A word like "treaba" shares the
-  // letters but not the structure, so it correctly keeps its diphthong.
+  // Genuine "e-a" hiatus does exist. Some of it is the re-/cre-/ide- stems,
+  // where the "e" closes the stem and the "a" opens the next morpheme:
+  // "re-al", "re-a-li-zat", "cre-at", "i-de-al". Those are matched at the
+  // word's start, which is where that boundary always sits. A word like
+  // "treaba" shares the letters but not the structure, so it correctly
+  // keeps its diphthong.
+  //
+  // The rest is the Latinate "-eal/-ear/-eat" endings, added after checking
+  // this rule against dexonline's own divisions: "a-re-al", "bo-re-al",
+  // "mu-ze-al", "bal-ne-ar", "ce-re-a-lă" were all being run together.
+  // Matching only at the very end of the word is what keeps "dea-su-pra",
+  // "dea-ler", "beat-nic" and "gea-lău" out of it.
+  //
+  // An obstruent+liquid cluster before the vowels blocks it: "a-crea-lă"
+  // and "ne-grea-lă" end the same way as "ce-re-a-lă" but keep the
+  // diphthong, "cr" and "gr" being onsets in a way that plain "r" is not.
+  const OBSTR = 'pbtdcgfv', LIQ = 'lr';
   for (let i = 0; i + 1 < n; i++) {
     if (word[i] !== 'e' || word[i + 1] !== 'a') continue;
+    const mutaCumLiquida = i >= 2 &&
+      OBSTR.indexOf(word[i - 2]) >= 0 && LIQ.indexOf(word[i - 1]) >= 0;
     const isStemHiatus =
       (i === 1 && word.startsWith('rea')) ||
-      (i === 2 && (word.startsWith('crea') || word.startsWith('idea')));
+      (i === 2 && (word.startsWith('crea') || word.startsWith('idea'))) ||
+      (!mutaCumLiquida &&
+       /^ea[lrt](ă|e|i|ul|ului|ele|elor)?$/.test(word.slice(i)));
     if (!isStemHiatus) cuts = cuts.filter(c => c !== i + 1);
   }
 
@@ -135,14 +150,6 @@ function applyExceptions(word, cuts) {
         cuts.indexOf(i + 1) < 0) {
       cuts = cuts.concat([i + 1]).sort((x, y) => x - y);
     }
-  }
-
-  // Word-initial "eu" is the Greek prefix and one syllable: "eu-ca-lipt",
-  // "eu-ro-pa", "eu-ca-ri-ot". The patterns split all 339 such words, while
-  // leaving the bare pronoun "eu" whole. Anchored at the start, so the real
-  // "e-u" hiatus of "re-u-nit", "ne-u-tru" and "pre-o-cu-pat" is unaffected.
-  if (n > 2 && word[0] === 'e' && word[1] === 'u') {
-    cuts = cuts.filter(c => c !== 1);
   }
 
   // The "crăciun" stem keeps its softener: "cră-ciun", and so "cră-ciu-nul",

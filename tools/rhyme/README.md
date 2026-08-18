@@ -205,3 +205,36 @@ provisional one, so the name `lup'i` does not set the stress for the noun
 `'ochi` and `p'omi` win over the infinitives `och'i` and `pom'i`. A verb
 with no competing form, like `abol'i`, keeps its final stress and still
 divides `a-bo-li`.
+
+### Auditing the rules
+
+dexonline's divisions double as a test set for the hand-written rules, since
+they cover words the patterns must also handle. Each rule was ablated —
+neutralised in a copy of this file, with the pattern path rescored against
+dexonline over the 6562 words it covers whole. Anything that scores better
+switched off is not paying for itself.
+
+    splitMultiNucleusPieces   +157      mergeVowellessPieces   +105
+    -iune hiatus               +83      placeGlideBoundaries     +9
+    final -ua split             +9      phoneticOnsets           +7
+    oa diphthong                +2      nici + vowel             +2
+    crăciun stem                 0      whispered final -i        0
+    ea diphthong               -26      word-initial eu         -16
+
+The two negatives were acted on. The `eu` rule was mine, asserted rather
+than checked: dexonline reads word-initial `eu` as hiatus without exception
+— `e-u-ro`, `e-u-ro-pean`, `e-u-fo-ric` — and removing the rule fixed 16
+words and broke none.
+
+`ea` was mixed, fixing 64 and breaking 38, so it was refined instead of
+dropped. The misses were the Latinate `-eal/-ear/-eat` endings; the breaks
+were common words like `dea-su-pra`, `dea-ler` and `gea-lău` that the rule
+exists to protect. Matching the endings only at the very end of a word
+separates them, and an obstruent+liquid guard keeps `a-crea-lă` and
+`ne-grea-lă`. Net +32 with 0 regressions.
+
+Coverage is flat across frequency bands — 5.8% of the top 2000 words carry
+a dexonline division, 6.7% of the next band, 5.5% beyond — so the test set
+is not skewed toward rare vocabulary.
+
+Rerun the ablation after touching any rule here.
