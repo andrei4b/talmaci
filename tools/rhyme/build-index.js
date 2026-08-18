@@ -182,6 +182,14 @@ function isNameOnly(models) {
   return models.every(isNoiseModel);
 }
 
+// Only V and VT. "PT" is a participle and "IL" a long infinitive, both of
+// which behave as an adjective or a noun and are read that way.
+function isVerbModel(m) {
+  const slash = m.indexOf('/');
+  const type = slash < 0 ? m : m.slice(0, slash);
+  return type === 'V' || type === 'VT';
+}
+
 const rec = new Map();
 const variantsOf = new Map();   // spelling -> Map(stressOffset -> keys)
 let scanned = 0, skipped = 0;
@@ -240,13 +248,24 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   //    verb share a spelling, the noun is the commoner reading and the one
   //    a lyricist wants: "'ochi" and "p'omi" over the infinitives "och'i"
   //    and "pom'i". A verb with no competing form, like "abol'i", is
-  //    unaffected and still divides a-bo-li.
+  //    unaffected and still divides a-bo-li;
+  //  * and last, anything beats a verb. "m'obilă" the furniture leads over
+  //    "mobil'a" the verb, "c'asă" over "cas'a", "d'ată" over "dat'a", and
+  //    the adverb "înap'oi" over "înapo'i". dexonline's own frequency column
+  //    cannot make this call — it is populated, but bounded to 0..1 and
+  //    sitting at 0.96 to 1.00 for every one of these pairs, so it separates
+  //    nothing. Readings that are both nouns, like "cop'ii" and "c'opii",
+  //    are left to the tests above.
+  //
+  // The weights are powers of two so each rule only ever breaks ties left by
+  // the ones before it.
   const aposAt = norm.indexOf("'");
   const stressedFinalI = aposAt >= 0 && aposAt === clean.length - 1 &&
                          clean[clean.length - 1] === 'i';
-  const score = (aposAt >= 0 ? 4 : 0) +
-                (isNoiseModel(model) ? 0 : 2) +
-                (stressedFinalI ? 0 : 1);
+  const score = (aposAt >= 0 ? 8 : 0) +
+                (isNoiseModel(model) ? 0 : 4) +
+                (stressedFinalI ? 0 : 2) +
+                (isVerbModel(model) ? 0 : 1);
   // Some spellings are two different words told apart only by where the
   // stress falls: "c'asa" the house against "cas'a" the verb, "cop'ii"
   // children against "c'opii" copies, "auz'i" the infinitive against
