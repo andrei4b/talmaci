@@ -475,6 +475,15 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600;
   cursor: pointer;
 }
+/* The stress-reading picker: each button shows a whole division, so it
+   needs more room than the single-word syllable filters above it. */
+.rime__filters--readings { margin-top: 8px; }
+.rime__filters--readings .rime__seg { font-weight: 500; }
+.rime__filters--readings .rime__syl-sep { opacity: 0.45; }
+.rime__filters--readings .rime__syl--stressed {
+  font-weight: 700;
+  text-decoration: underline;
+}
 .rime__seg--active {
   border-color: var(--color-accent);
   color: var(--color-accent);

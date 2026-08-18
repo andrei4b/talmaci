@@ -238,3 +238,27 @@ a dexonline division, 6.7% of the next band, 5.5% beyond — so the test set
 is not skewed toward rare vocabulary.
 
 Rerun the ablation after touching any rule here.
+
+## Words with more than one stress
+
+A spelling can be two different words told apart only by where the stress
+falls, and they rhyme differently, because the key runs from the stressed
+vowel:
+
+    c'asa   the house      cas'a   the verb, to annul
+    cop'ii  children       c'opii  copies
+    t'orturi cakes         tort'uri tortures
+    auz'i   the infinitive a'uzi   the second person
+
+2.48% of the index — 5222 words — carries more than one reading. The build
+keeps them all: each contributes its own key, so `casa` appears both among
+the rhymes for `c'asă` and among those for `cas'a`. The scoring described
+above now only decides which reading leads.
+
+The extras ride in a sparse `vars` list, `<wordId>~<stressOffset+1>~<cuts>`
+in base36, since only a fortieth of the vocabulary needs one. The division
+is stored per reading too, because it follows the stress: `a-uzi` against
+`a-u-zi`.
+
+The Rime tab shows a picker when a word has several, each labelled with its
+own division and stressed syllable.

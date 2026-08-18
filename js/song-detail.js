@@ -46,6 +46,7 @@ let _activeVersionId = null;
 // glancing at the Text tab.
 let _rimeQuery = '';
 let _rimeSyll = 0;        // 0 = any
+let _rimeReading = 0;     // which stress reading of the query word
 // How many results are currently rendered. Grows via "arată mai multe" —
 // productive endings like -ire match several hundred words, and rendering
 // them all at once is a lot of DOM for results you rarely scroll to.
@@ -206,6 +207,7 @@ function _renderRimeTab(content) {
     oninput: debounce((e) => {
       _rimeQuery = e.target.value;
       _rimeShown = RIME_PAGE;   // new search starts from the top again
+      _rimeReading = 0;         // and from the word's leading reading
       _runRimeSearch(wrap);
     }, 250)
   });
@@ -278,7 +280,8 @@ async function _runRimeSearch(wrap) {
 
   const res = window.Rhyme.lookup(q, {
     syllables: _rimeSyll,
-    syllablesOrMore: _rimeSyll === RIME_SYLL_MAX
+    syllablesOrMore: _rimeSyll === RIME_SYLL_MAX,
+    reading: _rimeReading
   });
   body.innerHTML = '';
 
@@ -306,6 +309,37 @@ async function _runRimeSearch(wrap) {
     (total ? ' · ' + total + (total === 1 ? ' rezultat' : ' rezultate') : '')
   ]));
   body.appendChild(line);
+
+  // A spelling can be two words told apart only by stress — "c'asa" the
+  // house against "cas'a" the verb — and they rhyme differently. Offer each
+  // reading rather than silently picking one.
+  const readings = window.Rhyme.readingLabels(q);
+  if (readings.length > 1) {
+    const row = el('div', { class: 'rime__filters rime__filters--readings' }, [
+      el('span', { class: 'rime__filters-label' }, ['Accent'])
+    ]);
+    readings.forEach((r, i) => {
+      const label = el('span', {});
+      r.parts.forEach((p, k) => {
+        if (k) label.appendChild(el('span', { class: 'rime__syl-sep' }, ['-']));
+        label.appendChild(el('span', {
+          class: k === r.stressIndex ? 'rime__syl--stressed' : ''
+        }, [p]));
+      });
+      const btn = el('button', {
+        class: 'rime__seg' + (i === _rimeReading ? ' rime__seg--active' : ''),
+        onclick: () => {
+          _rimeReading = i;
+          _rimeShown = RIME_PAGE;
+          // The picker sits inside .rime__body, which this rebuilds, so the
+          // search field above it keeps both its text and its focus.
+          _runRimeSearch(wrap);
+        }
+      }, [label]);
+      row.appendChild(btn);
+    });
+    body.appendChild(row);
+  }
 
   if (!res.results.length) {
     body.appendChild(el('div', { class: 'empty-state' }, [

@@ -183,6 +183,7 @@ function isNameOnly(models) {
 }
 
 const rec = new Map();
+const variantsOf = new Map();   // spelling -> Map(stressOffset -> keys)
 let scanned = 0, skipped = 0;
 // Pass 1: collect every model type each spelling is attested with, so the
 // name test below can ask about the spelling as a whole rather than one row.
@@ -246,6 +247,24 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   const score = (aposAt >= 0 ? 4 : 0) +
                 (isNoiseModel(model) ? 0 : 2) +
                 (stressedFinalI ? 0 : 1);
+  // Some spellings are two different words told apart only by where the
+  // stress falls: "c'asa" the house against "cas'a" the verb, "cop'ii"
+  // children against "c'opii" copies, "auz'i" the infinitive against
+  // "a'uzi" the second person. Each reading rhymes differently, since the
+  // key runs from the stressed vowel, so all of them are kept and the
+  // scoring below only decides which one leads.
+  if (aposAt >= 0 && !isNoiseModel(model)) {
+    let vm = variantsOf.get(clean);
+    if (!vm) { vm = new Map(); variantsOf.set(clean, vm); }
+    if (!vm.has(aposAt)) {
+      let va = null;
+      try { va = P.analyze(norm); } catch (e) { /* ignore */ }
+      if (va && va.exactKey) {
+        vm.set(aposAt, { exact: va.exactKey, asson: va.assonanceKey });
+      }
+    }
+  }
+
   const existing = rec.get(clean);
   if (existing && existing.score >= score) continue;
 
@@ -297,11 +316,18 @@ console.error(`ranked vocabulary: ${rankedWords.length}`);
 function build(keyName, cap) {
   const map = new Map();
   for (const w of words) {
-    const k = rec.get(w)[keyName];
-    if (!k) continue;
-    let arr = map.get(k);
-    if (!arr) { arr = []; map.set(k, arr); }
-    arr.push(w);
+    // Every reading contributes its own key, so "casa" turns up both among
+    // the rhymes for "c'asă" and among those for "cas'a".
+    const keys = new Set();
+    const primary = rec.get(w)[keyName];
+    if (primary) keys.add(primary);
+    const vm = variantsOf.get(w);
+    if (vm) for (const v of vm.values()) if (v[keyName]) keys.add(v[keyName]);
+    for (const k of keys) {
+      let arr = map.get(k);
+      if (!arr) { arr = []; map.set(k, arr); }
+      arr.push(w);
+    }
   }
   const out = {};
   let kept = 0;
@@ -446,13 +472,13 @@ const dexHyph = loadDexHyphenations(dexHyphPath);
 // phonological pass mis-analyses hiatus in words like "superior" and
 // "scriitor" — it turns the i into a glide and undercounts.
 let dexFull = 0, dexFrag = 0, dexStem = 0;
-const cutsPerWord = words.map(w => {
+
+/* Divides one word. The stressed vowel's offset is a parameter rather than
+ * a lookup because a spelling can carry more than one reading, and the
+ * division follows the stress: "b'oli" is one syllable, "abol'i" is
+ * a-bo-li. */
+function cutsFor(w, stress) {
   if (!hyphTable) return '';
-  // Pass the stressed vowel's offset: it is the only thing that separates a
-  // whispered final "i" from a stressed one, so "b'oli" stays one syllable
-  // while "abol'i" divides a-bo-li.
-  const rc = rec.get(w);
-  const stress = rc && rc.spos >= 0 ? rc.spos : -1;
   let fromDex = dexHyph[w];
   let viaStem = false;
   if (!fromDex) {
@@ -495,6 +521,11 @@ const cutsPerWord = words.map(w => {
   cs = fromDex ? H.finishImported(w, cs, stress)
                : H.enforceOneNucleus(w, cs, stress);
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
+}
+
+const cutsPerWord = words.map(w => {
+  const rc = rec.get(w);
+  return cutsFor(w, rc && rc.spos >= 0 ? rc.spos : -1);
 });
 const cuts = cutsPerWord.join('\n');
 console.error(`  from dexonline: ${dexFull} whole-word, ${dexFrag} via fragment, ${dexStem} via stem — ${dexFull + dexFrag + dexStem} of ${words.length}`);
@@ -516,8 +547,28 @@ const rankDeltas = rankedWords.map(w => { const i = id.get(w); const d = i - pre
 const outDir = path.join(__dirname, '..', '..', 'data');
 fs.mkdirSync(outDir, { recursive: true });
 const outFile = path.join(outDir, 'rhyme-index.json');
+/* ---- secondary readings ----
+ * One entry per reading OTHER than the one stored in `spos`, as
+ * "<wordId>~<stressOffset+1>~<cuts>", all base36. Offsets are +1 so that a
+ * zero can mean "none", matching how `spos` is encoded. Only ~2.5% of words
+ * have any, so a sparse list costs far less than a column. */
+const varsOut = [];
+for (const [w, vm] of variantsOf) {
+  const wid = id.get(w);
+  if (wid === undefined || vm.size < 2) continue;
+  const rc = rec.get(w);
+  if (!rc) continue;
+  for (const off of vm.keys()) {
+    if (off === rc.spos) continue;
+    varsOut.push(wid.toString(36) + '~' + (off + 1).toString(36) + '~' +
+                 cutsFor(w, off));
+  }
+}
+console.error(`  secondary stress readings: ${varsOut.length} on ${
+  new Set(varsOut.map(v => v.split('~')[0])).size} words`);
+
 fs.writeFileSync(outFile, JSON.stringify({
-  version: 4,
+  version: 5,
   count: words.length,
   words: words.join('\n'),
   syll: syll,
@@ -525,6 +576,7 @@ fs.writeFileSync(outFile, JSON.stringify({
   spos: spos,
   rank: rankDeltas.join(','),
   exact: exact,
-  asson: asson
+  asson: asson,
+  vars: varsOut.join(';')
 }));
 console.error(`wrote ${outFile} (${(fs.statSync(outFile).size / 1048576).toFixed(1)} MB raw)`);

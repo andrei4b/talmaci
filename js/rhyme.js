@@ -26,6 +26,7 @@ let _cuts = null;           // per-word syllable cut offsets, base36
 let _exact = null;
 let _asson = null;
 let _rank = null;           // Map wordId -> frequency rank (attested only)
+let _vars = null;           // Map wordId -> [{spos, cuts}] secondary readings
 
 function state() { return _state; }
 function errorMessage() { return _error; }
@@ -112,6 +113,19 @@ async function load(onProgress) {
         _offsets[idx++] = at;
       }
 
+      // Secondary stress readings: "id~spos~cuts", semicolon separated.
+      _vars = new Map();
+      if (data.vars) {
+        for (const entry of data.vars.split(';')) {
+          if (!entry) continue;
+          const bits = entry.split('~');
+          const wid = parseInt(bits[0], 36);
+          let list = _vars.get(wid);
+          if (!list) { list = []; _vars.set(wid, list); }
+          list.push({ spos: parseInt(bits[1], 36), cuts: bits[2] || '' });
+        }
+      }
+
       _rank = new Map();
       let p = 0, r = 0;
       for (const d of data.rank.split(',')) { p += +d; _rank.set(p, r++); }
@@ -129,11 +143,25 @@ async function load(onProgress) {
   return _promise;
 }
 
+/* Every stress reading a spelling has, the leading one first.
+ *
+ * A spelling can be two different words separated only by stress — "c'asa"
+ * the house against "cas'a" the verb, "cop'ii" children against "c'opii"
+ * copies, "auz'i" the infinitive against "a'uzi" the second person. They
+ * rhyme differently, because the key runs from the stressed vowel, so the
+ * Rime tab offers each of them. */
+function readingsFor(id) {
+  const out = [{ spos: parseInt(_spos[id], 36), cuts: _cuts ? _cuts[id] : '' }];
+  const extra = _vars && _vars.get(id);
+  if (extra) for (const v of extra) out.push(v);
+  return out;
+}
+
 /* Analyzes a query word, preferring the index's attested dexonline stress
  * over the rule-based guess. This distinction matters: "inimă" is stressed
  * Í-ni-mă, but the rules would guess i-NI-mă and return a completely wrong
  * rhyme set. */
-function analyzeWord(word) {
+function analyzeWord(word, readingIdx) {
   const P = window.RoPhonetics;
   const norm = P.normalize(word).replace(/[^a-zăâîșț]/g, '');
   if (!norm) return null;
@@ -141,11 +169,13 @@ function analyzeWord(word) {
   if (_state === 'ready') {
     const id = findId(norm);
     if (id >= 0) {
+      const all = readingsFor(id);
+      const pick = all[(readingIdx | 0) < all.length ? (readingIdx | 0) : 0];
       // Re-insert the apostrophe at the attested offset and analyze THAT,
       // so this follows byte-for-byte the same path the build script used.
       // Passing a bare word plus a nucleus index would silently disagree:
       // "bucurie" only splits as bu-cu-ri-e once the marker is present.
-      const off = parseInt(_spos[id], 36);
+      const off = pick.spos;
       const marked = off > 0
         ? norm.slice(0, off - 1) + "'" + norm.slice(off - 1)
         : norm;
@@ -153,14 +183,31 @@ function analyzeWord(word) {
       if (a) {
         a.attested = off > 0;
         a.id = id;
-        applyStoredSyllables(a, id, off);
+        a.readingCount = all.length;
+        a.readingIndex = all.indexOf(pick);
+        applyStoredSyllables(a, pick.cuts, off);
       }
       return a;
     }
   }
   const a = P.analyze(norm);
-  if (a) { a.attested = false; a.id = -1; }
+  if (a) { a.attested = false; a.id = -1; a.readingCount = 1; a.readingIndex = 0; }
   return a;
+}
+
+/* The division and stressed syllable of every reading, for the picker. */
+function readingLabels(word) {
+  const P = window.RoPhonetics;
+  const norm = P.normalize(word).replace(/[^a-zăâîșț]/g, '');
+  if (_state !== 'ready' || !norm) return [];
+  const id = findId(norm);
+  if (id < 0) return [];
+  const all = readingsFor(id);
+  if (all.length < 2) return [];
+  return all.map((r, i) => {
+    const a = analyzeWord(word, i);
+    return a ? { parts: a.syllableParts || [norm], stressIndex: a.stressIndex } : null;
+  }).filter(Boolean);
 }
 
 /* Replaces the phonologically-derived syllable split with the one stored in
@@ -168,10 +215,8 @@ function analyzeWord(word) {
  * rules cannot tell "pie-le" from "su-pe-ri-or", and undercount hiatus in
  * words like "scriitor". The stressed syllable is whichever piece contains
  * the attested stressed-vowel offset. */
-function applyStoredSyllables(a, id, off) {
-  if (!_cuts) return;
-  const raw = _cuts[id];
-  if (raw === undefined) return;
+function applyStoredSyllables(a, raw, off) {
+  if (raw === undefined || raw === null) return;
 
   const cuts = [];
   for (const ch of raw) cuts.push(parseInt(ch, 36));
@@ -208,7 +253,7 @@ function rankOf(id) {
 function lookup(word, opts) {
   if (_state !== 'ready') return { ok: false, reason: 'not-loaded' };
   const o = opts || {};
-  const a = analyzeWord(word);
+  const a = analyzeWord(word, o.reading);
   if (!a) return { ok: false, reason: 'unparsable' };
 
   const mode = o.mode === 'asson' ? 'asson' : 'exact';
@@ -262,6 +307,7 @@ window.Rhyme = {
   state: state,
   errorMessage: errorMessage,
   analyzeWord: analyzeWord,
+  readingLabels: readingLabels,
   lookup: lookup
 };
 
