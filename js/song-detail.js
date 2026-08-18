@@ -45,7 +45,6 @@ let _activeVersionId = null;
 // Rime tab state, kept across tab switches so you don't lose a search by
 // glancing at the Text tab.
 let _rimeQuery = '';
-let _rimeMode = 'exact';  // 'exact' | 'asson'
 let _rimeSyll = 0;        // 0 = any
 // How many results are currently rendered. Grows via "arată mai multe" —
 // productive endings like -ire match several hundred words, and rendering
@@ -210,13 +209,7 @@ function _renderRimeTab(content) {
   });
   wrap.appendChild(el('div', { class: 'rime__search' }, [input]));
 
-  // Mode + syllable filters
-  const modeRow = el('div', { class: 'rime__filters' }, [
-    _segButton('Rime perfecte', _rimeMode === 'exact', () => { _rimeMode = 'exact'; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }),
-    _segButton('Asonanțe', _rimeMode === 'asson', () => { _rimeMode = 'asson'; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
-  ]);
-  wrap.appendChild(modeRow);
-
+  // Only perfect rhymes are offered, so there is no mode to choose.
   const sylRow = el('div', { class: 'rime__filters rime__filters--syll' }, [
     el('span', { class: 'rime__filters-label' }, ['Silabe']),
     _segButton('Orice', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
@@ -278,7 +271,7 @@ async function _runRimeSearch(wrap) {
     if ((_rimeQuery || '').trim() !== q) return;   // query changed while loading
   }
 
-  const res = window.Rhyme.lookup(q, { mode: _rimeMode, syllables: _rimeSyll });
+  const res = window.Rhyme.lookup(q, { syllables: _rimeSyll });
   body.innerHTML = '';
 
   if (!res.ok || !res.analysis) {
@@ -306,19 +299,11 @@ async function _runRimeSearch(wrap) {
   ]));
   body.appendChild(line);
 
-  if (res.tooBroad) {
-    body.appendChild(el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Asonanțele au sens doar pentru cuvinte cu mai multe silabe.']),
-      el('p', { class: 'empty-state__hint' }, ['Încearcă „Rime perfecte" pentru acest cuvânt.'])
-    ]));
-    return;
-  }
-
   if (!res.results.length) {
     body.appendChild(el('div', { class: 'empty-state' }, [
       el('p', {}, ['Niciun rezultat.']),
       el('p', { class: 'empty-state__hint' }, [
-        _rimeSyll ? 'Încearcă fără filtrul de silabe.' : 'Încearcă „Asonanțe".'
+        _rimeSyll ? 'Încearcă fără filtrul de silabe.' : 'Încearcă alt cuvânt.'
       ])
     ]));
     return;
