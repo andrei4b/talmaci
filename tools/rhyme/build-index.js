@@ -226,7 +226,14 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   (modelsFor[clean] || (modelsFor[clean] = [])).push(col[1]);
   if (col[2]) {
     const head = P.normalize(col[2]).replace(/'/g, '');
-    if (head && head !== clean && !(clean in headOf)) headOf[clean] = head;
+    // Keep every distinct headword, not just the first. "albia" sits on
+    // three lexemes — the adjective "albiu", the verb "albii" and the noun
+    // "albie" — and only "albie" has a division recorded against it. Taking
+    // whichever the dump listed first meant "al-bia" instead of "al-bi-a".
+    if (head && head !== clean) {
+      const list = headOf[clean] || (headOf[clean] = []);
+      if (list.length < 4 && list.indexOf(head) < 0) list.push(head);
+    }
   }
 }
 
@@ -562,16 +569,18 @@ function cutsFor(w, stress) {
   // heads its own lexeme has none. It is its own head: without this,
   // "creangă" arrives headless and the "crea" rule below, which treats a
   // missing head as unknown, hands it a hiatus it should not have.
-  const head = headOf[w] || w;
+  const heads = headOf[w] || [];
+  // The head that matters is the one dexonline actually divided.
+  const head = heads.find(h => dexHyph[h]) || heads[0] || w;
   if (!hyphTable) return '';
   let fromDex = dexHyph[w];
   let viaStem = false;
   if (!fromDex) {
-    const head = headOf[w];
-    const headHyph = head && dexHyph[head];
-    if (headHyph) {
-      fromDex = propagateFromHead(w, head, headHyph);
-      viaStem = !!fromDex;
+    for (const h of heads) {
+      const headHyph = dexHyph[h];
+      if (!headHyph) continue;
+      fromDex = propagateFromHead(w, h, headHyph);
+      if (fromDex) { viaStem = true; break; }
     }
   }
   let cs;

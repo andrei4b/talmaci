@@ -139,9 +139,18 @@ function applyExceptions(word, cuts, stressOffset, head) {
     // ("cre-ase" against "creas-că"), so the headword decides: the "a crea"
     // family heads are "crea" itself and its "crea" + r/t/ț/s derivatives,
     // which is what leaves "creangă" and "creanță" out.
-    const creaStem = i === 2 && word.startsWith('crea') &&
-      (!head || head === 'crea' ||
-       (head.startsWith('crea') && 'rtțs'.indexOf(head.charAt(4)) >= 0));
+    // The same stem survives a prefix: "re-cre-at", "re-cre-a-re",
+    // "pro-cre-at". Those have to be named, because the obstruent+liquid
+    // guard above would otherwise block them on the "cr" — the very guard
+    // that keeps "a-crea-lă" and "ne-grea-lă" whole, which are built on
+    // "a acri" and "a negri" rather than on "a crea".
+    const creaAt = word.indexOf('crea');
+    const prefixedCrea = /^(re|pro|co)crea/.test(word) && i === creaAt + 2;
+
+    const creaStem = prefixedCrea ||
+      (i === 2 && word.startsWith('crea') &&
+       (!head || head === 'crea' ||
+        (head.startsWith('crea') && 'rtțs'.indexOf(head.charAt(4)) >= 0)));
 
     // The Latinate "-eal/-ear/-eat" adjectives take the hiatus: "a-re-al",
     // "bal-ne-ar", "bo-re-al", "li-ce-al", "nu-cle-ar", "e-le-at".
@@ -168,7 +177,17 @@ function applyExceptions(word, cuts, stressOffset, head) {
       creaStem ||
       (i === 2 && word.startsWith('idea')) ||
       latinateHiatus;
-    if (!isStemHiatus) cuts = cuts.filter(c => c !== i + 1);
+    // Decide, rather than defer. This used only to drop a cut the patterns
+    // had already placed, which left the outcome to whether rospell happened
+    // to emit one: "gre-șe-a-lă" got a cut and "o-bo-sea-lă" did not, from
+    // the same suffix. Where the hiatus is established the boundary is now
+    // put in, so "re-cre-at" and "li-ce-al" no longer depend on the pattern
+    // set having an opinion.
+    if (isStemHiatus) {
+      if (cuts.indexOf(i + 1) < 0) cuts = cuts.concat([i + 1]).sort((x, y) => x - y);
+    } else {
+      cuts = cuts.filter(c => c !== i + 1);
+    }
   }
 
   // "oa" behaves exactly like "ea": a rising diphthong in the overwhelming
