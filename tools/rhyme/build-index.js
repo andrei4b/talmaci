@@ -519,15 +519,36 @@ function loadDexHyphenations(pathname) {
     if (tab < 0) continue;
     const form = P.normalize(line.slice(0, tab)).replace(/'/g, '');
     if (form in map) continue;
+    // dexonline sometimes records two divisions with no mark to say which it
+    // prefers: "transmigrație" is held as both "tran-smi-gra-ți-e" and
+    // "trans-mi-gra-ți-e". Taking the first gave "tran-smit" for "transmit",
+    // where Romanian divides a two-consonant cluster between the syllables
+    // unless it is muta cum liquida, so "trans-mit" is the one wanted.
+    //
+    // The patterns already know this, so they break the tie: whichever
+    // alternative agrees with them on more boundaries wins, and the first
+    // still wins when they say nothing useful.
+    const candidates = [];
     for (const raw of line.slice(tab + 1).split(',')) {
       const v = P.normalize(raw.trim()).replace(/'/g, '');
       if (!v || v.indexOf('--') >= 0) continue;      // structural variant
       const parsed = parseHyphValue(v, form);
-      if (!parsed) continue;
-      map[form] = parsed;
-      if (parsed.from === 0 && parsed.to === form.length) full++; else frag++;
-      break;
+      if (parsed) candidates.push(parsed);
     }
+    if (!candidates.length) continue;
+
+    let best = candidates[0];
+    if (candidates.length > 1 && hyphTable) {
+      const fromPatterns = new Set(H.cutPoints(form, hyphTable, -1));
+      let bestScore = -1;
+      for (const c of candidates) {
+        let agree = 0;
+        for (const cut of c.cuts) if (fromPatterns.has(cut)) agree++;
+        if (agree > bestScore) { bestScore = agree; best = c; }
+      }
+    }
+    map[form] = best;
+    if (best.from === 0 && best.to === form.length) full++; else frag++;
   }
   console.error(`dexonline hyphenations: ${full} whole-word, ${frag} anchored fragments`);
   return map;
