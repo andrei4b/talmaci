@@ -289,10 +289,27 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   // A marker with nothing after it cannot be pointing at a vowel. dexonline
   // holds a couple of these — "altcuiva'", "short'" — and taking them at
   // face value stored a stress offset past the end of the word.
-  const aposAt = markerOffset(norm);
+  let aposAt = markerOffset(norm);
   const stressedFinalI = aposAt >= 0 && aposAt === clean.length - 1 &&
                          clean[clean.length - 1] === 'i';
-  const score = (aposAt >= 0 ? 8 : 0) +
+  // A stressed final "i" sitting on ANOTHER vowel is a verb infinitive:
+  // "tră-i", "con-stru-i", "bă-nu-i", 122 words of them. On anything else
+  // the "i" is the glide of a falling diphthong and the marker cannot be
+  // read that way — all 3 such words are nouns and all 3 were wrong:
+  // "thai" is one syllable, "macabei" is ma-ca-bei, "etui" is e-tui.
+  const finalIAfterVowel = stressedFinalI && clean.length >= 3 &&
+    'aăâeiîou'.indexOf(clean[clean.length - 2]) >= 0;
+  if (finalIAfterVowel && !isVerbModel(model)) aposAt = -1;
+
+  // Where such a verb shares its spelling with an ordinary word, the
+  // ordinary word is the one being looked up: "păi" is the everyday adverb
+  // far more often than the obscure verb "a păi", and it was coming out
+  // "pă-i". The marker normally outweighs everything, since an unmarked
+  // form has no stress to offer, but not when the only thing it says is
+  // that a verb ends on a stressed "i" — the reading below can still be
+  // reached from the accent picker.
+  const markerWeight = (finalIAfterVowel && isVerbModel(model)) ? 0 : 8;
+  const score = (aposAt >= 0 ? markerWeight : 0) +
                 (isNoiseModel(model) ? 0 : 4) +
                 (stressedFinalI ? 0 : 2) +
                 (isVerbModel(model) ? 0 : 1);
@@ -328,7 +345,10 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   // "bucurie" syllabifies as bu-cu-ri-e only once the marker is present,
   // so an index computed here would point into a different nuclei array
   // than the one the app derives from the bare word.
-  const apos = markerOffset(norm);
+  // aposAt, not a fresh markerOffset() call: that one would hand back the
+  // raw position and undo the credibility test above, storing a stress on
+  // the glide of "thai" and "etui" even though the scoring had rejected it.
+  const apos = aposAt;
   rec.set(clean, { exact: a.exactKey, asson: a.assonanceKey,
                    syll: a.syllables, spos: apos, score: score,
                    subRate: subRate, wikiRate: wikiRate });
