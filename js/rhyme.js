@@ -267,6 +267,15 @@ function lookup(word, opts) {
   const a = analyzeWord(word, o.reading);
   if (!a) return { ok: false, reason: 'unparsable' };
 
+  // A word the index does not hold has no attested stress, and without that
+  // the rules can only guess — "inimă" would come out i-NI-mă rather than
+  // Í-ni-mă, and every rhyme derived from it would be wrong. Guessed
+  // divisions and rhyme sets look exactly as authoritative as real ones, so
+  // say the word is unknown instead of quietly inventing an answer.
+  if (a.id < 0) {
+    return { ok: true, unknown: true, analysis: a, total: 0, results: [] };
+  }
+
   const mode = o.mode === 'asson' ? 'asson' : 'exact';
   const key = mode === 'asson' ? a.assonanceKey : a.exactKey;
 

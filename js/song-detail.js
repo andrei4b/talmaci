@@ -297,6 +297,17 @@ async function _runRimeSearch(wrap) {
     return;
   }
 
+  // Not in the dictionary: no attested accent, so no division and no rhymes
+  // either. Both would be guesses, and a guess is indistinguishable on
+  // screen from the real thing.
+  if (res.unknown) {
+    body.appendChild(el('div', { class: 'empty-state' }, [
+      el('p', {}, ['Cuvântul nu e în dicționar.']),
+      el('p', { class: 'empty-state__hint' }, ['Verifică ortografia sau încearcă alt cuvânt.'])
+    ]));
+    return;
+  }
+
   const a = res.analysis;
   const total = res.total || 0;
 
