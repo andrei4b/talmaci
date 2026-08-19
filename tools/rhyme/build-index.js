@@ -618,11 +618,22 @@ function cutsFor(w, stress) {
     // after the "s", which left a vowel-less piece that then merged the
     // wrong way and gave "bi-os-pe-o-lo-gic". Dividing "speologic" by
     // itself gives "spe-o-lo-gic", and "sp" stays the onset it is.
+    // Divide onward from the LAST boundary, not from the end of the span.
+    //
+    // For a fragment the two are the same, its trailing hyphen being a
+    // boundary. For a stem carried onto an inflected form they are not, and
+    // the difference is a whole syllable: "lucru" divides "lu-cru", so
+    // "lucruri" keeps the cut after "lu" and then has to divide "cruri",
+    // which gives "cru-ri". Dividing only the appended "ri" finds nothing to
+    // cut and leaves "lu-cruri". Same for "su-fletul", "se-crete",
+    // "soa-rele" and "pro-gramul" — the ending has to be divided together
+    // with the stem syllable it attaches to, not beside it.
     const own = fromDex.cuts.slice();
     if (fromDex.from === 0) {
-      const tail = w.slice(fromDex.to);
+      const anchor = own.length ? own[own.length - 1] : 0;
+      const tail = w.slice(anchor);
       const tailCuts = tail.length > 1 ? H.cutPoints(tail, hyphTable, -1) : [];
-      cs = own.concat(tailCuts.map(c => c + fromDex.to));
+      cs = own.concat(tailCuts.map(c => c + anchor));
     } else {
       const headPart = w.slice(0, fromDex.from);
       const headCuts = headPart.length > 1 ? H.cutPoints(headPart, hyphTable, -1) : [];
