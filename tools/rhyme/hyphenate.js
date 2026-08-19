@@ -686,22 +686,20 @@ function enforceOneNucleus(word, cuts, stressOffset) {
  * "o-ri-și-ca-re", which are not.
  *
  * dexonline is a dictionary; where it states a division it is taken as
- * given on the question it is authoritative about — which vowels join and
- * which do not. It is not authoritative on where a consonant sits, because
- * it records the structural division for some words: "ort-o-gra-fic" for
- * the "orto" prefix, where this project wants "or-to-gra-fic". Its own
- * doubled hyphen only marks SOME of those, so phoneticOnsets runs here as
- * well. That pass never touches a boundary between two vowels, which is
- * why it cannot undo anything dexonline decided about them. */
+ * given. Only the orthographic-versus-sung corrections are applied, plus
+ * the vowel-less guard as a safety net.
+ *
+ * phoneticOnsets deliberately does NOT run here. It was tried, to pull the
+ * odd structural division like "ort-o-gra-fi-e-re" into line, and it
+ * reached much further than that: "ke-ny-an" became "ke-nyan" because "y"
+ * is not in its vowel set, and the English compounds "hold-up", "hand-out"
+ * and "back-up" lost the boundary that is the whole point of them. Where
+ * dexonline has looked at a word, its placement stands. */
 function finishImported(word, cuts, stressOffset) {
-  // phoneticOnsets moves a boundary and so can strand a consonant, which is
-  // why it runs BEFORE the vowel-less merge rather than after it: on
-  // "kenyanul" it left a piece of bare "n" with nothing left to clean up.
   return splitFinalUU(word,
     mergeWhisperedFinalI(word,
       mergeVowellessPieces(word,
-        phoneticOnsets(word,
-          splitStressedFinalI(word, cuts.slice(), stressOffset))),
+        splitStressedFinalI(word, cuts.slice(), stressOffset)),
       stressOffset));
 }
 

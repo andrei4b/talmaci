@@ -547,6 +547,16 @@ function loadDexHyphenations(pathname) {
         if (agree > bestScore) { bestScore = agree; best = c; }
       }
     }
+    // dexonline divides the Greek "orto" prefix both ways and is heavily
+    // one-sided about it: 15 of its entries read "or-to-" and 2 read
+    // "ort-o-", those two being "ortografic" and "ortografiere". Even
+    // "ortodontic" and "ortodonție", which carry both, list "or-to-" first.
+    // The tie-break above settles those; a lone "ort-o-" has nothing to be
+    // weighed against, so it is corrected here.
+    if (form.startsWith('orto') && best.cuts.length && best.cuts[0] === 3) {
+      best = { cuts: [2].concat(best.cuts.slice(1)), from: best.from, to: best.to };
+    }
+
     map[form] = best;
     if (best.from === 0 && best.to === form.length) full++; else frag++;
   }
