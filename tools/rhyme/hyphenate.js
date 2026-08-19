@@ -386,7 +386,7 @@ function mergeVowellessPieces(word, cuts) {
  * This only ever splits BETWEEN vowel groups, never inside one, so the
  * diphthong-vs-hiatus decisions made by the patterns and the exception layer
  * above are left untouched. */
-function splitMultiNucleusPieces(word, cuts, stressOffset) {
+function splitMultiNucleusPieces(word, cuts, stressOffset, head) {
   const VOW = 'aăâeiîouy';
   const isV = c => VOW.indexOf(c) >= 0;
   const OBSTR = 'pbtdcgfv';
@@ -421,8 +421,11 @@ function splitMultiNucleusPieces(word, cuts, stressOffset) {
       // syllable while "bol'i" and "abol'i" (the verbs) end on a stressed
       // vowel, so "aboli" is a-bo-li. dexonline's marker is what separates
       // them, so consult it before treating the letter as whispered.
-      const stressedFinalI = stressOffset === word.length - 1;
-      if (end === word.length && groups.length > 1 && !stressedFinalI) {
+      // Same question as mergeWhisperedFinalI: only a whispered "i" may be
+      // discounted. In "spaghetti" it is part of the stem, so "ghetti" holds
+      // two nuclei and divides "ghet-ti".
+      if (end === word.length && groups.length > 1 &&
+          finalIIsWhispered(word, head, stressOffset)) {
         const lastG = groups[groups.length - 1];
         if (lastG[0] === lastG[1] && piece[lastG[0]] === 'i' &&
             lastG[0] === piece.length - 1 && lastG[0] > 0 && !isV(piece[lastG[0] - 1])) {
@@ -619,7 +622,7 @@ function placeGlideBoundaries(word, cuts) {
   return placeGlideBoundaries(word, phoneticOnsets(word,
     mergeVowellessPieces(word,
       splitMultiNucleusPieces(word, applyExceptions(word, cuts, stressOffset, head),
-        stressOffset))));
+        stressOffset, head))));
 }
 
 function syllables(word, table, stressOffset, head) {
@@ -638,6 +641,30 @@ function syllables(word, table, stressOffset, head) {
  * loanwords on their source-language morphemes ("after-school"), leaving
  * syllables with two nuclei. This project wants the phonetic division
  * throughout, so those get broken up: "ni-ci-cum", "cin-ci-zeci". */
+/* Is a word-final "i" the whispered Romanian ending, or part of the stem?
+ *
+ * Whispered: "lu-pi", "po-mi", "mul-ți", "pust-ni-ci" — the "i" is a plural
+ * or second-person ending and carries no syllable of its own.
+ *
+ * Part of the stem, so a full vowel: "ra-vio-li", "spa-ghet-ti", "zom-bi",
+ * "sa-fa-ri". Two things mark those out. A doubled consonant appears in no
+ * Romanian word ending this way. And a borrowing IS its own headword, while
+ * a Romanian plural heads on its singular — "l'upi" on "l'up", "ar'ici" on
+ * "ar'iciu", "gen'unchi" on "gen'unche". Of the words that head on
+ * themselves only "ochi" and "unchi" are Romanian, both ending in "chi",
+ * which is the one shape excepted here.
+ *
+ * A stressed final "i" is never whispered; nothing can be built around a
+ * stressed vowel except a syllable. */
+function finalIIsWhispered(word, head, stressOffset) {
+  const n = word.length;
+  if (n < 2 || word[n - 1] !== 'i') return false;
+  if (stressOffset === n - 1) return false;
+  if (/([bcdfglmnprstz])\1/.test(word)) return false;
+  if (head && head === word && !/(chi|ghi)$/.test(word)) return false;
+  return true;
+}
+
 /* Re-attaches a final "i șoptit" that an imported division split off.
  *
  * dexonline's hyphenation column is for breaking lines, not for counting
@@ -663,25 +690,7 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
     return cuts.slice(0, -1);
   }
 
-  if (stressOffset === word.length - 1) return cuts;
-
-  // A doubled consonant marks the word as borrowed, and a borrowed "-i" is
-  // a full vowel rather than the whispered Romanian ending: "ja-cuz-zi",
-  // "con-fet-ti", "broc-co-li", where dexonline divides it out and is right
-  // to. No Romanian word that ends in a whispered "i" doubles a consonant —
-  // "lu-pi", "mo-flu-zi", "pust-ni-ci" and the rest are clear of it.
-  if (/([bcdfglmnprstz])\1/.test(word)) return cuts;
-
-  // Without a doubled consonant to go on, the headword tells the same
-  // story. A Romanian plural heads on its singular — "l'upi" on "l'up",
-  // "c'odri" on "c'odru", "p'ustnici" on "p'ustnic" — so its final "i" is
-  // an ending and is whispered. A borrowing IS its own headword, the "i"
-  // belonging to the stem: "ravi'oli", "br'occoli", "z'ombi".
-  //
-  // Length matters too, because "ochi" is its own headword as well, being
-  // the same in both numbers, and is a single sung syllable. Two pieces
-  // still merge; it is the longer words that are borrowings.
-  if (head && head === word && cuts.length >= 2) return cuts;
+  if (!finalIIsWhispered(word, head, stressOffset)) return cuts;
 
   // "y" counts as a vowel here, as it does everywhere else in this file: it
   // carries the nucleus in the loanwords the Wikipedia corpus drags in, so
@@ -700,7 +709,7 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
 function enforceOneNucleus(word, cuts, stressOffset, head) {
   return splitFinalUU(word, mergeWhisperedFinalI(word,
     mergeVowellessPieces(word,
-      splitMultiNucleusPieces(word, cuts.slice(), stressOffset)),
+      splitMultiNucleusPieces(word, cuts.slice(), stressOffset, head)),
     stressOffset, head));
 }
 
