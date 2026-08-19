@@ -178,6 +178,11 @@ const KEEP_NAMES = new Set([
  * the family says they mean: "cuiva", "cineva", "careva" and "altcineva" all
  * carry a proper marker on their final "a", so "altcuiva" is alt-cui-VA. It
  * was being dropped instead, and the rules then guessed alt-CUI-va. */
+function hasVowelIn(str) {
+  for (const c of str) if ('aăâeiîouy'.indexOf(c) >= 0) return true;
+  return false;
+}
+
 function markerOffset(norm) {
   const at = norm.indexOf("'");
   if (at < 0) return -1;
@@ -561,7 +566,10 @@ function propagateFromHead(word, head, parsed) {
   let end = to;
   if (to === shared && shared < word.length && shared > 0) {
     const next = word[shared];
-    if ((next === 'i' || next === 'u') &&
+    // Only when the two could actually form a diphthong. "continu" + "i"
+    // gives "ui" and does; "informați" + "ilor" gives "ii" and does not —
+    // dropping that boundary cost "in-for-ma-ți-i-lor" two syllables.
+    if ((next === 'i' || next === 'u') && next !== word[shared - 1] &&
         'aăâeiîou'.indexOf(word[shared - 1]) >= 0) end = to - 1;
   }
 
@@ -628,17 +636,39 @@ function cutsFor(w, stress) {
     // cut and leaves "lu-cruri". Same for "su-fletul", "se-crete",
     // "soa-rele" and "pro-gramul" — the ending has to be divided together
     // with the stem syllable it attaches to, not beside it.
+    // The fragment fixes its own span; the word is divided either side of
+    // it from the whole spelling, and the three are concatenated.
+    //
+    // Both ends matter. A propagated SUFFIX ends where the headword ends,
+    // so an inflected form running past it had its tail left undivided:
+    // "abelian" carries "-li-an", and "abeliană" came out "a-be-li-ană"
+    // with two vowels in the last syllable. 4223 words were like that.
+    //
+    // Dividing from the whole word rather than from the leftover slice
+    // matters just as much: "ile" and "fami" on their own give the patterns
+    // no word to work with and come back undivided, which is what produced
+    // "a-be-ra-ți-ile" and "fami-li-e".
+    //
+    // Seeing the whole word brings back the seam the isolated division
+    // avoided — for "biospeologic" the fragment "bi-o-" opens a syllable at
+    // "speologic" while the patterns want a break after the "s". A cut is
+    // therefore refused when it would leave the piece before it without a
+    // vowel, which is that case and no other.
     const own = fromDex.cuts.slice();
-    if (fromDex.from === 0) {
-      const anchor = own.length ? own[own.length - 1] : 0;
-      const tail = w.slice(anchor);
-      const tailCuts = tail.length > 1 ? H.cutPoints(tail, hyphTable, -1) : [];
-      cs = own.concat(tailCuts.map(c => c + anchor));
-    } else {
-      const headPart = w.slice(0, fromDex.from);
-      const headCuts = headPart.length > 1 ? H.cutPoints(headPart, hyphTable, -1) : [];
-      cs = headCuts.concat(own);
+    const full = H.cutPoints(w, hyphTable, stress, head);
+    const first = own.length ? own[0] : fromDex.from;
+    const last = own.length ? own[own.length - 1] : fromDex.to;
+
+    const before = full.filter(c => c > 0 && c < first);
+    const beyond = [];
+    let prev = last;
+    for (const c of full) {
+      if (c <= last || c >= w.length) continue;
+      if (!hasVowelIn(w.slice(prev, c))) continue;
+      beyond.push(c);
+      prev = c;
     }
+    cs = before.concat(own, beyond);
     cs = Array.from(new Set(cs)).sort((a, b) => a - b);
   } else {
     cs = H.cutPoints(w, hyphTable, stress, head);

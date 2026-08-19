@@ -47,6 +47,13 @@ function partsOf(i) {
 
 const fail = {};
 const sample = {};
+const warned = {};
+const warnSample = {};
+function warn(name, word, detail) {
+  warned[name] = (warned[name] || 0) + 1;
+  if (!warnSample[name]) warnSample[name] = [];
+  if (warnSample[name].length < 8) warnSample[name].push(word + (detail ? '  ' + detail : ''));
+}
 function flag(name, word, detail) {
   fail[name] = (fail[name] || 0) + 1;
   if (!sample[name]) sample[name] = [];
@@ -100,6 +107,25 @@ for (let i = 0; i < words.length; i++) {
       flag('syllable without a vowel', w, ps.join('-'));
     }
   }
+  // Reported, not fatal. A syllable holding two vowel groups is almost
+  // always wrong — "fami-li-e" for "fa-mi-li-e" went unseen for want of
+  // this check — but a whispered "i" can legitimately leave one, as in the
+  // compound "cinci-spre-ze-ce", so it is a list to read rather than a
+  // failure to stop on.
+  for (const p of ps) {
+    let groups = 0;
+    for (let k = 0; k < p.length; k++) {
+      if (ANY_VOWEL.indexOf(p[k]) < 0) continue;
+      let j = k;
+      while (j + 1 < p.length && ANY_VOWEL.indexOf(p[j + 1]) >= 0) j++;
+      groups++; k = j;
+    }
+    if (groups > 1 && !(p.length > 1 && p[p.length - 1] === 'i' &&
+                        ANY_VOWEL.indexOf(p[p.length - 2]) < 0)) {
+      warn('syllable with two vowel groups', w, ps.join('-'));
+    }
+  }
+
   if (!keyStartsAtStress(i)) {
     const off = parseInt(spos[i], 36) - 1;
     const a = P.analyze(w.slice(0, off) + "'" + w.slice(off));
@@ -136,6 +162,10 @@ if (ix.vars) {
 
 console.log(`index version ${ix.version}, ${words.length} words, ` +
             `${varN} secondary readings`);
+for (const n of Object.keys(warned)) {
+  console.log(`  warn  ${n}: ${warned[n]}`);
+  for (const s of warnSample[n]) console.log(`          ${s}`);
+}
 const names = Object.keys(fail);
 if (!names.length) {
   console.log('all invariants hold');
