@@ -144,8 +144,12 @@ function applyExceptions(word, cuts, stressOffset, head) {
     // crede", "crească" to "a crește", and "creangă" and "creanță" are
     // nouns; all four keep the diphthong. Spelling cannot separate them
     // ("cre-ase" against "creas-că"), so the headword decides: the "a crea"
-    // family heads are "crea" itself and its "crea" + r/t/ț/s derivatives,
-    // which is what leaves "creangă" and "creanță" out.
+    // family heads are "crea" itself and its "crea" + r/t/ț derivatives
+    // ("creat", "creație", "creator"), which is what leaves "creangă" and
+    // "creanță" out. "s" is deliberately not among them — "crease" and
+    // "creasem" head on "crea" exactly and need no help, while the noun
+    // "creastă" heads on itself and was being pulled in, giving
+    // "cre-as-tă" for "creas-tă".
     // The same stem survives a prefix: "re-cre-at", "re-cre-a-re",
     // "pro-cre-at". Those have to be named, because the obstruent+liquid
     // guard above would otherwise block them on the "cr" — the very guard
@@ -157,7 +161,7 @@ function applyExceptions(word, cuts, stressOffset, head) {
     const creaStem = prefixedCrea ||
       (i === 2 && word.startsWith('crea') &&
        (!head || head === 'crea' ||
-        (head.startsWith('crea') && 'rtțs'.indexOf(head.charAt(4)) >= 0)));
+        (head.startsWith('crea') && 'rtț'.indexOf(head.charAt(4)) >= 0)));
 
     // The Latinate "-eal/-ear/-eat" adjectives take the hiatus: "a-re-al",
     // "bal-ne-ar", "bo-re-al", "li-ce-al", "nu-cle-ar", "e-le-at".
