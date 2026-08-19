@@ -276,3 +276,29 @@ are ranked by frequency at query time and the second is appended after the
 first, so nothing is lost — searching the verb reading of `înapoi` leads with
 `trebui`, `trăi` and `construi`, and still reaches `voi` and `noi` further
 down.
+
+## Verifying a build
+
+    node tools/rhyme/verify-index.js [hyphenations.txt]
+
+Checks the shipped index and exits non-zero on any failure. Run it after
+every build. It needs no corpora, so it works on a bare checkout; pass
+dexonline's hyphenations export to also report agreement with it.
+
+The checks are the structural ones — every syllable has a vowel, the pieces
+reconstruct the word, the syllable count matches the cuts, every secondary
+reading is well formed — plus one that is not structural at all: **the rhyme
+key must begin at the vowel the stress marker points to**.
+
+That last one exists because the structural checks are blind to the worst
+class of bug this index can have. When `adăposti` keyed on `/ost'/` while
+its stress sat on the final `i`, the division was perfectly correct and
+every invariant passed; only the rhymes were wrong, and nothing caught it
+until someone noticed by hand. A marker inside a vowel run may key on any
+vowel of that run, since a marked letter that turns out to be a glide falls
+back to its segment's real nucleus.
+
+It earned itself on the first run, finding 374 defects: 372 words whose
+stress marker sat inside a softener digraph (`abag'iu`, `ac'iu`) and was
+being dropped by the tokenizer, and 2 dump entries with the apostrophe after
+the final letter.

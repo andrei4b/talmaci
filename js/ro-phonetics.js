@@ -136,8 +136,20 @@ function toPhonemes(wordNorm) {
     for (let k = before; k < out.length; k++) src[k] = startClean;
     // Advance by the letters actually consumed, ignoring stress markers.
     let consumed = 0;
-    for (let r = startRaw; r < i; r++) if (wordNorm[r] !== "'") consumed++;
+    let swallowedMarker = false;
+    for (let r = startRaw; r < i; r++) {
+      if (wordNorm[r] === "'") swallowedMarker = true; else consumed++;
+    }
     cleanPos = startClean + consumed;
+
+    // The marker can sit INSIDE a digraph this pass just swallowed whole:
+    // "abag'iu" and "ac'iu" mark the "gi" and "ci" that spell /dʒ/ and /tʃ/,
+    // where the "i" is a silent softener. The loop never meets that
+    // apostrophe as a character of its own, so it was lost, and the word
+    // fell back to a guessed stress — "a-BA-giu" for "a-ba-GIU". Recover it
+    // here; with no vowel emitted this pass it simply stays pending and
+    // lands on the vowel the softener was clearing the way for.
+    if (swallowedMarker) pendingStress = true;
 
     // Attach a pending stress marker to the first vowel token emitted.
     if (pendingStress && out.length > before) {

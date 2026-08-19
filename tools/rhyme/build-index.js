@@ -170,6 +170,15 @@ const KEEP_NAMES = new Set([
   'egipt', 'israel', 'avraam', 'moise', 'ilie', 'iehova', 'savaot'
 ]);
 
+/* Offset of the stress marker, or -1 when there is none or it is unusable.
+ * The apostrophe stands BEFORE the stressed vowel, so one at the very end
+ * of the form marks nothing at all. */
+function markerOffset(norm) {
+  const at = norm.indexOf("'");
+  if (at < 0 || at >= norm.length - 1) return -1;
+  return at;
+}
+
 function isNoiseModel(m) {
   const slash = m.indexOf('/');
   const type = slash < 0 ? m : m.slice(0, slash);
@@ -259,7 +268,10 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   //
   // The weights are powers of two so each rule only ever breaks ties left by
   // the ones before it.
-  const aposAt = norm.indexOf("'");
+  // A marker with nothing after it cannot be pointing at a vowel. dexonline
+  // holds a couple of these — "altcuiva'", "short'" — and taking them at
+  // face value stored a stress offset past the end of the word.
+  const aposAt = markerOffset(norm);
   const stressedFinalI = aposAt >= 0 && aposAt === clean.length - 1 &&
                          clean[clean.length - 1] === 'i';
   const score = (aposAt >= 0 ? 8 : 0) +
@@ -298,7 +310,7 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
   // "bucurie" syllabifies as bu-cu-ri-e only once the marker is present,
   // so an index computed here would point into a different nuclei array
   // than the one the app derives from the bare word.
-  const apos = norm.indexOf("'");
+  const apos = markerOffset(norm);
   rec.set(clean, { exact: a.exactKey, asson: a.assonanceKey,
                    syll: a.syllables, spos: apos, score: score,
                    subRate: subRate, wikiRate: wikiRate });
