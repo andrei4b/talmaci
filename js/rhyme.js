@@ -52,6 +52,74 @@ function findId(word) {
   return -1;
 }
 
+/* Diacritic-insensitive lookup.
+ *
+ * Phones make diacritics awkward to type, so "mantuire" is a common way to
+ * write "mântuire". The exact search misses it, and reporting the word as
+ * unknown would be technically right and practically useless. Folding the
+ * query lets it find the real entry, and with it the real accent — far
+ * better than guessing one.
+ *
+ * Built on first miss rather than at load, since anyone typing their
+ * diacritics never pays for it. Only words that actually contain a
+ * diacritic are listed: everything else folds to itself and the exact
+ * search already finds it.
+ *
+ * Stored as an Int32Array of word ids ordered by folded spelling, about
+ * 400KB, with the folded form recomputed during the search. Keeping the
+ * folded strings themselves would cost tens of megabytes, which is the same
+ * trap the word list at the top of this file avoids. */
+const FOLD = { 'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ț': 't' };
+function fold(w) {
+  let out = '';
+  for (const ch of w) out += FOLD[ch] || ch;
+  return out;
+}
+
+let _folded = null;         // Int32Array of ids, sorted by folded spelling
+
+function buildFolded() {
+  const pairs = [];
+  for (let i = 0; i < _count; i++) {
+    const w = wordAt(i);
+    if (!/[ăâîșț]/.test(w)) continue;      // folds to itself
+    pairs.push([fold(w), i]);
+  }
+  pairs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]));
+  _folded = new Int32Array(pairs.length);
+  for (let k = 0; k < pairs.length; k++) _folded[k] = pairs[k][1];
+}
+
+function findIdFolded(query) {
+  if (!_folded) buildFolded();
+  const n = _folded.length;
+  let lo = 0, hi = n - 1, at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const f = fold(wordAt(_folded[mid]));
+    if (f === query) { at = mid; break; }
+    if (f < query) lo = mid + 1; else hi = mid - 1;
+  }
+  if (at < 0) return -1;
+  // Several spellings can fold together — "casă" and "casa" both give
+  // "casa". Walk the run and keep the one the corpora see most often.
+  let best = _folded[at];
+  for (let k = at - 1; k >= 0 && fold(wordAt(_folded[k])) === query; k--) {
+    if (rankOf(_folded[k]) < rankOf(best)) best = _folded[k];
+  }
+  for (let k = at + 1; k < n && fold(wordAt(_folded[k])) === query; k++) {
+    if (rankOf(_folded[k]) < rankOf(best)) best = _folded[k];
+  }
+  return best;
+}
+
+/* Exact spelling first, then the folded fallback. */
+function resolveId(norm) {
+  const exact = findId(norm);
+  if (exact >= 0) return exact;
+  return findIdFolded(fold(norm));
+}
+
 function decodeDeltas(s) {
   if (!s) return [];
   const parts = s.split(',');
@@ -167,8 +235,12 @@ function analyzeWord(word, readingIdx) {
   if (!norm) return null;
 
   if (_state === 'ready') {
-    const id = findId(norm);
+    const id = resolveId(norm);
     if (id >= 0) {
+      // From here on work with the spelling the index holds, not the one
+      // that was typed: "mantuire" is analyzed, divided and displayed as
+      // "mântuire", carrying its attested accent.
+      const canonical = wordAt(id);
       const all = readingsFor(id);
       const pick = all[(readingIdx | 0) < all.length ? (readingIdx | 0) : 0];
       // Re-insert the apostrophe at the attested offset and analyze THAT,
@@ -177,8 +249,8 @@ function analyzeWord(word, readingIdx) {
       // "bucurie" only splits as bu-cu-ri-e once the marker is present.
       const off = pick.spos;
       const marked = off > 0
-        ? norm.slice(0, off - 1) + "'" + norm.slice(off - 1)
-        : norm;
+        ? canonical.slice(0, off - 1) + "'" + canonical.slice(off - 1)
+        : canonical;
       const a = P.analyze(marked);
       if (a) {
         a.attested = off > 0;
@@ -200,7 +272,7 @@ function readingLabels(word) {
   const P = window.RoPhonetics;
   const norm = P.normalize(word).replace(/[^a-zăâîșț]/g, '');
   if (_state !== 'ready' || !norm) return [];
-  const id = findId(norm);
+  const id = resolveId(norm);
   if (id < 0) return [];
   const all = readingsFor(id);
   if (all.length < 2) return [];
