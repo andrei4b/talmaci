@@ -596,8 +596,12 @@ function propagateFromHead(word, head, parsed) {
     // the second one is whispered and the pair is a single syllable —
     // "fa-mi-lii", like "co-pii" and "u-nii" — while "fa-mi-li-i-le" splits
     // it, the "e" after giving it a syllable of its own.
+    // A repeated "i" closes up at the end of a word, its second half being
+    // whispered: "fa-mi-lii", "co-pii". A repeated "u" does not — there is
+    // no whispered "u" — so "con-ti-nu-u", "am-bi-gu-u", "per-pe-tu-u".
     const sameVowel = next === word[shared - 1];
-    const joins = !sameVowel || shared === word.length - 1;
+    const joins = !sameVowel ||
+      (next === 'i' && shared === word.length - 1);
     if ((next === 'i' || next === 'u') && joins &&
         'aăâeiîou'.indexOf(word[shared - 1]) >= 0) end = to - 1;
   }

@@ -97,6 +97,25 @@ function splitStressedFinalI(word, cuts, stressOffset) {
   return cuts.concat([n - 1]).sort((x, y) => x - y);
 }
 
+/* A word ending in "uu" ends in two syllables: "con-ti-nu-u",
+ * "am-bi-gu-u", "per-pe-tu-u", "a-si-du-u", "re-zi-du-u".
+ *
+ * Romanian has no word-final /uw/, so the pair is always hiatus — unlike
+ * "ii", whose second half is whispered and closes up ("fa-mi-lii",
+ * "co-pii"). Nothing else catches it: the letters are adjacent, so every
+ * rule that counts vowel groups reads them as one, and the patterns leave
+ * them alone.
+ *
+ * Applied on both finishing paths, since the division may come from the
+ * patterns or from dexonline. */
+function splitFinalUU(word, cuts) {
+  const n = word.length;
+  if (n < 3 || word[n - 1] !== 'u' || word[n - 2] !== 'u') return cuts;
+  if (isVowelCh(word[n - 3])) return cuts;      // a longer vowel run, leave it
+  if (cuts.indexOf(n - 1) >= 0) return cuts;
+  return cuts.concat([n - 1]).sort((x, y) => x - y);
+}
+
 /* Applies the exception layer to pattern-derived cuts. */
 function applyExceptions(word, cuts, stressOffset, head) {
   const n = word.length;
@@ -575,8 +594,24 @@ function phoneticOnsets(word, cuts) {
         (word[c - 2] === 'c' || word[c - 2] === 'g') && isV(word[c - 3])) {
       return c - 2;                               // the digraph moves whole
     }
-    if (!isV(word[c - 2])) return c;              // a cluster, not a lone consonant
-    return c - 1;
+    if (isV(word[c - 2])) return c - 1;           // a lone consonant moves over
+
+    // Two consonants between vowels divide BETWEEN them, "cas-tel" and
+    // "as-pect". A cut sitting past both of them puts the pair in the coda,
+    // which is the structural division: "alt-un-de-va" for "al-tun-de-va".
+    // Move it back onto the boundary the cluster actually has. A third
+    // consonant means a different rule and is left alone, which is what
+    // keeps "trans-mi-te" whole.
+    if (c >= 3 && isV(word[c - 3])) {
+      const pair = word.slice(c - 2, c);
+      const OBSTR = 'pbtdcgfv', LIQ = 'lr';
+      if (pair === 'ch' || pair === 'gh' ||
+          (OBSTR.indexOf(pair[0]) >= 0 && LIQ.indexOf(pair[1]) >= 0)) {
+        return c - 2;                             // muta cum liquida: both onset
+      }
+      return c - 1;
+    }
+    return c;
   }).sort((x, y) => x - y);
 }
 
@@ -634,10 +669,10 @@ function mergeWhisperedFinalI(word, cuts, stressOffset) {
 }
 
 function enforceOneNucleus(word, cuts, stressOffset) {
-  return mergeWhisperedFinalI(word,
+  return splitFinalUU(word, mergeWhisperedFinalI(word,
     mergeVowellessPieces(word,
       splitMultiNucleusPieces(word, cuts.slice(), stressOffset)),
-    stressOffset);
+    stressOffset));
 }
 
 /* Finishes a division that came from dexonline rather than the patterns.
@@ -653,10 +688,10 @@ function enforceOneNucleus(word, cuts, stressOffset) {
  * given. Only the orthographic-versus-sung correction is applied, plus the
  * vowel-less guard as a safety net. */
 function finishImported(word, cuts, stressOffset) {
-  return splitStressedFinalI(word,
+  return splitFinalUU(word, splitStressedFinalI(word,
     mergeWhisperedFinalI(word, mergeVowellessPieces(word, cuts.slice()),
                          stressOffset),
-    stressOffset);
+    stressOffset));
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
