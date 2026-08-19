@@ -587,10 +587,18 @@ function propagateFromHead(word, head, parsed) {
   let end = to;
   if (to === shared && shared < word.length && shared > 0) {
     const next = word[shared];
-    // Only when the two could actually form a diphthong. "continu" + "i"
-    // gives "ui" and does; "informați" + "ilor" gives "ii" and does not —
-    // dropping that boundary cost "in-for-ma-ți-i-lor" two syllables.
-    if ((next === 'i' || next === 'u') && next !== word[shared - 1] &&
+    // Only when the two really do join into one syllable. "continu" + "i"
+    // gives the diphthong "ui" and they do; "informați" + "ilor" gives "ii"
+    // and they do not, so dropping that boundary cost "in-for-ma-ți-i-lor"
+    // two syllables.
+    //
+    // A repeated "i" is the exception to the exception: at the end of a word
+    // the second one is whispered and the pair is a single syllable —
+    // "fa-mi-lii", like "co-pii" and "u-nii" — while "fa-mi-li-i-le" splits
+    // it, the "e" after giving it a syllable of its own.
+    const sameVowel = next === word[shared - 1];
+    const joins = !sameVowel || shared === word.length - 1;
+    if ((next === 'i' || next === 'u') && joins &&
         'aăâeiîou'.indexOf(word[shared - 1]) >= 0) end = to - 1;
   }
 
