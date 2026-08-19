@@ -651,7 +651,7 @@ function syllables(word, table, stressOffset, head) {
  * "zil-nici" keeps its two syllables — its last piece has a nucleus of its
  * own. A stressed final "i" is a nucleus and stays ("a-bo-li"), and so does
  * one after an obstruent+liquid cluster ("co-dri", "mem-bri"). */
-function mergeWhisperedFinalI(word, cuts, stressOffset) {
+function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
   if (!cuts.length) return cuts;
 
   // A word-final "y" after a vowel spells the same glide as "i" and belongs
@@ -672,6 +672,17 @@ function mergeWhisperedFinalI(word, cuts, stressOffset) {
   // "lu-pi", "mo-flu-zi", "pust-ni-ci" and the rest are clear of it.
   if (/([bcdfglmnprstz])\1/.test(word)) return cuts;
 
+  // Without a doubled consonant to go on, the headword tells the same
+  // story. A Romanian plural heads on its singular — "l'upi" on "l'up",
+  // "c'odri" on "c'odru", "p'ustnici" on "p'ustnic" — so its final "i" is
+  // an ending and is whispered. A borrowing IS its own headword, the "i"
+  // belonging to the stem: "ravi'oli", "br'occoli", "z'ombi".
+  //
+  // Length matters too, because "ochi" is its own headword as well, being
+  // the same in both numbers, and is a single sung syllable. Two pieces
+  // still merge; it is the longer words that are borrowings.
+  if (head && head === word && cuts.length >= 2) return cuts;
+
   // "y" counts as a vowel here, as it does everywhere else in this file: it
   // carries the nucleus in the loanwords the Wikipedia corpus drags in, so
   // "dandyi" and "pennyi" are not a consonant cluster plus a whispered "i".
@@ -686,11 +697,11 @@ function mergeWhisperedFinalI(word, cuts, stressOffset) {
   return cuts.slice(0, -1);
 }
 
-function enforceOneNucleus(word, cuts, stressOffset) {
+function enforceOneNucleus(word, cuts, stressOffset, head) {
   return splitFinalUU(word, mergeWhisperedFinalI(word,
     mergeVowellessPieces(word,
       splitMultiNucleusPieces(word, cuts.slice(), stressOffset)),
-    stressOffset));
+    stressOffset, head));
 }
 
 /* Finishes a division that came from dexonline rather than the patterns.
@@ -712,12 +723,12 @@ function enforceOneNucleus(word, cuts, stressOffset) {
  * is not in its vowel set, and the English compounds "hold-up", "hand-out"
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
-function finishImported(word, cuts, stressOffset) {
+function finishImported(word, cuts, stressOffset, head) {
   return splitFinalUU(word,
     mergeWhisperedFinalI(word,
       mergeVowellessPieces(word,
         splitStressedFinalI(word, cuts.slice(), stressOffset)),
-      stressOffset));
+      stressOffset, head));
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,

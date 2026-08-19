@@ -716,8 +716,8 @@ function cutsFor(w, stress) {
   } else {
     cs = H.cutPoints(w, hyphTable, stress, head);
   }
-  cs = fromDex ? H.finishImported(w, cs, stress)
-               : H.enforceOneNucleus(w, cs, stress);
+  cs = fromDex ? H.finishImported(w, cs, stress, head)
+               : H.enforceOneNucleus(w, cs, stress, head);
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
 }
 
