@@ -116,6 +116,38 @@ function splitFinalUU(word, cuts) {
   return cuts.concat([n - 1]).sort((x, y) => x - y);
 }
 
+function phoneticOnsets(word, cuts) {
+  const isV = c => VOWEL_LETTERS.indexOf(c) >= 0;
+
+  return cuts.map(c => {
+    if (c < 2 || c >= word.length) return c;
+    if (!isV(word[c])) return c;                  // next syllable must open on a vowel
+    if (isV(word[c - 1])) return c;               // nothing to move
+    if (c >= 3 && word[c - 1] === 'h' &&
+        (word[c - 2] === 'c' || word[c - 2] === 'g') && isV(word[c - 3])) {
+      return c - 2;                               // the digraph moves whole
+    }
+    if (isV(word[c - 2])) return c - 1;           // a lone consonant moves over
+
+    // Two consonants between vowels divide BETWEEN them, "cas-tel" and
+    // "as-pect". A cut sitting past both of them puts the pair in the coda,
+    // which is the structural division: "alt-un-de-va" for "al-tun-de-va".
+    // Move it back onto the boundary the cluster actually has. A third
+    // consonant means a different rule and is left alone, which is what
+    // keeps "trans-mi-te" whole.
+    if (c >= 3 && isV(word[c - 3])) {
+      const pair = word.slice(c - 2, c);
+      const OBSTR = 'pbtdcgfv', LIQ = 'lr';
+      if (pair === 'ch' || pair === 'gh' ||
+          (OBSTR.indexOf(pair[0]) >= 0 && LIQ.indexOf(pair[1]) >= 0)) {
+        return c - 2;                             // muta cum liquida: both onset
+      }
+      return c - 1;
+    }
+    return c;
+  }).sort((x, y) => x - y);
+}
+
 /* Applies the exception layer to pattern-derived cuts. */
 function applyExceptions(word, cuts, stressOffset, head) {
   const n = word.length;
@@ -583,37 +615,6 @@ function placeGlideBoundaries(word, cuts) {
  * ("cas-tel", "mem-bri"), and an intervocalic "ch"/"gh" is a single sound
  * spelled with two letters — no cut in the vocabulary currently falls
  * inside one, and the guard below keeps it that way. */
-function phoneticOnsets(word, cuts) {
-  const isV = c => VOWEL_LETTERS.indexOf(c) >= 0;
-
-  return cuts.map(c => {
-    if (c < 2 || c >= word.length) return c;
-    if (!isV(word[c])) return c;                  // next syllable must open on a vowel
-    if (isV(word[c - 1])) return c;               // nothing to move
-    if (c >= 3 && word[c - 1] === 'h' &&
-        (word[c - 2] === 'c' || word[c - 2] === 'g') && isV(word[c - 3])) {
-      return c - 2;                               // the digraph moves whole
-    }
-    if (isV(word[c - 2])) return c - 1;           // a lone consonant moves over
-
-    // Two consonants between vowels divide BETWEEN them, "cas-tel" and
-    // "as-pect". A cut sitting past both of them puts the pair in the coda,
-    // which is the structural division: "alt-un-de-va" for "al-tun-de-va".
-    // Move it back onto the boundary the cluster actually has. A third
-    // consonant means a different rule and is left alone, which is what
-    // keeps "trans-mi-te" whole.
-    if (c >= 3 && isV(word[c - 3])) {
-      const pair = word.slice(c - 2, c);
-      const OBSTR = 'pbtdcgfv', LIQ = 'lr';
-      if (pair === 'ch' || pair === 'gh' ||
-          (OBSTR.indexOf(pair[0]) >= 0 && LIQ.indexOf(pair[1]) >= 0)) {
-        return c - 2;                             // muta cum liquida: both onset
-      }
-      return c - 1;
-    }
-    return c;
-  }).sort((x, y) => x - y);
-}
 
   return placeGlideBoundaries(word, phoneticOnsets(word,
     mergeVowellessPieces(word,
@@ -685,13 +686,23 @@ function enforceOneNucleus(word, cuts, stressOffset) {
  * "o-ri-și-ca-re", which are not.
  *
  * dexonline is a dictionary; where it states a division it is taken as
- * given. Only the orthographic-versus-sung correction is applied, plus the
- * vowel-less guard as a safety net. */
+ * given on the question it is authoritative about — which vowels join and
+ * which do not. It is not authoritative on where a consonant sits, because
+ * it records the structural division for some words: "ort-o-gra-fic" for
+ * the "orto" prefix, where this project wants "or-to-gra-fic". Its own
+ * doubled hyphen only marks SOME of those, so phoneticOnsets runs here as
+ * well. That pass never touches a boundary between two vowels, which is
+ * why it cannot undo anything dexonline decided about them. */
 function finishImported(word, cuts, stressOffset) {
-  return splitFinalUU(word, splitStressedFinalI(word,
-    mergeWhisperedFinalI(word, mergeVowellessPieces(word, cuts.slice()),
-                         stressOffset),
-    stressOffset));
+  // phoneticOnsets moves a boundary and so can strand a consonant, which is
+  // why it runs BEFORE the vowel-less merge rather than after it: on
+  // "kenyanul" it left a piece of bare "n" with nothing left to clean up.
+  return splitFinalUU(word,
+    mergeWhisperedFinalI(word,
+      mergeVowellessPieces(word,
+        phoneticOnsets(word,
+          splitStressedFinalI(word, cuts.slice(), stressOffset))),
+      stressOffset));
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
