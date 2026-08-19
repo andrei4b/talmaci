@@ -143,12 +143,31 @@ function applyExceptions(word, cuts, stressOffset, head) {
       (!head || head === 'crea' ||
        (head.startsWith('crea') && 'rtțs'.indexOf(head.charAt(4)) >= 0));
 
+    // The Latinate "-eal/-ear/-eat" adjectives take the hiatus: "a-re-al",
+    // "bal-ne-ar", "bo-re-al", "li-ce-al", "nu-cle-ar", "e-le-at".
+    //
+    // The native "-eală" does NOT. It builds nouns off verbs — "a greși" ->
+    // "gre-șea-lă", "a obosi" -> "o-bo-sea-lă", "a opri" -> "o-prea-lă" —
+    // and dexonline is consistent about it. Checked against its divisions:
+    // of the words ending this way that it records, the 36 hiatus ones are
+    // Latinate and only "cereală" ends in "-eală", while all 15 diphthongs
+    // are deverbal. So the final "ă" is excluded, and "cereală" comes from
+    // dexonline directly anyway.
+    //
+    // A vowel has to appear earlier in the word as well, which is what
+    // keeps the monosyllable "beat" whole; "creat" is excluded here too and
+    // handled by creaStem above.
+    const tail = word.slice(i);
+    const latinateHiatus =
+      !mutaCumLiquida &&
+      /^ea[lrt](e|i|ul|ului|ele|elor)?$/.test(tail) &&
+      /[aăâeiîou]/.test(word.slice(0, i));
+
     const isStemHiatus =
       reStem ||
       creaStem ||
       (i === 2 && word.startsWith('idea')) ||
-      (!mutaCumLiquida &&
-       /^ea[lrt](ă|e|i|ul|ului|ele|elor)?$/.test(word.slice(i)));
+      latinateHiatus;
     if (!isStemHiatus) cuts = cuts.filter(c => c !== i + 1);
   }
 

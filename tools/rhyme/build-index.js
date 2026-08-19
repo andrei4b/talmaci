@@ -524,10 +524,24 @@ function propagateFromHead(word, head, parsed) {
   const to = Math.min(parsed.to, shared);
   if (to <= from) return null;
 
+  // The boundary sitting exactly where the two forms diverge is usually
+  // safe — the stem's last syllable closes there whatever ending follows,
+  // as in "albie" -> "al-bi-a". It is not safe when the ending opens with a
+  // glide onto the stem's final vowel: "continua" divides "con-ti-nu-a",
+  // but "continui" ends in the diphthong "ui" and is "con-ti-nui", so
+  // carrying that boundary across gave "con-ti-nu-i". Leave that one cut to
+  // the patterns, which read the diphthong correctly.
+  let end = to;
+  if (to === shared && shared < word.length && shared > 0) {
+    const next = word[shared];
+    if ((next === 'i' || next === 'u') &&
+        'aăâeiîou'.indexOf(word[shared - 1]) >= 0) end = to - 1;
+  }
+
   const cuts = parsed.cuts.filter(c => c > 0 && c < word.length &&
-                                       c >= from && c <= to);
+                                       c >= from && c <= end);
   if (!cuts.length) return null;
-  return { cuts: cuts, from: from, to: to };
+  return { cuts: cuts, from: from, to: end };
 }
 
 const dexHyph = loadDexHyphenations(dexHyphPath);
