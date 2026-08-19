@@ -127,6 +127,13 @@ function applyExceptions(word, cuts, stressOffset, head) {
     if (word[i] !== 'e' || word[i + 1] !== 'a') continue;
     const mutaCumLiquida = i >= 2 &&
       OBSTR.indexOf(word[i - 2]) >= 0 && LIQ.indexOf(word[i - 1]) >= 0;
+
+    // "ch" and "gh" spell a single /k/ and /g/ with a mute h, so what
+    // follows them is the diphthong itself: "ve-gheat", "su-pra-ve-gheat".
+    // The obstruent+liquid test above does not catch this, "h" being
+    // neither.
+    const mutedH = i >= 2 && word[i - 1] === 'h' &&
+      (word[i - 2] === 'c' || word[i - 2] === 'g');
     // The stems only mean hiatus when something follows them: "re-a-li-zat"
     // and "re-a-bi-li-ta" are the prefix, but "rea" on its own is the
     // feminine of "rău" and a plain diphthong.
@@ -168,7 +175,7 @@ function applyExceptions(word, cuts, stressOffset, head) {
     // handled by creaStem above.
     const tail = word.slice(i);
     const latinateHiatus =
-      !mutaCumLiquida &&
+      !mutaCumLiquida && !mutedH &&
       /^ea[lrt](e|i|ul|ului|ele|elor)?$/.test(tail) &&
       /[aăâeiîou]/.test(word.slice(0, i));
 
