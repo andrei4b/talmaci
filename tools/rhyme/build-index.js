@@ -170,13 +170,24 @@ const KEEP_NAMES = new Set([
   'egipt', 'israel', 'avraam', 'moise', 'ilie', 'iehova', 'savaot'
 ]);
 
-/* Offset of the stress marker, or -1 when there is none or it is unusable.
- * The apostrophe stands BEFORE the stressed vowel, so one at the very end
- * of the form marks nothing at all. */
+/* Offset of the stressed vowel, or -1 when the form carries no marker.
+ *
+ * The apostrophe stands BEFORE the stressed vowel, so one at the very end of
+ * the form cannot be doing that — dexonline holds a couple, "altcuiva'" and
+ * "short'". Reading them as the last vowel of the word is what the rest of
+ * the family says they mean: "cuiva", "cineva", "careva" and "altcineva" all
+ * carry a proper marker on their final "a", so "altcuiva" is alt-cui-VA. It
+ * was being dropped instead, and the rules then guessed alt-CUI-va. */
 function markerOffset(norm) {
   const at = norm.indexOf("'");
-  if (at < 0 || at >= norm.length - 1) return -1;
-  return at;
+  if (at < 0) return -1;
+  if (at < norm.length - 1) return at;
+
+  const clean = norm.slice(0, at);
+  for (let k = clean.length - 1; k >= 0; k--) {
+    if ('aăâeiîou'.indexOf(clean[k]) >= 0) return k;
+  }
+  return -1;
 }
 
 function isNoiseModel(m) {

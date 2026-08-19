@@ -301,4 +301,7 @@ back to its segment's real nucleus.
 It earned itself on the first run, finding 374 defects: 372 words whose
 stress marker sat inside a softener digraph (`abag'iu`, `ac'iu`) and was
 being dropped by the tokenizer, and 2 dump entries with the apostrophe after
-the final letter.
+the final letter (`altcuiva'`, `short'`). A marker there cannot stand before
+its vowel, so it is read as the last vowel of the word — which is what the
+rest of the family says it means, `cuiva`, `cineva`, `careva` and
+`altcineva` all carrying a proper marker on their final `a`.
