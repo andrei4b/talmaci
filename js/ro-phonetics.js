@@ -345,18 +345,24 @@ function analyze(word, opts) {
   const g2p = toPhonemes(raw);
   if (!g2p.tokens.length) return null;
 
-  // dexonline also writes an apostrophe before a word-final "-i" that
-  // follows a consonant, even when that i is NOT the stressed nucleus —
-  // "lup'i" is /lupʲ/ and "codr'i" is CO-dri. It does so inconsistently
-  // ("pomi" carries no marker at all), so the mark is only trustworthy
-  // after a vowel, where it genuinely distinguishes "su'i" (su-i) from
-  // "c'ui" (/kuj/). Elsewhere drop it and let the rules decide.
-  let stressTok = g2p.stressTokenIdx;
-  const tk = g2p.tokens;
-  if (stressTok >= 1 && stressTok === tk.length - 1 &&
-      tk[stressTok] === 'i' && !VOWELS.has(tk[stressTok - 1])) {
-    stressTok = -1;
-  }
+  // A marker on a word-final "-i" after a consonant used to be discarded
+  // here, on the grounds that dexonline writes one even where the i is not
+  // the nucleus: "lup'i" is /lupʲ/ and "codr'i" is CO-dri.
+  //
+  // Both of those come from lexemes the index no longer admits — "lup'i" is
+  // the name Lupi against the noun "l'upi", "codr'i" likewise against
+  // "c'odri" — and where a spelling really does have two readings, the
+  // build already prefers the one NOT stressed on a final i, so "d'ormi"
+  // leads and "dorm'i" trails it. What the discard actually reached was the
+  // "-i" conjugation, whose stress genuinely is final: "adăpost'i",
+  // "cit'i", "iub'i", "găs'i". It cost 624 words their rhyme, keying
+  // "adăposti" as /ost'/ rather than /i/, so that it matched only words
+  // ending in "-osti" instead of every word ending in a stressed "i".
+  //
+  // The marker is taken at face value. The hyphenator already does the
+  // same, which is why "ci-ti" and "a-bo-li" were divided correctly while
+  // their rhymes were not.
+  const stressTok = g2p.stressTokenIdx;
 
   const marked = markNuclei(g2p.tokens, raw, stressTok);
   const nuclei = nucleusIndices(marked.isNucleus);
