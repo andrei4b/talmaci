@@ -653,7 +653,24 @@ function syllables(word, table, stressOffset, head) {
  * one after an obstruent+liquid cluster ("co-dri", "mem-bri"). */
 function mergeWhisperedFinalI(word, cuts, stressOffset) {
   if (!cuts.length) return cuts;
+
+  // A word-final "y" after a vowel spells the same glide as "i" and belongs
+  // to the syllable before it: "gay", "boy", "spray", "cow-boy". It is not
+  // in VOWEL_LETTERS, so the patterns can cut in front of it and nothing
+  // else puts it back.
+  const lastPiece = word.slice(cuts[cuts.length - 1]);
+  if (lastPiece === 'y' && isVowelCh(word[word.length - 2])) {
+    return cuts.slice(0, -1);
+  }
+
   if (stressOffset === word.length - 1) return cuts;
+
+  // A doubled consonant marks the word as borrowed, and a borrowed "-i" is
+  // a full vowel rather than the whispered Romanian ending: "ja-cuz-zi",
+  // "con-fet-ti", "broc-co-li", where dexonline divides it out and is right
+  // to. No Romanian word that ends in a whispered "i" doubles a consonant —
+  // "lu-pi", "mo-flu-zi", "pust-ni-ci" and the rest are clear of it.
+  if (/([bcdfglmnprstz])\1/.test(word)) return cuts;
 
   // "y" counts as a vowel here, as it does everywhere else in this file: it
   // carries the nucleus in the loanwords the Wikipedia corpus drags in, so
