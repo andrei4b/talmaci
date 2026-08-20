@@ -157,6 +157,40 @@ function splitStressedFinalI(word, cuts, stressOffset) {
 }
 
 
+/* "abstract" is "ab-stract", not "abs-tract". The second is the structural
+ * division, cutting at the Latin prefix "abs-", and this project divides by
+ * pronunciation everywhere.
+ *
+ * DOOM 3 uses this very word as the worked example of its four-consonant
+ * rule, VC-CCCV, and "bst"/"bstr" appear in none of its exception lists —
+ * neither the three-consonant set (mpt, ncș, ncț, rtf, stm) nor the
+ * four-consonant ones (ldsp, ndgr, ngst; rstn, rstv, stsm). dexonline's own
+ * practice agrees almost without exception: "ob-ste-tric", "ob-stru-a",
+ * "ob-stru-ant", "sub-strat", "se-mi-ob-scur", "cla-rob-scur",
+ * "trans-sub-stan-ți-e-re". Of its 46 entries in this shape only
+ * "abs-tract" cuts after the "s", which is the structural variant, so this
+ * overrides it deliberately.
+ *
+ * Restricted to "s" followed by "t" or "c", the clusters that unambiguously
+ * open a Romanian syllable — /st/, /str/, /sk/, /st͡ʃ/ as in "stea",
+ * "stradă", "scară", "scenă". That is what keeps the rule off
+ * "habs-bur-gic", where "sb" opens nothing.
+ *
+ * Deliberately not generalized to every two-consonant coda. Most of them
+ * are right as they stand: "func-ție", "simp-tom", "jert-fa" and "as-tma"
+ * are DOOM's own exceptions, and settling the "trans-" and "post-" families
+ * would need the full exception list, which is not published in the section
+ * that states the rules. */
+function phoneticBsOnset(word, cuts) {
+  return cuts.map(c => {
+    if (c < 3 || c + 1 >= word.length) return c;
+    if (word[c - 1] !== 's' || word[c - 2] !== 'b') return c;
+    if (!isVowelCh(word[c - 3])) return c;
+    if (word[c] !== 't' && word[c] !== 'c') return c;
+    return c - 1;                                 // the "s" joins the onset
+  }).sort((x, y) => x - y);
+}
+
 /* A word ending in "uu" ends in two syllables: "con-ti-nu-u",
  * "am-bi-gu-u", "per-pe-tu-u", "a-si-du-u", "re-zi-du-u".
  *
@@ -460,6 +494,8 @@ function applyExceptions(word, cuts, stressOffset, head) {
   }
 
   if (word.startsWith(DOINA_STEM)) cuts = cuts.filter(c => c !== 2);
+
+  cuts = phoneticBsOnset(word, cuts);
 
   // "ci" and "gi" before a "u" spell /tʃ/ and /dʒ/, the "i" being a softener
   // with no nucleus of its own, so the three letters are one syllable:
@@ -863,11 +899,12 @@ function enforceOneNucleus(word, cuts, stressOffset, head) {
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
 function finishImported(word, cuts, stressOffset, head) {
-  return splitFinalIIAfterVowel(word, splitFinalUU(word,
-    mergeWhisperedFinalI(word,
-      mergeVowellessPieces(word,
-        splitStressedFinalI(word, cuts.slice(), stressOffset)),
-      stressOffset, head)));
+  return phoneticBsOnset(word,
+    splitFinalIIAfterVowel(word, splitFinalUU(word,
+      mergeWhisperedFinalI(word,
+        mergeVowellessPieces(word,
+          splitStressedFinalI(word, cuts.slice(), stressOffset)),
+        stressOffset, head))));
 }
 
 /* The division set by hand for a word, or null. Exported so the build can
