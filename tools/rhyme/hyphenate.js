@@ -63,6 +63,14 @@ const WORD_EXCEPTIONS = Object.create(null);
 // and an entry here overrides that.
 WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
 
+// "ceair" is cea-ir: "ea" is the diphthong and the stressed "i" after it
+// opens a syllable of its own. Set by hand rather than by rule — a rule
+// reading the stress marker against the sonority of the run divides 467
+// words differently, and while many of those are right ("na-iv", "dru-id",
+// "co-ca-i-nă") it also breaks "ha-ios" into "ha-i-os" and cannot see that
+// the "u" of "te-qui-la" and "quick" is not a vowel.
+WORD_EXCEPTIONS['ceair'] = 'cea-ir';
+
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
 
 // Prefixes ending in "o" that keep their hiatus before a vowel-initial stem.
@@ -101,6 +109,7 @@ function splitStressedFinalI(word, cuts, stressOffset) {
   if (cuts.indexOf(n - 1) >= 0) return cuts;
   return cuts.concat([n - 1]).sort((x, y) => x - y);
 }
+
 
 /* A word ending in "uu" ends in two syllables: "con-ti-nu-u",
  * "am-bi-gu-u", "per-pe-tu-u", "a-si-du-u", "re-zi-du-u".
