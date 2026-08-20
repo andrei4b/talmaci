@@ -424,6 +424,26 @@ function applyExceptions(word, cuts, stressOffset, head) {
 
   cuts = splitStressedFinalI(word, cuts, stressOffset);
 
+  // A stem ending in a whispered "i" keeps it as a glide when an ending
+  // brings a vowel after it: "puști" gives "puș-tiul" and "puș-tiu-le",
+  // "ochi" gives "o-chiul", "unghi" gives "un-ghiul". The "i" was never a
+  // syllable of its own and does not become one.
+  //
+  // This is why "si-cri-ul" and "fi-ul" divide the other way: "sicriu" and
+  // "fiu" end in a diphthong whose "i" IS the nucleus, so the ending really
+  // does add a syllable. The headword is what separates the two, the
+  // spelling of the longer word being identical either way.
+  // Only before "u", which is the definite article: "-ul", "-ului", "-ule".
+  // The head's own stress is not available here, so a verb infinitive like
+  // "bâzâi", whose final "i" IS stressed and therefore not whispered, would
+  // otherwise be read as a stem and "bâ-zâ-ie" would close up into
+  // "bâ-zâie". Its endings begin with "e" and "a", not "u".
+  if (head && head !== word && head.length >= 2 && word.startsWith(head) &&
+      head.length < n && word[head.length] === 'u' &&
+      finalIIsWhispered(head, null, -1)) {
+    cuts = cuts.filter(c => c !== head.length);
+  }
+
   // "ci" and "gi" before a "u" spell /tʃ/ and /dʒ/, the "i" being a softener
   // with no nucleus of its own, so the three letters are one syllable:
   // "me-ciul", "ser-vi-ciul", "cră-ciun", "ru-gă-ciu-ne", "ni-ciun",
@@ -722,7 +742,9 @@ function syllables(word, table, stressOffset, head) {
  * rule and twice wrong, because Romanian has far more words ending in a
  * whispered "-i" than the dictionary has Italian nouns. */
 const BORROWED_FINAL_I = new Set([
-  'ravioli', 'broccoli', 'zombi', 'safari', 'salami', 'tsunami', 'origami'
+  'ravioli', 'broccoli', 'zombi', 'safari', 'salami', 'tsunami', 'origami',
+  'alibi', 'bikini', 'colibri', 'derbi', 'obi', 'pecari', 'penalti',
+  'potpuri', 'remi', 'rugbi', 'taxi', 'tripoli'
 ]);
 
 /* Is a word-final "i" the whispered Romanian ending, or part of the stem?
@@ -743,6 +765,13 @@ function finalIIsWhispered(word, head, stressOffset) {
   const n = word.length;
   if (n < 2 || word[n - 1] !== 'i') return false;
   if (stressOffset === n - 1) return false;
+
+  // A whispered "i" is an ending on a stem, so the stem needs a vowel of
+  // its own. In "zi", "gri" and "li" the "i" IS the only vowel and carries
+  // the syllable, which is why "zi-ua" and "gri-ul" divide.
+  let other = false;
+  for (let k = 0; k < n - 1; k++) if (isVowelCh(word[k])) other = true;
+  if (!other) return false;
   if (BORROWED_FINAL_I.has(word)) return false;
   if (n >= 3 && word[n - 2] === word[n - 3] &&
       'bcdfglmnprstz'.indexOf(word[n - 2]) >= 0) return false;
