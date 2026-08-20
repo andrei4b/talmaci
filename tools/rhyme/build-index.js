@@ -635,29 +635,12 @@ let dexFull = 0, dexFrag = 0, dexStem = 0;
  * a lookup because a spelling can carry more than one reading, and the
  * division follows the stress: "b'oli" is one syllable, "abol'i" is
  * a-bo-li. */
-/* Does this spelling have a reading stressed on its final "i"?
- *
- * A Romanian verb in "-i" is its own headword, exactly like a borrowing, so
- * the headword alone cannot tell "dormi" from "ravioli". The verb has an
- * infinitive reading stressed on that "i" and the borrowing has none, which
- * is what lets the second-person "d'ormi" be one sung syllable while the
- * infinitive "dorm'i" beside it divides "dor-mi". */
-function hasFinalIStressReading(w) {
-  if (w[w.length - 1] !== 'i') return false;
-  const rc = rec.get(w);
-  if (rc && rc.spos === w.length - 1) return true;
-  const vm = variantsOf.get(w);
-  if (vm) for (const off of vm.keys()) if (off === w.length - 1) return true;
-  return false;
-}
-
 function cutsFor(w, stress) {
   // headOf only records a head that differs from the form, so a word that
   // heads its own lexeme has none. It is its own head: without this,
   // "creangă" arrives headless and the "crea" rule below, which treats a
   // missing head as unknown, hands it a hiatus it should not have.
   const heads = headOf[w] || [];
-  const finalIReading = hasFinalIStressReading(w);
   // The head that matters is the one dexonline actually divided.
   const head = heads.find(h => dexHyph[h]) || heads[0] || w;
   if (!hyphTable) return '';
@@ -733,8 +716,8 @@ function cutsFor(w, stress) {
   } else {
     cs = H.cutPoints(w, hyphTable, stress, head);
   }
-  cs = fromDex ? H.finishImported(w, cs, stress, head, finalIReading)
-               : H.enforceOneNucleus(w, cs, stress, head, finalIReading);
+  cs = fromDex ? H.finishImported(w, cs, stress, head)
+               : H.enforceOneNucleus(w, cs, stress, head);
   return cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
 }
 

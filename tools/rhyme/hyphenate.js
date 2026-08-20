@@ -386,7 +386,7 @@ function mergeVowellessPieces(word, cuts) {
  * This only ever splits BETWEEN vowel groups, never inside one, so the
  * diphthong-vs-hiatus decisions made by the patterns and the exception layer
  * above are left untouched. */
-function splitMultiNucleusPieces(word, cuts, stressOffset, head, hasFinalIReading) {
+function splitMultiNucleusPieces(word, cuts, stressOffset, head) {
   const VOW = 'aăâeiîouy';
   const isV = c => VOW.indexOf(c) >= 0;
   const OBSTR = 'pbtdcgfv';
@@ -425,7 +425,7 @@ function splitMultiNucleusPieces(word, cuts, stressOffset, head, hasFinalIReadin
       // discounted. In "spaghetti" it is part of the stem, so "ghetti" holds
       // two nuclei and divides "ghet-ti".
       if (end === word.length && groups.length > 1 &&
-          finalIIsWhispered(word, head, stressOffset, hasFinalIReading)) {
+          finalIIsWhispered(word, head, stressOffset)) {
         const lastG = groups[groups.length - 1];
         if (lastG[0] === lastG[1] && piece[lastG[0]] === 'i' &&
             lastG[0] === piece.length - 1 && lastG[0] > 0 && !isV(piece[lastG[0] - 1])) {
@@ -641,34 +641,37 @@ function syllables(word, table, stressOffset, head) {
  * loanwords on their source-language morphemes ("after-school"), leaving
  * syllables with two nuclei. This project wants the phonetic division
  * throughout, so those get broken up: "ni-ci-cum", "cin-ci-zeci". */
+/* Borrowings whose final "-i" is part of the stem rather than the Romanian
+ * ending, and which nothing in their spelling gives away. "jacuzzi",
+ * "confetti" and "spaghetti" are caught by the doubling below and need no
+ * entry. Keep this short: the test it stands in for was twice written as a
+ * rule and twice wrong, because Romanian has far more words ending in a
+ * whispered "-i" than the dictionary has Italian nouns. */
+const BORROWED_FINAL_I = new Set([
+  'ravioli', 'broccoli', 'zombi', 'safari', 'salami', 'tsunami', 'origami'
+]);
+
 /* Is a word-final "i" the whispered Romanian ending, or part of the stem?
  *
- * Whispered: "lu-pi", "po-mi", "mul-ți", "pust-ni-ci" — the "i" is a plural
- * or second-person ending and carries no syllable of its own.
+ * Whispered, and so no syllable of its own: "lu-pi", "to-tuși", "mâini",
+ * "vi-neri", "ac-cepți", "ieri", "sco-ți". This is the ordinary case by a
+ * wide margin — plurals, second persons, adverbs, and the invariables.
  *
- * Part of the stem, so a full vowel: "ra-vio-li", "spa-ghet-ti", "zom-bi",
- * "sa-fa-ri". Two things mark those out. A doubled consonant appears in no
- * Romanian word ending this way. And a borrowing IS its own headword, while
- * a Romanian plural heads on its singular — "l'upi" on "l'up", "ar'ici" on
- * "ar'iciu", "gen'unchi" on "gen'unche". Of the words that head on
- * themselves only "ochi" and "unchi" are Romanian, both ending in "chi",
- * which is the one shape excepted here.
+ * Part of the stem, and so a full vowel: "ja-cuz-zi", "con-fet-ti",
+ * "spa-ghet-ti", "ra-vio-li". A consonant doubled immediately before the
+ * "i" marks the first three; the rest are listed above, there being no
+ * spelling rule that finds them without sweeping up Romanian words too.
  *
- * A stressed final "i" is never whispered; nothing can be built around a
- * stressed vowel except a syllable. */
-function finalIIsWhispered(word, head, stressOffset, hasFinalIReading) {
+ * A stressed final "i" is never whispered — nothing can be built around a
+ * stressed vowel except a syllable — which is what keeps the infinitive
+ * "dorm'i" as "dor-mi" while the second person "d'ormi" is one syllable. */
+function finalIIsWhispered(word, head, stressOffset) {
   const n = word.length;
   if (n < 2 || word[n - 1] !== 'i') return false;
   if (stressOffset === n - 1) return false;
-  if (/([bcdfglmnprstz])\1/.test(word)) return false;
-  // The own-headword test above is about borrowings, and a Romanian verb
-  // is its own headword too: "dormi" heads on "dormi". What separates them
-  // is that the verb ALSO has a reading stressed on that final "i" — the
-  // infinitive — while "ravioli" and "zombi" have no such reading at all.
-  // So the second-person "d'ormi" is one sung syllable, "dormi", even
-  // though the infinitive "dorm'i" beside it is "dor-mi".
-  if (head && head === word && !hasFinalIReading &&
-      !/(chi|ghi)$/.test(word)) return false;
+  if (BORROWED_FINAL_I.has(word)) return false;
+  if (n >= 3 && word[n - 2] === word[n - 3] &&
+      'bcdfglmnprstz'.indexOf(word[n - 2]) >= 0) return false;
   return true;
 }
 
@@ -685,7 +688,7 @@ function finalIIsWhispered(word, head, stressOffset, hasFinalIReading) {
  * "zil-nici" keeps its two syllables — its last piece has a nucleus of its
  * own. A stressed final "i" is a nucleus and stays ("a-bo-li"), and so does
  * one after an obstruent+liquid cluster ("co-dri", "mem-bri"). */
-function mergeWhisperedFinalI(word, cuts, stressOffset, head, hasFinalIReading) {
+function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
   if (!cuts.length) return cuts;
 
   // A word-final "y" after a vowel spells the same glide as "i" and belongs
@@ -697,7 +700,7 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head, hasFinalIReading) 
     return cuts.slice(0, -1);
   }
 
-  if (!finalIIsWhispered(word, head, stressOffset, hasFinalIReading)) return cuts;
+  if (!finalIIsWhispered(word, head, stressOffset)) return cuts;
 
   // "y" counts as a vowel here, as it does everywhere else in this file: it
   // carries the nucleus in the loanwords the Wikipedia corpus drags in, so
@@ -713,11 +716,11 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head, hasFinalIReading) 
   return cuts.slice(0, -1);
 }
 
-function enforceOneNucleus(word, cuts, stressOffset, head, hasFinalIReading) {
+function enforceOneNucleus(word, cuts, stressOffset, head) {
   return splitFinalUU(word, mergeWhisperedFinalI(word,
     mergeVowellessPieces(word,
-      splitMultiNucleusPieces(word, cuts.slice(), stressOffset, head, hasFinalIReading)),
-    stressOffset, head, hasFinalIReading));
+      splitMultiNucleusPieces(word, cuts.slice(), stressOffset, head)),
+    stressOffset, head));
 }
 
 /* Finishes a division that came from dexonline rather than the patterns.
@@ -739,12 +742,12 @@ function enforceOneNucleus(word, cuts, stressOffset, head, hasFinalIReading) {
  * is not in its vowel set, and the English compounds "hold-up", "hand-out"
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
-function finishImported(word, cuts, stressOffset, head, hasFinalIReading) {
+function finishImported(word, cuts, stressOffset, head) {
   return splitFinalUU(word,
     mergeWhisperedFinalI(word,
       mergeVowellessPieces(word,
         splitStressedFinalI(word, cuts.slice(), stressOffset)),
-      stressOffset, head, hasFinalIReading));
+      stressOffset, head));
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
