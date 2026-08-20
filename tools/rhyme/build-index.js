@@ -614,6 +614,16 @@ function propagateFromHead(word, head, parsed) {
       (next === 'i' && shared === word.length - 1);
     if ((next === 'i' || next === 'u') && joins &&
         'aăâeiîou'.indexOf(word[shared - 1]) >= 0) end = to - 1;
+
+    // The ending may also open ON a glide the stem left behind, in which
+    // case that glide is its onset and the boundary belongs before it:
+    // "treilea" divides "tre-i-lea", but "treia" is "tre-ia", not
+    // "tre-i-a". Only when a vowel precedes the glide — "albie" gives
+    // "al-bi-a", the "i" there following a consonant and carrying its own
+    // nucleus.
+    if ('aăâeiîou'.indexOf(next) >= 0 && shared >= 2 &&
+        (word[shared - 1] === 'i' || word[shared - 1] === 'u') &&
+        'aăâeiîou'.indexOf(word[shared - 2]) >= 0) end = to - 1;
   }
 
   const cuts = parsed.cuts.filter(c => c > 0 && c < word.length &&

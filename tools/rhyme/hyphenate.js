@@ -65,6 +65,10 @@ WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
 
 // "ceair" needs no entry any more — splitStressedFinalI divides it.
 
+// "vreo" is one syllable, its "eo" a rising diphthong. By hand because the
+// ending gives nothing away: "video" ends the same and is vi-de-o.
+WORD_EXCEPTIONS['vreo'] = 'vreo';
+
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
 
 // Prefixes ending in "o" that keep their hiatus before a vowel-initial stem.
@@ -252,6 +256,21 @@ function placeGlideBoundaries(word, cuts) {
   }
 
   return cuts;
+}
+
+/* A word-final "ii" that follows a VOWEL starts its own syllable: "ca-ii",
+ * "pu-ii", "co-pi-ii". The vowel before it cannot be sharing a syllable
+ * with two more.
+ *
+ * After a consonant the pair closes up instead, the second half being
+ * whispered: "fa-mi-lii", "co-pii", "u-nii", "o-chii", "bă-ie-ții". Which
+ * is why this looks at what precedes rather than at the "ii" alone. */
+function splitFinalIIAfterVowel(word, cuts) {
+  const n = word.length;
+  if (n < 4 || word[n - 1] !== 'i' || word[n - 2] !== 'i') return cuts;
+  if (!isVowelCh(word[n - 3])) return cuts;
+  if (cuts.indexOf(n - 2) >= 0) return cuts;
+  return cuts.concat([n - 2]).sort((x, y) => x - y);
 }
 
 /* Applies the exception layer to pattern-derived cuts. */
@@ -759,10 +778,10 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
 }
 
 function enforceOneNucleus(word, cuts, stressOffset, head) {
-  return splitFinalUU(word, mergeWhisperedFinalI(word,
+  return splitFinalIIAfterVowel(word, splitFinalUU(word, mergeWhisperedFinalI(word,
     mergeVowellessPieces(word,
       splitMultiNucleusPieces(word, cuts.slice(), stressOffset, head)),
-    stressOffset, head));
+    stressOffset, head)));
 }
 
 /* Finishes a division that came from dexonline rather than the patterns.
@@ -785,11 +804,11 @@ function enforceOneNucleus(word, cuts, stressOffset, head) {
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
 function finishImported(word, cuts, stressOffset, head) {
-  return splitFinalUU(word,
+  return splitFinalIIAfterVowel(word, splitFinalUU(word,
     mergeWhisperedFinalI(word,
       mergeVowellessPieces(word,
         splitStressedFinalI(word, cuts.slice(), stressOffset)),
-      stressOffset, head));
+      stressOffset, head)));
 }
 
 /* The division set by hand for a word, or null. Exported so the build can
