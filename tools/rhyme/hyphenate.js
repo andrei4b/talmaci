@@ -72,6 +72,18 @@ WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
 // ending gives nothing away: "video" ends the same and is vi-de-o.
 WORD_EXCEPTIONS['vreo'] = 'vreo';
 
+// The "doină" family: "doi" is a falling diphthong, so "doi-nă", "doi-ne",
+// "doi-ni-to-rul". The patterns read it as hiatus and gave "do-i-nă", which
+// is a syllable too many and made it rhyme against the wrong set. DOOM 3
+// uses this very word as its example of rule 2.3 (V-S kept together), and
+// dexonline divides none of the family, so nothing states otherwise.
+//
+// Keyed on the stem rather than listed form by form: the family runs to 15
+// attested words and the rule is about the diphthong in "doin-", not about
+// any one of them. It cannot reach "în-do-ind" and "în-do-in-du", whose
+// "o-i" is a real hiatus (from "a îndoi") and which do not start with it.
+const DOINA_STEM = 'doin';
+
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
 
 // Prefixes ending in "o" that keep their hiatus before a vowel-initial stem.
@@ -446,6 +458,8 @@ function applyExceptions(word, cuts, stressOffset, head) {
       finalIIsWhispered(head, null, -1)) {
     cuts = cuts.filter(c => c !== head.length);
   }
+
+  if (word.startsWith(DOINA_STEM)) cuts = cuts.filter(c => c !== 2);
 
   // "ci" and "gi" before a "u" spell /tʃ/ and /dʒ/, the "i" being a softener
   // with no nucleus of its own, so the three letters are one syllable:
