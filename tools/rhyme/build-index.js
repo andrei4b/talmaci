@@ -644,6 +644,10 @@ function cutsFor(w, stress) {
   // The head that matters is the one dexonline actually divided.
   const head = heads.find(h => dexHyph[h]) || heads[0] || w;
   if (!hyphTable) return '';
+  // A hand-set division outranks everything, dexonline included.
+  const manual = H.manualCuts(w);
+  if (manual) return manual.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join('');
+
   let fromDex = dexHyph[w];
   let viaStem = false;
   if (!fromDex) {

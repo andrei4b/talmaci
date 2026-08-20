@@ -58,6 +58,11 @@ function loadPatterns(dicPath) {
 // of undefined and crash the lookup.
 const WORD_EXCEPTIONS = Object.create(null);
 
+// "ravioli" is ra-vi-o-li: the "io" is hiatus, as the patterns already read
+// it. dexonline's hyphenation column records "ra-vio-li" for this one word,
+// and an entry here overrides that.
+WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
+
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
 
 // Prefixes ending in "o" that keep their hiatus before a vowel-initial stem.
@@ -750,8 +755,16 @@ function finishImported(word, cuts, stressOffset, head) {
       stressOffset, head));
 }
 
+/* The division set by hand for a word, or null. Exported so the build can
+ * consult it BEFORE dexonline: an entry here is a considered decision about
+ * one word and should outrank everything, including the dictionary. */
+function manualCuts(word) {
+  const manual = WORD_EXCEPTIONS[word];
+  return manual ? cutsFromSplit(manual) : null;
+}
+
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
-                   finishImported };
+                   finishImported, manualCuts };
 
 // CLI: node hyphenate.js <hyph_ro_RO.dic> word [word...]
 if (require.main === module) {
