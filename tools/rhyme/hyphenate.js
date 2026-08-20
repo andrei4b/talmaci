@@ -157,6 +157,41 @@ function splitStressedFinalI(word, cuts, stressOffset) {
 }
 
 
+/* The letters "-iu" spell two different diphthongs, and stress tells them
+ * apart.
+ *
+ * Falling /iw/, where the "i" is the nucleus and the "u" a glide: "f'iu",
+ * "sicr'iu", "târz'iu", "argint'iu". The stress lands ON that "i". Adding
+ * the definite article really does add a syllable, so "fi-ul" and
+ * "si-cri-ul" are right.
+ *
+ * Rising /ju/, where the "i" is a glide and the "u" the nucleus:
+ * "imp'eriu", "m'ediu", "inc'endiu", "sig'iliu", "terit'oriu". The stress
+ * sits on an earlier syllable. The "i" was never a syllable of its own and
+ * the article does not make it one: "im-pe-riul", "im-pe-riu-lui",
+ * "in-cen-diul", "si-gi-liul", "me-diul", "te-ri-to-riul".
+ *
+ * Spelling cannot separate the two — "sicriu" and "imperiu" end alike — but
+ * the stress marker from dexonline can, and it is the only thing here that
+ * can. Without a marker the word is left alone rather than guessed at.
+ *
+ * The "i" must not be the head's own last letter. "broccoli", "bikini",
+ * "rugbi" and the rest of the borrowed nouns ending in a full syllabic "i"
+ * take the same article and match the same letters, but their "i" is a
+ * nucleus: "broc-co-li-ul", "bi-ki-ni-ul". Those belong to the whispered-i
+ * stem rule, which correctly leaves them alone. Checking the head keeps
+ * this rule off all 15 of them. */
+function mergeArticledGlideIU(word, cuts, stressOffset, head) {
+  const m = word.match(/iu(l|lui|le)?$/);
+  if (!m) return cuts;
+  const i = word.length - m[0].length;        // where the "i" sits
+  if (i < 1 || isVowelCh(word[i - 1])) return cuts;   // needs a consonant before it
+  if (head && head.length === i + 1) return cuts;     // the stem's own final "i"
+  if (stressOffset < 0 || stressOffset >= i) return cuts;  // unmarked, or falling /iw/
+  if (!isVowelCh(word[stressOffset])) return cuts;
+  return cuts.filter(c => c !== i + 1);
+}
+
 /* "abstract" is "ab-stract", not "abs-tract". The second is the structural
  * division, cutting at the Latin prefix "abs-", and this project divides by
  * pronunciation everywhere.
@@ -494,6 +529,10 @@ function applyExceptions(word, cuts, stressOffset, head) {
   }
 
   if (word.startsWith(DOINA_STEM)) cuts = cuts.filter(c => c !== 2);
+
+  // The same thing one letter further in: a stem ending in the rising
+  // diphthong "-iu" keeps its "i" as a glide under the article.
+  cuts = mergeArticledGlideIU(word, cuts, stressOffset, head);
 
   cuts = phoneticBsOnset(word, cuts);
 
@@ -891,6 +930,12 @@ function enforceOneNucleus(word, cuts, stressOffset, head) {
  * dexonline is a dictionary; where it states a division it is taken as
  * given. Only the orthographic-versus-sung corrections are applied, plus
  * the vowel-less guard as a safety net.
+ *
+ * mergeArticledGlideIU does not run here either, for the same reason. It
+ * reads "-iu" as a rising diphthong wherever the stress falls earlier, and
+ * dexonline agrees on 88 of the 91 entries it divides — but it writes
+ * "a-tri-u", "leh-li-u" and "se-mis-pa-ți-u" for the other three, and those
+ * divisions, along with everything propagated from those stems, stand.
  *
  * phoneticOnsets deliberately does NOT run here. It was tried, to pull the
  * odd structural division like "ort-o-gra-fi-e-re" into line, and it
