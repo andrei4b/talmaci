@@ -69,6 +69,24 @@ Doar date factuale despre limbă:
 | `exact` | grupuri de rime perfecte |
 | `asson` | grupuri de asonanțe |
 
+## `data/build-inputs` — intrările pentru reconstrucție
+
+Pe lângă index, sunt incluse în depozit și fișierele de intrare din care se
+regenerează, arhivate cu gzip. Ele sunt tot date derivate din sursele de mai
+sus și păstrează licențele acestora:
+
+| fișier | sursă | conținut | licență |
+|--------|-------|----------|---------|
+| `forms_typed.txt.gz` | dexonline | `formă`, model flexionar, cuvânt-titlu — **fără definiții** | GPL v2+ |
+| `hyphenations.txt.gz` | dexonline (coloana `Lexeme.hyphenations`) | despărțirea în silabe | GPL v2+ |
+| `hyph_ro_RO.dic.gz` | [LibreOffice `ro`](https://github.com/LibreOffice/dictionaries) (Rospell) | tiparele de despărțire, copie neschimbată | GPL 2+ / LGPL 2.1+ / MPL 1.1 |
+| `ro_freq.txt.gz` | hermitdave/FrequencyWords | frecvențe OpenSubtitles, copie neschimbată | MIT |
+| `ro_wiki_freq.txt.gz` | Wikipedia în română | frecvențe calculate local din dumpul oficial | CC BY-SA — a se atribui Wikipedia |
+
+Aceleași restricții se aplică și aici: din dexonline nu s-a extras și nu se
+redistribuie **niciun text de definiție**, ci numai forme flexionare,
+poziția accentului, modelul flexionar și despărțirea în silabe.
+
 ## Dacă dexonline cere retragerea
 
 Datele sunt folosite cu bună-credință, pe baza excepției din termenii lor

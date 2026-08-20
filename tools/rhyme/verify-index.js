@@ -14,6 +14,13 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
+
+function readText(pathname) {
+  const buf = fs.readFileSync(pathname);
+  return (pathname.endsWith('.gz') ? zlib.gunzipSync(buf) : buf).toString('utf8');
+}
+
 const P = require(path.join(__dirname, '..', '..', 'js', 'ro-phonetics.js'));
 
 const indexPath = path.join(__dirname, '..', '..', 'data', 'rhyme-index.json');
@@ -183,7 +190,7 @@ if (hyphPath && fs.existsSync(hyphPath)) {
   const id = new Map();
   words.forEach((w, i) => id.set(w, i));
   let cmp = 0, agree = 0;
-  for (const line of fs.readFileSync(hyphPath, 'utf8').split('\n')) {
+  for (const line of readText(hyphPath).split('\n')) {
     const tab = line.indexOf('\t');
     if (tab < 0) continue;
     const form = P.normalize(line.slice(0, tab)).replace(/'/g, '');

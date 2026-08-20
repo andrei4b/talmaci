@@ -14,11 +14,14 @@
  */
 'use strict';
 const fs = require('fs');
+const zlib = require('zlib');
 
 function loadPatterns(dicPath) {
   const pats = new Map();
   const exceptions = new Map();
-  const lines = fs.readFileSync(dicPath, 'utf8').split('\n');
+  const rawDic = fs.readFileSync(dicPath);
+  const lines = (dicPath.endsWith('.gz') ? zlib.gunzipSync(rawDic) : rawDic)
+    .toString('utf8').split('\n');
 
   for (let i = 1; i < lines.length; i++) {      // line 0 is the charset
     const ln = lines[i].trim();

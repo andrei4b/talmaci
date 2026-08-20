@@ -20,9 +20,34 @@ from a word — see "Names" below. Definitions are never parsed.
 
 ## Rebuilding
 
-1. Download dexonline's officially published dump and extract **only** the
-   structural table (this skips the definitions entirely, and avoids ever
-   writing the multi-gigabyte decompressed dump to disk):
+Every input the build needs is committed, gzipped, under `data/build-inputs`
+(~7.8 MB). A rebuild downloads nothing:
+
+```bash
+B=data/build-inputs
+node --max-old-space-size=4096 tools/rhyme/build-index.js \
+  $B/forms_typed.txt.gz $B/ro_freq.txt.gz $B/ro_wiki_freq.txt.gz \
+  $B/hyph_ro_RO.dic.gz $B/hyphenations.txt.gz
+node tools/rhyme/verify-index.js $B/hyphenations.txt.gz
+```
+
+Both scripts gunzip an input whose name ends in `.gz` and read anything else
+as plain text, so the uncompressed files work unchanged.
+
+They are committed because deriving them again means a 378 MB dexonline
+archive and a multi-gigabyte Wikipedia dump — too slow to stand between an
+edit to a hyphenation rule and seeing what it did to 210,000 words. Every
+rule in `hyphenate.js` was written by measuring its full diff across the
+vocabulary before shipping it, and that loop only works if a rebuild is
+cheap.
+
+### Re-deriving the inputs from scratch
+
+Only needed to pick up a newer dexonline dump or a newer Wikipedia snapshot.
+
+1. dexonline's officially published dump, reading **only** the structural
+   tables (this skips the definitions entirely, and avoids ever writing the
+   multi-gigabyte decompressed dump to disk):
 
    ```bash
    curl -sL -o dex-database.sql.gz \
@@ -32,35 +57,41 @@ from a word — see "Names" below. Definitions are never parsed.
    ```
 
    `extract-forms.py` reads only `InflectedForm` and `Lexeme`, and writes
-   `form<TAB>MODEL` lines. It makes two passes over the archive: a mysqldump
-   orders tables alphabetically, so every `InflectedForm` row appears before
-   the first `Lexeme` row, and resolving `lexemeId` in one pass yields
-   nothing at all.
+   `form<TAB>MODEL<TAB>HEADWORD` lines. It makes two passes over the
+   archive: a mysqldump orders tables alphabetically, so every
+   `InflectedForm` row appears before the first `Lexeme` row, and resolving
+   `lexemeId` in one pass yields nothing at all.
 
-2. Download the spoken-register frequency list:
+2. The spoken-register frequency list:
 
    ```bash
    curl -sL -o ro_freq.txt \
      https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/ro/ro_50k.txt
    ```
 
-3. Build the written-register frequency list from the Romanian Wikipedia
-   dump (see `wikifreq.py` notes below — this takes a while):
+3. The rospell hyphenation patterns:
+
+   ```bash
+   curl -sL -o hyph_ro_RO.dic \
+     https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ro/hyph_ro_RO.dic
+   ```
+
+4. The written-register frequency list, from the Romanian Wikipedia dump
+   (see `wikifreq.py` notes below — this takes a while):
 
    ```bash
    curl -s https://dumps.wikimedia.org/rowiki/latest/rowiki-latest-pages-articles.xml.bz2 \
      | bzcat | python3 wikifreq.py     # writes ro_wiki_freq.txt
    ```
 
-4. Build:
-
-   ```bash
-   node --max-old-space-size=4096 \
-     tools/rhyme/build-index.js forms_accented.txt ro_freq.txt ro_wiki_freq.txt
-   ```
-
    The Wikipedia list is optional — omit it and the build still works, just
    with subtitle frequencies only.
+
+   `reconstruct-wiki-freq.py` rebuilds a *stand-in* for this file from the
+   shipped index's word list and stored ranks, for when the committed copy
+   is missing and a full dump is not worth the wait. Its counts are ordinal,
+   not corpus counts: they reproduce the existing ranking exactly and can
+   rank nothing new. Re-run step 4 properly before adding vocabulary.
 
 Needs Node 18+ and roughly 4 GB of heap; the intermediate maps hold ~1.5M
 entries.

@@ -37,6 +37,16 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
+
+/* Reads a build input, gunzipping it when the name says so. The inputs are
+ * stored compressed in data/build-inputs, forms_typed.txt alone being 43 MB
+ * uncompressed. */
+function readText(pathname) {
+  const buf = fs.readFileSync(pathname);
+  return (pathname.endsWith('.gz') ? zlib.gunzipSync(buf) : buf).toString('utf8');
+}
+
 const P = require(path.join(__dirname, '..', '..', 'js', 'ro-phonetics.js'));
 
 // One more than the round number actually wanted on screen. A key's posting
@@ -100,7 +110,7 @@ function loadFreq(pathname, label) {
     console.error(`  ${label}: (not provided)`);
     return { map: m, total: 0 };
   }
-  for (const line of fs.readFileSync(pathname, 'utf8').split('\n')) {
+  for (const line of readText(pathname).split('\n')) {
     const sp = line.indexOf(' ');
     if (sp <= 0) continue;
     const w = P.normalize(line.slice(0, sp));
@@ -222,7 +232,7 @@ let scanned = 0, skipped = 0;
 // name test below can ask about the spelling as a whole rather than one row.
 const modelsFor = Object.create(null);   // "constructor" is a Romanian word
 const headOf = Object.create(null);      // inflected form -> its headword
-for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
+for (const lineRaw of readText(formsPath).split('\n')) {
   const line = lineRaw.trim();
   if (!line) continue;
   const col = line.split('\t');
@@ -243,7 +253,7 @@ for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
 }
 
 let namesDropped = 0;
-for (const lineRaw of fs.readFileSync(formsPath, 'utf8').split('\n')) {
+for (const lineRaw of readText(formsPath).split('\n')) {
   const lineFull = lineRaw.trim();
   if (!lineFull) continue;
   const cols = lineFull.split('\t');
@@ -514,7 +524,7 @@ function loadDexHyphenations(pathname) {
     return map;
   }
   let full = 0, frag = 0;
-  for (const line of fs.readFileSync(pathname, 'utf8').split('\n')) {
+  for (const line of readText(pathname).split('\n')) {
     const tab = line.indexOf('\t');
     if (tab < 0) continue;
     const form = P.normalize(line.slice(0, tab)).replace(/'/g, '');
