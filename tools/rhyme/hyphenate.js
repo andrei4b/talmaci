@@ -63,13 +63,7 @@ const WORD_EXCEPTIONS = Object.create(null);
 // and an entry here overrides that.
 WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
 
-// "ceair" is cea-ir: "ea" is the diphthong and the stressed "i" after it
-// opens a syllable of its own. Set by hand rather than by rule — a rule
-// reading the stress marker against the sonority of the run divides 467
-// words differently, and while many of those are right ("na-iv", "dru-id",
-// "co-ca-i-nă") it also breaks "ha-ios" into "ha-i-os" and cannot see that
-// the "u" of "te-qui-la" and "quick" is not a vowel.
-WORD_EXCEPTIONS['ceair'] = 'cea-ir';
+// "ceair" needs no entry any more — splitStressedFinalI divides it.
 
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
 
@@ -104,10 +98,43 @@ function isVowelCh(c) { return VOWEL_LETTERS.indexOf(c) >= 0; }
  * word could differ in stress yet come out looking identical. */
 function splitStressedFinalI(word, cuts, stressOffset) {
   const n = word.length;
-  if (stressOffset !== n - 1 || word[n - 1] !== 'i' || n < 3) return cuts;
-  if (!isVowelCh(word[n - 2])) return cuts;
-  if (cuts.indexOf(n - 1) >= 0) return cuts;
-  return cuts.concat([n - 1]).sort((x, y) => x - y);
+  if (stressOffset < 1 || stressOffset >= n) return cuts;
+  if (!isVowelCh(word[stressOffset])) return cuts;
+
+  // The "u" of "qu" spells no vowel of its own — "te-qui-la", "quick" — so
+  // it cannot be the louder neighbour, nor can the run start at it.
+  const realVowel = (k) => isVowelCh(word[k]) && !(word[k] === 'u' && word[k - 1] === 'q');
+  if (!realVowel(stressOffset) || !realVowel(stressOffset - 1)) return cuts;
+
+  // Within a run of vowels the most sonorous is the nucleus and the rest
+  // are glides. A marker on a LESS sonorous one says the run holds two
+  // nuclei, so a syllable starts there: "tră-i", "î-na-po-i", "cea-ir",
+  // "na-iv", "dru-id", "co-ca-i-nă", where the louder vowel comes first.
+  const SONORITY = { 'a': 5, 'e': 4, 'o': 4, 'ă': 3, 'â': 3, 'î': 3, 'u': 2, 'i': 1 };
+  const here = SONORITY[word[stressOffset]] || 0;
+  let from = stressOffset;
+  while (from > 0 && realVowel(from - 1)) from--;
+  let louder = false;
+  for (let k = from; k < stressOffset; k++) {
+    if ((SONORITY[word[k]] || 0) > here) louder = true;
+  }
+  if (!louder) return cuts;
+
+  // Where a glide sits between the louder vowel and the stressed one, the
+  // syllable opens ON the glide, it being that syllable's onset: "haios" is
+  // "ha-ios" and "maior" "ma-ior", not "ha-i-os" and "ma-i-or". Putting the
+  // cut in the right place to begin with is what lets this run on imported
+  // divisions, where there is no later pass to tidy a stranded glide — and
+  // where such a pass would wrongly close up "pi-u-it" and "ți-u-i-toa-re".
+  let at = stressOffset;
+  const prev = word[stressOffset - 1];
+  if ((prev === 'i' || prev === 'u') && stressOffset >= 2 &&
+      realVowel(stressOffset - 2)) {
+    at = stressOffset - 1;
+  }
+
+  if (at < 1 || cuts.indexOf(at) >= 0) return cuts;
+  return cuts.concat([at]).sort((x, y) => x - y);
 }
 
 
@@ -160,6 +187,71 @@ function phoneticOnsets(word, cuts) {
     }
     return c;
   }).sort((x, y) => x - y);
+}
+
+function placeGlideBoundaries(word, cuts) {
+  const isV = c => VOWEL_LETTERS.indexOf(c) >= 0;
+
+  const build = cs => {
+    const parts = [];
+    let prev = 0;
+    for (const c of cs) { parts.push(word.slice(prev, c)); prev = c; }
+    parts.push(word.slice(prev));
+    return parts;
+  };
+
+  // Pull a trailing glide forward: "mai|or" -> "ma|ior".
+  for (let guard = 0; guard < 40; guard++) {
+    const parts = build(cuts);
+    let moved = false;
+    let at = 0;
+    for (let i = 0; i + 1 < parts.length; i++) {
+      at += parts[i].length;
+      const p = parts[i];
+      if (p.length < 2) continue;
+      const last = p[p.length - 1];
+      if (last !== 'i' && last !== 'u') continue;
+      if (!isV(p[p.length - 2])) continue;          // nucleus, not a glide
+      const nxt = parts[i + 1];
+      if (!isV(nxt[0])) continue;                   // no vowel to be onset of
+      // If the next piece already opens with its own glide+vowel pair, it
+      // has an onset and this letter belongs where it is: "bi-ciu|ia" must
+      // not become "bi-ci|uia".
+      if (nxt.length >= 2 && (nxt[0] === 'i' || nxt[0] === 'u') && isV(nxt[1])) continue;
+      const k = cuts.indexOf(at);
+      if (k < 0 || cuts.indexOf(at - 1) >= 0) continue;
+      cuts = cuts.slice(0, k).concat([at - 1], cuts.slice(k + 1));
+      moved = true;
+      break;
+    }
+    if (!moved) break;
+  }
+
+  // Absorb a glide left stranded as its own piece.
+  for (let guard = 0; guard < 40; guard++) {
+    const parts = build(cuts);
+    let at = 0;
+    let drop = -1;
+    for (let i = 0; i < parts.length && drop < 0; i++) {
+      const p = parts[i];
+      if (i > 0 && i + 1 < parts.length && p.length === 1 &&
+          (p === 'i' || p === 'u') &&
+          isV(parts[i - 1][parts[i - 1].length - 1]) && isV(parts[i + 1][0])) {
+        const nxt = parts[i + 1];
+        const nextOpensWithGlide =
+          nxt.length >= 2 && (nxt[0] === 'i' || nxt[0] === 'u') && isV(nxt[1]);
+        // forward -> drop the cut after the glide; backward -> the one before
+        drop = nextOpensWithGlide ? at : at + 1;
+      }
+      at += p.length;
+    }
+    if (drop < 0) break;
+    const k = cuts.indexOf(drop);
+    if (k < 0) break;
+    cuts = cuts.slice(0, k).concat(cuts.slice(k + 1));
+  }
+
+  return cuts;
 }
 
 /* Applies the exception layer to pattern-derived cuts. */
@@ -548,70 +640,6 @@ function cutPoints(word, table, stressOffset, head) {
  *
  * A letter after a consonant is a nucleus, not a glide, so "lu-a", "fi-ul",
  * "scri-i-tor" and "su-pe-ri-or" are left alone. */
-function placeGlideBoundaries(word, cuts) {
-  const isV = c => VOWEL_LETTERS.indexOf(c) >= 0;
-
-  const build = cs => {
-    const parts = [];
-    let prev = 0;
-    for (const c of cs) { parts.push(word.slice(prev, c)); prev = c; }
-    parts.push(word.slice(prev));
-    return parts;
-  };
-
-  // Pull a trailing glide forward: "mai|or" -> "ma|ior".
-  for (let guard = 0; guard < 40; guard++) {
-    const parts = build(cuts);
-    let moved = false;
-    let at = 0;
-    for (let i = 0; i + 1 < parts.length; i++) {
-      at += parts[i].length;
-      const p = parts[i];
-      if (p.length < 2) continue;
-      const last = p[p.length - 1];
-      if (last !== 'i' && last !== 'u') continue;
-      if (!isV(p[p.length - 2])) continue;          // nucleus, not a glide
-      const nxt = parts[i + 1];
-      if (!isV(nxt[0])) continue;                   // no vowel to be onset of
-      // If the next piece already opens with its own glide+vowel pair, it
-      // has an onset and this letter belongs where it is: "bi-ciu|ia" must
-      // not become "bi-ci|uia".
-      if (nxt.length >= 2 && (nxt[0] === 'i' || nxt[0] === 'u') && isV(nxt[1])) continue;
-      const k = cuts.indexOf(at);
-      if (k < 0 || cuts.indexOf(at - 1) >= 0) continue;
-      cuts = cuts.slice(0, k).concat([at - 1], cuts.slice(k + 1));
-      moved = true;
-      break;
-    }
-    if (!moved) break;
-  }
-
-  // Absorb a glide left stranded as its own piece.
-  for (let guard = 0; guard < 40; guard++) {
-    const parts = build(cuts);
-    let at = 0;
-    let drop = -1;
-    for (let i = 0; i < parts.length && drop < 0; i++) {
-      const p = parts[i];
-      if (i > 0 && i + 1 < parts.length && p.length === 1 &&
-          (p === 'i' || p === 'u') &&
-          isV(parts[i - 1][parts[i - 1].length - 1]) && isV(parts[i + 1][0])) {
-        const nxt = parts[i + 1];
-        const nextOpensWithGlide =
-          nxt.length >= 2 && (nxt[0] === 'i' || nxt[0] === 'u') && isV(nxt[1]);
-        // forward -> drop the cut after the glide; backward -> the one before
-        drop = nextOpensWithGlide ? at : at + 1;
-      }
-      at += p.length;
-    }
-    if (drop < 0) break;
-    const k = cuts.indexOf(drop);
-    if (k < 0) break;
-    cuts = cuts.slice(0, k).concat(cuts.slice(k + 1));
-  }
-
-  return cuts;
-}
 
 /* Gives a single intervocalic consonant to the syllable that follows it.
  *
