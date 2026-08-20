@@ -216,6 +216,12 @@ function placeGlideBoundaries(word, cuts) {
       const last = p[p.length - 1];
       if (last !== 'i' && last !== 'u') continue;
       if (!isV(p[p.length - 2])) continue;          // nucleus, not a glide
+      // An "i" that softens a preceding "c" or "g" spells no vowel of its
+      // own, so what follows it IS the nucleus and stays put: "a-ciu-at",
+      // "bi-ciu-ia", "me-ciul". Read as a vowel it makes the "u" look like
+      // a glide, and the syllable gets pulled apart into "a-ci-uat".
+      if (p[p.length - 2] === 'i' && at >= 3 &&
+          (word[at - 3] === 'c' || word[at - 3] === 'g')) continue;
       const nxt = parts[i + 1];
       if (!isV(nxt[0])) continue;                   // no vowel to be onset of
       // If the next piece already opens with its own glide+vowel pair, it
@@ -418,14 +424,21 @@ function applyExceptions(word, cuts, stressOffset, head) {
 
   cuts = splitStressedFinalI(word, cuts, stressOffset);
 
-  // The "crăciun" stem keeps its softener: "cră-ciun", and so "cră-ciu-nul",
-  // "cră-ciu-nu-lui". The base form and most derivatives are already right
-  // ("cră-ciu-na", "cră-ciu-nean", "cră-ciu-ni-ța"), but the forms built on
-  // the plain stem plus an ending lost it and came out "cră-ci-u-nul" —
-  // the same "ciu" the patterns handle correctly in "ni-ciu-nul". Only the
-  // cut between the softener and its vowel needs removing.
-  if (word.startsWith('crăciun')) {
-    cuts = cuts.filter(c => c !== 5);
+  // "ci" and "gi" before a "u" spell /tʃ/ and /dʒ/, the "i" being a softener
+  // with no nucleus of its own, so the three letters are one syllable:
+  // "me-ciul", "ser-vi-ciul", "cră-ciun", "ru-gă-ciu-ne", "ni-ciun",
+  // "giul-giu". Any cut between that "i" and the "u" is wrong.
+  //
+  // Only before "u". Before the other vowels a softener cannot be told from
+  // a syllabic "i" by spelling — "so-ci-al", "spe-ci-a-le", "ser-vi-ci-ul"
+  // against "cio-can", "ceas" — and the patterns already carry that
+  // knowledge word by word. This replaces the "crăciun" rule, which was the
+  // same fix written for one stem.
+  for (let i = 1; i + 1 < n; i++) {
+    if (word[i] !== 'i' || word[i + 1] !== 'u') continue;
+    if (word[i - 1] !== 'c' && word[i - 1] !== 'g') continue;
+    if (i >= 2 && word[i - 2] === 'h') continue;   // "chi"/"ghi" spell /k/ and /g/
+    cuts = cuts.filter(c => c !== i + 1);
   }
 
   // "nici" + vowel divides ni-cio / ni-ciun, but the patterns either leave
