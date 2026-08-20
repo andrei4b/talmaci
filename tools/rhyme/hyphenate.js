@@ -82,6 +82,17 @@ WORD_EXCEPTIONS['vreo'] = 'vreo';
 // attested words and the rule is about the diphthong in "doin-", not about
 // any one of them. It cannot reach "în-do-ind" and "în-do-in-du", whose
 // "o-i" is a real hiatus (from "a îndoi") and which do not start with it.
+// Stems where "io" after a non-softening consonant is a diphthong after
+// all, so the rule below must not divide it. dexonline lists every one of
+// them — "ca-nion", "cer-no-ziom", "com-pa-nion", "du-lă-pior",
+// "lor-nion", "mi-nion", "fi-o-rin" — but only in the base form, and the
+// inflections come from the patterns instead, which left "ca-nion" beside
+// "ca-ni-o-nul". Listed rather than ruled: they are loans and diminutives
+// with nothing in their spelling to mark them out, and every attempt to
+// state the class caught ordinary words like "ches-ti-o-nar" too.
+const DIPHTHONG_IO_STEMS = ['canion', 'cernoziom', 'companion', 'dulăpior',
+  'fiorin', 'lornion', 'minion'];
+
 const DOINA_STEM = 'doin';
 
 // e.g. WORD_EXCEPTIONS['cuvant'] = 'cu-vant';
@@ -504,6 +515,35 @@ function applyExceptions(word, cuts, stressOffset, head) {
         cuts.indexOf(i + 1) < 0) {
       cuts = cuts.concat([i + 1]).sort((x, y) => x - y);
     }
+  }
+
+  /* An "i" between a non-softening consonant and a following "o" carries
+   * its own nucleus, so a syllable starts on the "o": "ac-ți-o-nat",
+   * "ches-ti-o-nar", "fle-xi-o-nar", "me-ri-di-o-nal", "a-pro-vi-zi-o-nat",
+   * "a-di-men-si-o-nal", "bi-o-nic". This is the "-iune" rule's reasoning
+   * one vowel over: after "ț", "s", "z", "t", "n" and the rest an "i"
+   * cannot be a softener, so it has to be syllabic. c, g and h stay out for
+   * the same reason as there — "ci" and "gi" really can be softeners.
+   *
+   * dexonline divides 467 words this way and none the other, but it was
+   * reaching only some of them: "func-ți-o-nea-ză" and "ac-ți-o-na-rea"
+   * were right while "ob-struc-țio-na-rea" and "re-vo-lu-țio-na-rea", which
+   * it does not list, were not.
+   *
+   * "ioa" is excluded, being the triphthong of the "-ioară" diminutives:
+   * "a-ri-pioa-ră", "dum-bră-vioa-ra", "câr-ciu-mioa-ra". And the rule
+   * stays off imported divisions, which is what keeps the loans dexonline
+   * does list intact — "ca-nion", "cer-no-ziom", "im-bro-glio",
+   * "a-rio-so", "appa-sio-na-to". */
+  for (let j = 1; j + 1 < n; j++) {
+    if (word[j] !== 'i' || word[j + 1] !== 'o') continue;
+    if (IUNE_CONSONANTS.indexOf(word[j - 1]) < 0) continue;
+    if (word[j + 2] === 'a') continue;            // the "ioa" triphthong
+    if (DIPHTHONG_IO_STEMS.some(t => word.startsWith(t))) {
+      cuts = cuts.filter(x => x !== j + 1);   // and undo the patterns' cut
+      continue;
+    }
+    if (cuts.indexOf(j + 1) < 0) cuts = cuts.concat([j + 1]).sort((x, y) => x - y);
   }
 
   cuts = splitStressedFinalI(word, cuts, stressOffset);
