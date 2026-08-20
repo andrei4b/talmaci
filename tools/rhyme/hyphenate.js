@@ -386,7 +386,7 @@ function mergeVowellessPieces(word, cuts) {
  * This only ever splits BETWEEN vowel groups, never inside one, so the
  * diphthong-vs-hiatus decisions made by the patterns and the exception layer
  * above are left untouched. */
-function splitMultiNucleusPieces(word, cuts, stressOffset, head) {
+function splitMultiNucleusPieces(word, cuts, stressOffset, head, hasFinalIReading) {
   const VOW = 'aăâeiîouy';
   const isV = c => VOW.indexOf(c) >= 0;
   const OBSTR = 'pbtdcgfv';
@@ -425,7 +425,7 @@ function splitMultiNucleusPieces(word, cuts, stressOffset, head) {
       // discounted. In "spaghetti" it is part of the stem, so "ghetti" holds
       // two nuclei and divides "ghet-ti".
       if (end === word.length && groups.length > 1 &&
-          finalIIsWhispered(word, head, stressOffset)) {
+          finalIIsWhispered(word, head, stressOffset, hasFinalIReading)) {
         const lastG = groups[groups.length - 1];
         if (lastG[0] === lastG[1] && piece[lastG[0]] === 'i' &&
             lastG[0] === piece.length - 1 && lastG[0] > 0 && !isV(piece[lastG[0] - 1])) {
@@ -656,12 +656,19 @@ function syllables(word, table, stressOffset, head) {
  *
  * A stressed final "i" is never whispered; nothing can be built around a
  * stressed vowel except a syllable. */
-function finalIIsWhispered(word, head, stressOffset) {
+function finalIIsWhispered(word, head, stressOffset, hasFinalIReading) {
   const n = word.length;
   if (n < 2 || word[n - 1] !== 'i') return false;
   if (stressOffset === n - 1) return false;
   if (/([bcdfglmnprstz])\1/.test(word)) return false;
-  if (head && head === word && !/(chi|ghi)$/.test(word)) return false;
+  // The own-headword test above is about borrowings, and a Romanian verb
+  // is its own headword too: "dormi" heads on "dormi". What separates them
+  // is that the verb ALSO has a reading stressed on that final "i" — the
+  // infinitive — while "ravioli" and "zombi" have no such reading at all.
+  // So the second-person "d'ormi" is one sung syllable, "dormi", even
+  // though the infinitive "dorm'i" beside it is "dor-mi".
+  if (head && head === word && !hasFinalIReading &&
+      !/(chi|ghi)$/.test(word)) return false;
   return true;
 }
 
@@ -678,7 +685,7 @@ function finalIIsWhispered(word, head, stressOffset) {
  * "zil-nici" keeps its two syllables — its last piece has a nucleus of its
  * own. A stressed final "i" is a nucleus and stays ("a-bo-li"), and so does
  * one after an obstruent+liquid cluster ("co-dri", "mem-bri"). */
-function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
+function mergeWhisperedFinalI(word, cuts, stressOffset, head, hasFinalIReading) {
   if (!cuts.length) return cuts;
 
   // A word-final "y" after a vowel spells the same glide as "i" and belongs
@@ -690,7 +697,7 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
     return cuts.slice(0, -1);
   }
 
-  if (!finalIIsWhispered(word, head, stressOffset)) return cuts;
+  if (!finalIIsWhispered(word, head, stressOffset, hasFinalIReading)) return cuts;
 
   // "y" counts as a vowel here, as it does everywhere else in this file: it
   // carries the nucleus in the loanwords the Wikipedia corpus drags in, so
@@ -706,11 +713,11 @@ function mergeWhisperedFinalI(word, cuts, stressOffset, head) {
   return cuts.slice(0, -1);
 }
 
-function enforceOneNucleus(word, cuts, stressOffset, head) {
+function enforceOneNucleus(word, cuts, stressOffset, head, hasFinalIReading) {
   return splitFinalUU(word, mergeWhisperedFinalI(word,
     mergeVowellessPieces(word,
-      splitMultiNucleusPieces(word, cuts.slice(), stressOffset, head)),
-    stressOffset, head));
+      splitMultiNucleusPieces(word, cuts.slice(), stressOffset, head, hasFinalIReading)),
+    stressOffset, head, hasFinalIReading));
 }
 
 /* Finishes a division that came from dexonline rather than the patterns.
@@ -732,12 +739,12 @@ function enforceOneNucleus(word, cuts, stressOffset, head) {
  * is not in its vowel set, and the English compounds "hold-up", "hand-out"
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
-function finishImported(word, cuts, stressOffset, head) {
+function finishImported(word, cuts, stressOffset, head, hasFinalIReading) {
   return splitFinalUU(word,
     mergeWhisperedFinalI(word,
       mergeVowellessPieces(word,
         splitStressedFinalI(word, cuts.slice(), stressOffset)),
-      stressOffset, head));
+      stressOffset, head, hasFinalIReading));
 }
 
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
