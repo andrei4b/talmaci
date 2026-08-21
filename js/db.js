@@ -25,8 +25,9 @@
  *     updatedAt: number (ms)
  *   }
  *
- * Translation versions live in a subcollection so multiple people can edit
- * different versions of the same song without racing on one big doc:
+ * Versions live in a subcollection so multiple people can edit different
+ * versions of the same song without racing on one big doc. Every song is
+ * created with a "Versiunea 1" already in it — see addSong:
  *   songs/{songId}/versions/{versionId}
  *   {
  *     title: string,             // shown in the version switcher
@@ -67,6 +68,11 @@ async function addSong({ title, originalText, kind, groupId, createdBy }) {
     createdAt: now,
     updatedAt: now
   });
+  // Every song starts with one version. Without it the song opened on a
+  // disabled version switcher with nothing to switch to, and "Adaugă
+  // versiune" lives inside that switcher's own sheet — so there was no way
+  // to make the first one.
+  await addVersion(ref.id, { title: 'Versiunea 1', text: '', createdBy });
   return ref.id;
 }
 

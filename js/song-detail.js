@@ -249,11 +249,14 @@ function _renderTextTab(content) {
   });
 
   const switcher = el('div', { class: 'version-switcher' }, [
+    // Enabled even with nothing to switch between. New songs are created
+    // with a version, but a song from before that is not, and this button
+    // is the only door to "Adaugă versiune" — disabling it was what sealed
+    // those songs off with no way to start writing in them.
     el('button', {
       class: 'version-switcher__current',
-      disabled: !_versions.length,
       onclick: () => _openVersionList(content)
-    }, [active ? (active.title || 'Fără titlu') : 'Nicio versiune']),
+    }, [active ? (active.title || 'Fără titlu') : 'Adaugă o versiune']),
     undoBtn,
     redoBtn
   ]);
