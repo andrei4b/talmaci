@@ -173,7 +173,7 @@ function _renderSimpleTab(content, title, fill) {
 
 function _placeholderPanel(tabId) {
   const copy = {
-    sinonime: 'Aici vei putea căuta sinonime pentru cuvintele din traducere.',
+    sinonime: 'Aici vei putea căuta sinonime pentru cuvintele din text.',
     biblie: 'Aici vei putea vedea referințe biblice legate de text.'
   }[tabId] || '';
   return el('div', { class: 'empty-state' }, [

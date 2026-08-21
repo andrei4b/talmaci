@@ -1,14 +1,15 @@
 /* song-detail.js — one song, opened from the list: its header and its
- * text (original on one side, translation on the other).
+ * text: the source on one side and the translation on the other, or a
+ * single box when the song is a composition of our own.
  *
  * This is what the Text tab shows once you open a song; the list is what
  * it shows before that. The tab bar itself belongs to the app shell
  * (app.js), which keeps it on screen everywhere, so nothing here knows
  * about Rime, Sinonime or Biblie any more.
  *
- * The translation supports multiple named versions (so several people can
- * draft in parallel) via the version switcher above the translation box —
- * see db.js's versions subcollection. */
+ * Either way the text supports multiple named versions (so several people
+ * can draft in parallel) via the version switcher below the box — see
+ * db.js's versions subcollection. */
 (function () {
 const { el, toast, debounce, openSheet, closeSheet, icons, isOriginal } = window.Utils;
 
@@ -261,8 +262,17 @@ function _renderTextTab(content) {
     redoBtn
   ]);
 
-  let placeholder = 'Creează o versiune pentru a începe traducerea.';
-  if (active) placeholder = canEdit ? 'Traducerea în română…' : 'Doar creatorul sau un admin poate edita această versiune.';
+  // A composition is not a translation of anything, so the box must not
+  // ask for one. Everything else the two share, but the words in front of
+  // an empty field are the one place the difference is obvious.
+  const original = isOriginal(_song);
+  let placeholder = original ? 'Creează o versiune ca să începi.'
+                             : 'Creează o versiune pentru a începe traducerea.';
+  if (active) {
+    placeholder = !canEdit ? 'Doar creatorul sau un admin poate edita această versiune.'
+                : original ? 'Versurile tale…'
+                : 'Traducerea în română…';
+  }
 
   const debouncedSave = debounce((text) => _saveVersionText(text), 600);
   const translation = el('textarea', {
@@ -354,7 +364,7 @@ async function _saveVersionText(text) {
     _lastText = text;
     _checkpointPending = false;
   } catch (err) {
-    toast('Nu am putut salva traducerea: ' + err.message, { kind: 'error' });
+    toast('Nu am putut salva textul: ' + err.message, { kind: 'error' });
   }
 }
 
@@ -410,7 +420,7 @@ function _confirmDeleteVersion(content, version) {
   const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Ștergi versiunea?']),
     el('p', { class: 'sheet__text' }, [
-      `Sigur vrei să ștergi versiunea „${version.title || 'Fără titlu'}”? Traducerea ei se pierde definitiv.`
+      `Sigur vrei să ștergi versiunea „${version.title || 'Fără titlu'}”? Textul ei se pierde definitiv.`
     ]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openVersionList(content); } }, ['Anulează']),
@@ -597,7 +607,9 @@ function _confirmDeleteSong() {
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Ștergi melodia?']),
     el('p', { class: 'sheet__text' }, [
-      `Sigur vrei să ștergi „${_song.title || 'Fără titlu'}”? Textul original și toate versiunile de traducere se pierd definitiv.`
+      isOriginal(_song)
+        ? `Sigur vrei să ștergi „${_song.title || 'Fără titlu'}”? Toate versiunile se pierd definitiv.`
+        : `Sigur vrei să ștergi „${_song.title || 'Fără titlu'}”? Textul original și toate versiunile de traducere se pierd definitiv.`
     ]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
