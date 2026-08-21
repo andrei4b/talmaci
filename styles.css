@@ -468,9 +468,19 @@ a { color: inherit; text-decoration: none; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 
 /* Rime tab */
-.rime { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.rime__search { flex-shrink: 0; }
-.rime__input { width: 100%; }
+/* Sits below .search-bar, which is the very same element the song list
+   uses — so the field lines up across the two tabs and this panel takes
+   over from there. Horizontal padding and the tab-bar clearance live here
+   rather than on a .tab-content wrapper, since the search field has to be
+   outside the scrolling area. */
+.rime {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 20px calc(var(--tabbar-h, 70px) + 10px);
+}
 .rime__filters {
   flex-shrink: 0;
   display: flex;

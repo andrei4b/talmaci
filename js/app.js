@@ -143,8 +143,11 @@ function _renderRoute(root) {
   } else if (tab === 'rime') {
     _renderSimpleTab(content, 'Rime', (panel) => window.RimeTab.render(panel));
   } else {
-    _renderSimpleTab(content, TABS.find(t => t.id === tab).label,
-                     (panel) => panel.appendChild(_placeholderPanel(tab)));
+    _renderSimpleTab(content, TABS.find(t => t.id === tab).label, (host) => {
+      const panel = el('div', { class: 'tab-content' });
+      panel.appendChild(_placeholderPanel(tab));
+      host.appendChild(panel);
+    });
   }
 
   root.appendChild(_renderTabBar(tab));
@@ -152,6 +155,11 @@ function _renderRoute(root) {
 
 // A tab with nothing above it but its own name. The account menu is
 // repeated here so signing out does not mean going back to the list first.
+//
+// `fill` is handed the shell itself rather than a ready-made .tab-content,
+// so a tab can put something directly under the topbar. Rime needs that:
+// its search field has to sit exactly where the song list's does, and the
+// scrolling panel starts below it.
 function _renderSimpleTab(content, title, fill) {
   content.appendChild(el('div', { class: 'topbar' }, [
     el('h1', { class: 'topbar__title' }, [title]),
@@ -160,9 +168,7 @@ function _renderSimpleTab(content, title, fill) {
       html: icons.kebab, onclick: () => openAccountMenu()
     })
   ]));
-  const panel = el('div', { class: 'tab-content' });
-  content.appendChild(panel);
-  fill(panel);
+  fill(content);
 }
 
 function _placeholderPanel(tabId) {

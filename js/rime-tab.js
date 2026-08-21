@@ -23,13 +23,18 @@ const RIME_PAGE = 120;
 const RIME_SYLL_MAX = 5;
 let _rimeShown = RIME_PAGE;
 
-function _renderRimeTab(content) {
+function _renderRimeTab(host) {
   const wrap = el('div', { class: 'rime' });
-  content.appendChild(wrap);
 
+  // Deliberately the song list's search field, class for class: the two
+  // tabs sit one tap apart, and a field that shifts position or changes
+  // shade between them reads as a different control. Sharing the markup
+  // means it cannot drift — .search-bar carries the position too, so this
+  // sits directly under the topbar exactly as the list's does instead of
+  // inside the scrolling panel a few pixels lower.
   const input = el('input', {
-    class: 'field__input rime__input',
-    type: 'text',
+    class: 'search-bar__input',
+    type: 'search',
     placeholder: 'Scrie un cuvânt…',
     value: _rimeQuery,
     oninput: debounce((e) => {
@@ -39,18 +44,28 @@ function _renderRimeTab(content) {
       _runRimeSearch(wrap);
     }, 250)
   });
-  wrap.appendChild(el('div', { class: 'rime__search' }, [input]));
+  host.appendChild(el('div', { class: 'search-bar' }, [input]));
+  host.appendChild(wrap);
+  _renderPanel(wrap);
+  return wrap;
+}
+
+/* Everything below the search field. Rebuilt on its own when a filter
+ * changes, which is what lets the field keep its text, its caret and the
+ * on-screen keyboard: it is a sibling of this, not a child. */
+function _renderPanel(wrap) {
+  wrap.innerHTML = '';
 
   // Only perfect rhymes are offered, so there is no mode to choose.
   const sylRow = el('div', { class: 'rime__filters rime__filters--syll' }, [
     el('span', { class: 'rime__filters-label' }, ['Silabe']),
-    _segButton('Toate', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
+    _segButton('Toate', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderPanel(wrap); })
   ]);
   // The last bucket is open-ended: long rhymes are rare enough that giving
   // 6, 7 and 8 their own buttons would mostly show empty result lists.
   [1, 2, 3, 4, RIME_SYLL_MAX].forEach(n => {
     const label = n === RIME_SYLL_MAX ? n + '+' : String(n);
-    sylRow.appendChild(_segButton(label, _rimeSyll === n, () => { _rimeSyll = n; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }));
+    sylRow.appendChild(_segButton(label, _rimeSyll === n, () => { _rimeSyll = n; _rimeShown = RIME_PAGE; _renderPanel(wrap); }));
   });
   wrap.appendChild(sylRow);
 
@@ -61,12 +76,6 @@ function _renderRimeTab(content) {
 
   wrap.appendChild(el('div', { class: 'rime__body' }));
   _runRimeSearch(wrap);
-  return wrap;
-}
-
-function _renderRimeTabKeepFocus(content) {
-  content.innerHTML = '';
-  _renderRimeTab(content);
 }
 
 function _segButton(label, active, onclick) {
