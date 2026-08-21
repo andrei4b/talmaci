@@ -41,12 +41,22 @@
 <script src="./js/app.js"></script>
 
 <script>
+// Registered after load so it never competes with the app's own first
+// paint. Deliberately no reload when the worker takes over.
+//
+// Reloading on 'controllerchange' is the standard move, but it belongs to
+// a cache-first worker, where the page you are looking at may be running
+// assets frozen at some earlier install and only a reload picks up the new
+// ones. This worker is network-first (see service-worker.js), so the page
+// already holds the newest files in every case: on a first visit there was
+// no worker and they came straight off the network, and after a deploy the
+// page was loaded through the previous worker, which also goes to the
+// network. Offline, a reload would only re-read the same cache.
+//
+// So the reload bought nothing and cost a visible second load a few
+// seconds after opening — once on a first visit, and once more after every
+// deploy, since a changed service-worker.js activates and claims the page.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (sessionStorage.getItem('swReloaded')) return;
-    sessionStorage.setItem('swReloaded', '1');
-    location.reload();
-  });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./service-worker.js').catch(() => {});
   });
