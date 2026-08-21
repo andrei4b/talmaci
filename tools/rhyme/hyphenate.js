@@ -927,7 +927,25 @@ function syllables(word, table, stressOffset, head) {
 const BORROWED_FINAL_I = new Set([
   'ravioli', 'broccoli', 'zombi', 'safari', 'salami', 'tsunami', 'origami',
   'alibi', 'bikini', 'colibri', 'derbi', 'obi', 'pecari', 'penalti',
-  'potpuri', 'remi', 'rugbi', 'taxi', 'tripoli'
+  'potpuri', 'remi', 'rugbi', 'taxi', 'tripoli',
+  // Derived rather than guessed: dexonline divides these with the final "i"
+  // as its own syllable AND records each as its own headword, so the "i"
+  // cannot be an inflectional ending. Both halves are needed. dexonline
+  // separates a final "i" for native plurals too — "co-vri-gi", "pă-u-ni",
+  // "pre-o-ți", "vi-tre-gi" — because its column is the orthographic
+  // line-break division, so its split alone proves nothing; and the
+  // headword test alone once broke "dormi", "totuși", "vineri" and "ieri",
+  // none of which dexonline lists at all, which is why pairing the two is
+  // safe. Verbs are excluded: "a-u-zi" is right for the infinitive but the
+  // 2nd person present is "'auzi", and the reading system already handles
+  // that pair.
+  //
+  // "bengali" and "martini" are deliberately absent. Both look like loans,
+  // but dexonline records them as plurals of "bengal" and "martin", so
+  // "ben-ga-li" and "mar-ti-ni" are just its usual orthographic break and
+  // prove nothing either way.
+  'bodoni', 'chianti', 'comati', 'elenchi', 'hicori', 'maori', 'mariachi',
+  'paciuli', 'priori', 'swahili'
 ]);
 
 /* Is a word-final "i" the whispered Romanian ending, or part of the stem?
