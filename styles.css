@@ -128,6 +128,18 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface);
 }
 
+/* Type filter — a row of pills between the search field and the list, and
+   the same control in the new-song sheet. */
+.kind-filter {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 20px 12px;
+}
+/* Inside a sheet the surrounding .field already supplies the spacing. */
+.sheet .kind-filter { padding: 0; }
+
 /* Song list */
 .song-list-wrap {
   flex: 1;
@@ -140,6 +152,25 @@ a { color: inherit; text-decoration: none; }
 }
 .song-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .song-list__item { }
+/* Title and its type label share a row; the label is pushed to the end and
+   never squeezes the title, which truncates on its own. */
+.song-list__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.song-list__kind {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
 .song-list__link {
   display: flex;
   flex-direction: column;
@@ -149,7 +180,13 @@ a { color: inherit; text-decoration: none; }
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.song-list__title { font-weight: 600; }
+.song-list__title {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .song-list__snippet { color: var(--color-text-muted); font-size: 0.9rem; }
 
 .empty-state {
@@ -493,7 +530,10 @@ a { color: inherit; text-decoration: none; }
   color: var(--color-text-muted);
   margin-right: 2px;
 }
-.rime__seg {
+/* Segmented control — the syllable filters in Rime and the type filter
+   over the song list. Shared rather than copied, so the two rows of pills
+   cannot drift apart. */
+.seg {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text-muted);
@@ -508,13 +548,13 @@ a { color: inherit; text-decoration: none; }
    outside .rime__body, so it holds its place while the results scroll. */
 .rime__readings { flex-shrink: 0; }
 .rime__filters--readings { margin-top: 6px; }
-.rime__filters--readings .rime__seg { font-weight: 500; }
+.rime__filters--readings .seg { font-weight: 500; }
 .rime__filters--readings .rime__syl-sep { opacity: 0.45; }
 .rime__filters--readings .rime__syl--stressed {
   font-weight: 700;
   text-decoration: underline;
 }
-.rime__seg--active {
+.seg--active {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: var(--color-bg);

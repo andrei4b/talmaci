@@ -10,6 +10,14 @@ const icons = {
   kebab: `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>`
 };
 
+/* A song is either a translation of something or a composition of our own.
+ * Songs created before the distinction existed carry no `kind` and are all
+ * translations, so the default lives here rather than at each call site. */
+function songKind(song) {
+  return (song && song.kind === 'original') ? 'original' : 'translation';
+}
+function isOriginal(song) { return songKind(song) === 'original'; }
+
 function $(sel, root) { return (root || document).querySelector(sel); }
 function $all(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
 
@@ -104,6 +112,21 @@ function closeSheet(sheetEl, _fromPopstate) {
   }
 }
 
+/* Close a sheet and then go somewhere, in that order.
+ *
+ * closeSheet unwinds the sheet's history entry with history.back(), which
+ * is asynchronous: assigning location.hash straight afterwards looks like
+ * it works, then the pop lands and puts the old route back. Saving a song
+ * with no source text did exactly that and stayed on the list, and a
+ * composition takes that path every time.
+ *
+ * So the navigation waits for the pop it is racing with. */
+function closeSheetThen(sheetEl, fn) {
+  if (_sheetStack.lastIndexOf(sheetEl) === -1) { fn(); return; }   // already closed
+  window.addEventListener('popstate', () => fn(), { once: true });
+  closeSheet(sheetEl);
+}
+
 window.addEventListener('popstate', () => {
   if (_skipNextPopstates > 0) { _skipNextPopstates--; return; }
   if (_sheetStack.length) {
@@ -111,6 +134,7 @@ window.addEventListener('popstate', () => {
   }
 });
 
-window.Utils = { $, $all, el, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, icons };
+window.Utils = { $, $all, el, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
+                 songKind, isOriginal };
 
 })();

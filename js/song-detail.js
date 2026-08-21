@@ -10,7 +10,7 @@
  * draft in parallel) via the version switcher above the translation box —
  * see db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, icons } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet, icons, isOriginal } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -305,14 +305,17 @@ function _renderTextTab(content) {
     redoBtn.disabled = !_redoStack.length;
   };
 
-  const textTab = el('div', { class: 'text-tab' }, [
-    el('div', { class: 'text-tab__col' }, [
+  // A composition has no source, so it gets one box instead of two. No
+  // stylesheet change is needed for that: .text-tab__col is flex:1, so a
+  // lone column fills the row at either breakpoint.
+  const cols = [];
+  if (!isOriginal(_song)) {
+    cols.push(el('div', { class: 'text-tab__col' }, [
       el('div', { class: 'text-tab__original' }, [_song.originalText || ''])
-    ]),
-    el('div', { class: 'text-tab__col' }, [
-      translation
-    ])
-  ]);
+    ]));
+  }
+  cols.push(el('div', { class: 'text-tab__col' }, [translation]));
+  const textTab = el('div', { class: 'text-tab' }, cols);
 
   content.appendChild(el('div', { class: 'text-tab-wrap' }, [
     textTab,
@@ -513,6 +516,7 @@ function _canEditSong() {
 function _openSongMenu(root) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const canEdit = _canEditSong();
+  const original = isOriginal(_song);
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('button', {
@@ -524,12 +528,16 @@ function _openSongMenu(root) {
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheet(overlay); _openRenameSong(root); }
     }, ['Redenumește melodia']),
-    el('button', {
+    // Both of these are about a source text, which a composition does not
+    // have. Left in place they would only ever fail — "Adaugă mai întâi
+    // textul original" is a confusing thing to be told about your own
+    // lyrics — so they are absent rather than disabled.
+    original ? null : el('button', {
       class: 'btn btn--wide',
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheet(overlay); _openEditOriginal(root); }
     }, ['Editează textul original']),
-    el('button', {
+    original ? null : el('button', {
       class: 'btn btn--wide',
       onclick: async () => {
         closeSheet(overlay);
@@ -546,7 +554,7 @@ function _openSongMenu(root) {
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheet(overlay); _confirmDeleteSong(); }
     }, ['Șterge melodia'])
-  ]));
+  ].filter(Boolean)));
   openSheet(overlay);
 }
 

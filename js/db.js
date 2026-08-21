@@ -3,7 +3,19 @@
  * Song doc shape (collection "songs"):
  *   {
  *     title: string,
- *     originalText: string,     // English source text (Text tab)
+ *     kind: 'translation' | 'original',
+ *                               // 'original' is a composition of our own:
+ *                               // no source text, one box in the Text tab.
+ *                               // Absent on songs written before this
+ *                               // existed, which are all translations —
+ *                               // read it through Utils.songKind, never
+ *                               // directly, so that default is applied in
+ *                               // one place. Nothing backfills it: the
+ *                               // song list is filtered in the browser,
+ *                               // and a Firestore where() would instead
+ *                               // have skipped every doc missing the
+ *                               // field.
+ *     originalText: string,     // English source text; empty for 'original'
  *     translatedText: string,   // legacy single-translation field, no longer
  *                                // written — kept only so pre-versions data
  *                                // isn't lost; see listVersions' migration.
@@ -43,10 +55,11 @@ async function getSong(songId) {
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
-async function addSong({ title, originalText, groupId, createdBy }) {
+async function addSong({ title, originalText, kind, groupId, createdBy }) {
   const now = Date.now();
   const ref = await fs().collection('songs').add({
     title: title || '',
+    kind: kind === 'original' ? 'original' : 'translation',
     originalText: originalText || '',
     translatedText: '',
     groupId,

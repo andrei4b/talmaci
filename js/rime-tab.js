@@ -80,7 +80,7 @@ function _renderPanel(wrap) {
 
 function _segButton(label, active, onclick) {
   return el('button', {
-    class: 'rime__seg' + (active ? ' rime__seg--active' : ''),
+    class: 'seg' + (active ? ' seg--active' : ''),
     onclick: onclick
   }, [label]);
 }
@@ -185,7 +185,7 @@ async function _runRimeSearch(wrap) {
         }, [p]));
       });
       const btn = el('button', {
-        class: 'rime__seg' + (i === _rimeReading ? ' rime__seg--active' : ''),
+        class: 'seg' + (i === _rimeReading ? ' seg--active' : ''),
         onclick: () => {
           _rimeReading = i;
           _rimeShown = RIME_PAGE;
