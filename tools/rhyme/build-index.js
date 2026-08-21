@@ -227,6 +227,29 @@ function isVerbModel(m) {
 
 const rec = new Map();
 const variantsOf = new Map();   // spelling -> Map(stressOffset -> keys)
+
+/* ---- stress set by hand ----
+ * The counterpart of hyphenate.js's WORD_EXCEPTIONS, for stress rather than
+ * division, and it outranks the dump for the same reason: an entry here is
+ * a considered decision about one word.
+ *
+ * Write the word with an apostrophe before its stressed vowel. Every
+ * inflected form has to be listed, since the override replaces a stored
+ * reading rather than deriving one.
+ *
+ * dexonline records "chedd'ar" and "ced'ar", giving the English loan the
+ * final stress that consonant-final borrowings usually take in Romanian.
+ * Speakers say "ch'eddar", after the English. Only the "cheddar" spelling
+ * is overridden; "cedar" is the more thoroughly Romanianized form and
+ * final stress is credible there.
+ *
+ * Only the bare form is listed: "cheddarul" and "cheddarului" exist in the
+ * dump but are attested in neither frequency corpus, so the build drops
+ * them and an entry for them would sit here unused. The warning below
+ * reports any that do. */
+const STRESS_EXCEPTIONS = {
+  'cheddar': "ch'eddar"
+};
 let scanned = 0, skipped = 0;
 // Pass 1: collect every model type each spelling is attested with, so the
 // name test below can ask about the spelling as a whole rather than one row.
@@ -368,6 +391,31 @@ for (const lineRaw of readText(formsPath).split('\n')) {
                    syll: a.syllables, spos: apos, score: score,
                    subRate: subRate, wikiRate: wikiRate });
 }
+/* Apply the hand-set stress. Done after the scan so it replaces whatever
+ * the dump offered, and the keys are recomputed from the corrected marker
+ * so the rhyme groups follow the stress rather than contradicting it. The
+ * word's other readings are dropped: an override is a statement that the
+ * reading it replaces is wrong, not one more option for the accent picker. */
+let stressOverrides = 0;
+for (const [word, marked] of Object.entries(STRESS_EXCEPTIONS)) {
+  const old = rec.get(word);
+  if (!old) { console.error(`  stress exception unused: ${word}`); continue; }
+  const at = marked.indexOf("'");
+  if (at < 0 || marked.replace(/'/g, '') !== word) {
+    console.error(`  stress exception malformed: ${word}`);
+    continue;
+  }
+  let a = null;
+  try { a = P.analyze(marked); } catch (e) { /* ignore */ }
+  if (!a || !a.exactKey) { console.error(`  stress exception unusable: ${word}`); continue; }
+  rec.set(word, { exact: a.exactKey, asson: a.assonanceKey, syll: a.syllables,
+                  spos: at, score: old.score, subRate: old.subRate,
+                  wikiRate: old.wikiRate });
+  variantsOf.delete(word);
+  stressOverrides++;
+}
+console.error(`stress set by hand: ${stressOverrides} of ${Object.keys(STRESS_EXCEPTIONS).length}`);
+
 console.error(`forms scanned: ${scanned}, usable: ${rec.size}, skipped: ${skipped}`);
 console.error(`  of which names/foreign/abbrev dropped: ${namesDropped}`);
 
