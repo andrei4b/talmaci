@@ -70,25 +70,45 @@ const TABS = [
 
 // Where the Text tab was last, so its button returns there.
 let _textRoute = '#/';
-// The route rendered before this one, which is what tells the song page's
-// back arrow whether history.back() actually goes up to the list. Captured
-// when a render starts, not when it ends — at the end of a render the
-// "previous" route is the one just drawn, which is useless.
+// The route rendered before this one, used only to decide whether a song
+// was opened from the list. Captured when a render starts, not when it
+// ends — at the end of a render the "previous" route is the one just drawn.
 let _prevRoute = null;
 let _currentRoute = null;
 
-/* "Up" from a song means the song list, which is not always the same as
- * back. When you came straight from the list, history.back() is the right
- * move: it reuses that entry instead of pushing a second '#/', which is
- * what used to let the stack grow without bound (list, song A, list, song
- * B, ...) until the hardware back button kept resurfacing old songs.
+/* Switching tabs REPLACES the current history entry instead of pushing a
+ * new one. Tabs are places, not steps: pushing them made the hardware back
+ * button walk back through every tab you had glanced at, so opening a
+ * song, looking something up in Rime and returning to Text left back going
+ * to Rime rather than up to the song list.
  *
- * But a song is now reachable from the other tabs too — Rime, then Text,
- * which returns to the song you were reading — and there history.back()
- * would drop you on Rime rather than the list. So it falls back to
- * navigating there outright. */
+ * With replacement the stack only ever holds real steps — the list, then
+ * the song you opened — so back means the same thing whichever tab you
+ * happen to be looking at. This is how tab bars behave in native apps.
+ *
+ * replaceState fires neither hashchange nor popstate, so the render has to
+ * be called directly; and the existing state object is carried over,
+ * because it records how the entry underneath was reached and replacing
+ * the URL does not change that. */
+function _switchTab(route) {
+  if ((location.hash || '#/') === route) return;
+  history.replaceState(history.state, '', route);
+  _renderCurrentScreen();
+}
+
+/* "Up" from a song is the song list. history.back() is the right way there
+ * whenever the song's own history entry was pushed from the list, since it
+ * reuses that entry instead of pushing a second '#/' — which is what used
+ * to let the stack grow without bound (list, song A, list, song B, ...)
+ * until back kept resurfacing old songs.
+ *
+ * That is nearly always true, tab switches no longer pushing anything, but
+ * not on a cold start: open a '#/song/x' link directly and the entry below
+ * belongs to whatever site you came from. The flag written in _renderRoute
+ * tells the two apart. */
 function goUpToList() {
-  if (_prevRoute === '#/') history.back();
+  const st = history.state;
+  if (st && st.talmaciFromList) history.back();
   else location.hash = '#/';
 }
 
@@ -102,6 +122,15 @@ function _renderRoute(root) {
   const tab = _tabForHash(hash);
   if (hash !== _currentRoute) { _prevRoute = _currentRoute; _currentRoute = hash; }
   if (tab === 'text') _textRoute = hash;
+
+  // Record, once per entry, whether this song was opened from the list.
+  // The list's links are plain anchors, so the push happens in the browser
+  // rather than here and this is the first chance to mark it. A tab switch
+  // later replaces the URL but carries the flag along, which is what keeps
+  // back working after a detour through Rime.
+  if (hash.startsWith('#/song/') && !history.state) {
+    history.replaceState({ talmaciFromList: _prevRoute === '#/' }, '');
+  }
 
   root.innerHTML = '';
   const content = el('div', { class: 'shell' });
@@ -155,11 +184,7 @@ function _renderTabBar(activeTab) {
       class: 'tab-bar__tab' + (active ? ' tab-bar__tab--active' : ''),
       role: 'tab',
       'aria-selected': active ? 'true' : 'false',
-      onclick: () => {
-        const target = tab.id === 'text' ? _textRoute : tab.route;
-        if ((location.hash || '#/') === target) return;   // already there
-        location.hash = target;
-      }
+      onclick: () => _switchTab(tab.id === 'text' ? _textRoute : tab.route)
     }, [
       el('span', { html: TAB_ICONS[tab.id], 'aria-hidden': 'true' }),
       tab.label
