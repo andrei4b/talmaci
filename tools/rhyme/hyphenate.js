@@ -203,6 +203,43 @@ function mergeArticledGlideIU(word, cuts, stressOffset, head) {
   return cuts.filter(c => c !== i + 1);
 }
 
+/* Four consonants between vowels divide after the first, VC-CCCV: DOOM's
+ * rule 1.4. "mon-stru", "mon-ștri", "mon-ștri-lor", "ad-strat",
+ * "mael-strom", "în-jghe-ba". dexonline writes "mon-stru-os" for the
+ * derived adjective, so "mons-tru" was not even consistent with the stem
+ * it comes from.
+ *
+ * Guarded on the three remaining consonants actually opening a Romanian
+ * syllable, checked against a list of the clusters that really do begin
+ * words: stradă, ștrand, scrie, spre, splendid, zdravăn, zgârie, jgheab.
+ * That guard is what does the work, because most four-consonant clusters
+ * are right where they are and would be wrecked by the bare rule —
+ * "post-cla-sic", "post-tra-u-ma-tic", "work-shop", "port-dra-pel",
+ * "blitz-krieg" all keep their boundary because "tcl", "ttr", "ksh",
+ * "tdr" and "zkr" open nothing. It also leaves DOOM's own listed
+ * exceptions alone without naming them: "land-graf", "gang-ster",
+ * "feld-spat", "vârst-nic" and "sports-man" fail the same test.
+ *
+ * "sfr" is deliberately absent. "sf" opens plenty of words, but admitting
+ * it would turn "trans-fron-ta-li-er" into "tran-sfron-ta-li-er", and the
+ * same objection is what keeps the three-consonant case out of this rule
+ * entirely — there "trans-for-ma" would go the same way. */
+const THREE_ONSETS = ['str', 'ștr', 'scr', 'spr', 'spl', 'zdr', 'zgr', 'jgh'];
+
+function phoneticFourOnset(word, cuts) {
+  return cuts.map(c => {
+    if (c < 2 || c + 2 >= word.length) return c;
+    let j = c;
+    while (j > 0 && !isVowelCh(word[j - 1])) j--;     // start of the cluster
+    if (j === 0 || c === j) return c;
+    let e = c;
+    while (e < word.length && !isVowelCh(word[e])) e++;
+    if (e >= word.length || e - j !== 4) return c;     // exactly four, then a vowel
+    if (THREE_ONSETS.indexOf(word.slice(j + 1, e)) < 0) return c;
+    return j + 1;
+  }).sort((x, y) => x - y);
+}
+
 /* "abstract" is "ab-stract", not "abs-tract". The second is the structural
  * division, cutting at the Latin prefix "abs-", and this project divides by
  * pronunciation everywhere.
@@ -575,6 +612,7 @@ function applyExceptions(word, cuts, stressOffset, head) {
   cuts = mergeArticledGlideIU(word, cuts, stressOffset, head);
 
   cuts = phoneticBsOnset(word, cuts);
+  cuts = phoneticFourOnset(word, cuts);
 
   // "ci" and "gi" before a "u" spell /tʃ/ and /dʒ/, the "i" being a softener
   // with no nucleus of its own, so the three letters are one syllable:
@@ -984,12 +1022,12 @@ function enforceOneNucleus(word, cuts, stressOffset, head) {
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
 function finishImported(word, cuts, stressOffset, head) {
-  return phoneticBsOnset(word,
+  return phoneticFourOnset(word, phoneticBsOnset(word,
     splitFinalIIAfterVowel(word, splitFinalUU(word,
       mergeWhisperedFinalI(word,
         mergeVowellessPieces(word,
           splitStressedFinalI(word, cuts.slice(), stressOffset)),
-        stressOffset, head))));
+        stressOffset, head)))));
 }
 
 /* The division set by hand for a word, or null. Exported so the build can
