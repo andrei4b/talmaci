@@ -1,24 +1,16 @@
-/* song-detail.js — a single song's page: header + 4 tabs
- * (Text, Rime, Sinonime, Biblie).
+/* song-detail.js — one song, opened from the list: its header and its
+ * text (original on one side, translation on the other).
  *
- * Only the "Text" tab has real functionality (view original, edit
- * translation) — the other three are placeholders until their behavior is
- * specified. Each tab renderer lives in its own function so new
- * functionality can be dropped in without touching the tab-switching
- * scaffolding.
+ * This is what the Text tab shows once you open a song; the list is what
+ * it shows before that. The tab bar itself belongs to the app shell
+ * (app.js), which keeps it on screen everywhere, so nothing here knows
+ * about Rime, Sinonime or Biblie any more.
  *
- * The translation itself supports multiple named versions (so several
- * people can draft in parallel) via the version switcher above the
- * translation box — see db.js's versions subcollection. */
+ * The translation supports multiple named versions (so several people can
+ * draft in parallel) via the version switcher above the translation box —
+ * see db.js's versions subcollection. */
 (function () {
 const { el, toast, debounce, openSheet, closeSheet, icons } = window.Utils;
-
-const ICONS = {
-  text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
-  rime: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>`,
-  sinonime: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v14M3 13l4 4 4-4"/><path d="M17 21V7M13 11l4-4 4 4"/></svg>`,
-  biblie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H12v18H4.5A2.5 2.5 0 0 0 2 22z"/><path d="M22 4.5A2.5 2.5 0 0 0 19.5 2H12v18h7.5a2.5 2.5 0 0 1 2.5 2z"/></svg>`
-};
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -30,30 +22,9 @@ const UNDO_REDO_ICONS = {
   redo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>`
 };
 
-const TABS = [
-  { id: 'text', label: 'Text' },
-  { id: 'rime', label: 'Rime' },
-  { id: 'sinonime', label: 'Sinonime' },
-  { id: 'biblie', label: 'Biblie' }
-];
-
-let _activeTab = 'text';
 let _song = null;
 let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
 let _activeVersionId = null;
-
-// Rime tab state, kept across tab switches so you don't lose a search by
-// glancing at the Text tab.
-let _rimeQuery = '';
-let _rimeSyll = 0;        // 0 = any
-let _rimeReading = 0;     // which stress reading of the query word
-// How many results are currently rendered. Grows via "arată mai multe" —
-// productive endings like -ire match several hundred words, and rendering
-// them all at once is a lot of DOM for results you rarely scroll to.
-const RIME_PAGE = 120;
-// Highest syllable bucket offered; it filters as "this many or more".
-const RIME_SYLL_MAX = 5;
-let _rimeShown = RIME_PAGE;
 
 // Remembers which version was last viewed, per song, per device — a
 // personal UI preference, not shared team data, so this is localStorage
@@ -84,20 +55,15 @@ let _lastText = '';
 let _checkpointPending = false;
 
 async function render(root, songId) {
-  _activeTab = 'text';
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
       class: 'btn btn--icon',
       'aria-label': 'Înapoi',
       html: icons.back,
-      // Real history.back() instead of location.hash = '#/': every song
-      // page is reached by navigating from the list, which already pushed
-      // a history entry for it — going back to a *new* '#/' entry instead
-      // of reusing that one is what let the stack grow unbounded (list,
-      // song A, list, song B, list, ...), so the hardware back button from
-      // the list kept resurfacing old songs instead of closing the app.
-      onclick: () => history.back()
+      // Up to the list, which is not the same as back now that a song can
+      // also be reached from the other tabs — see goUpToList in app.js.
+      onclick: () => window.App.goUpToList()
     }),
     el('h1', { class: 'topbar__title' }, ['Se încarcă…'])
   ]));
@@ -146,13 +112,9 @@ function _renderShell(root) {
       class: 'btn btn--icon',
       'aria-label': 'Înapoi',
       html: icons.back,
-      // Real history.back() instead of location.hash = '#/': every song
-      // page is reached by navigating from the list, which already pushed
-      // a history entry for it — going back to a *new* '#/' entry instead
-      // of reusing that one is what let the stack grow unbounded (list,
-      // song A, list, song B, list, ...), so the hardware back button from
-      // the list kept resurfacing old songs instead of closing the app.
-      onclick: () => history.back()
+      // Up to the list, which is not the same as back now that a song can
+      // also be reached from the other tabs — see goUpToList in app.js.
+      onclick: () => window.App.goUpToList()
     }),
     el('h1', { class: 'topbar__title' }, [_song.title || 'Fără titlu']),
     el('button', {
@@ -163,236 +125,12 @@ function _renderShell(root) {
     })
   ]));
 
-  const tabBar = el('div', { class: 'tab-bar', role: 'tablist' });
+  // No tab bar here any more: it belongs to the app shell, which draws it
+  // under every screen including the song list. A song page is simply what
+  // the Text tab shows once you open something.
   const content = el('div', { class: 'tab-content' });
-
-  TABS.forEach(tab => {
-    tabBar.appendChild(el('button', {
-      class: 'tab-bar__tab' + (tab.id === _activeTab ? ' tab-bar__tab--active' : ''),
-      role: 'tab',
-      'aria-selected': tab.id === _activeTab ? 'true' : 'false',
-      onclick: () => { _activeTab = tab.id; _renderShell(root); }
-    }, [
-      el('span', { html: ICONS[tab.id], 'aria-hidden': 'true' }),
-      tab.label
-    ]));
-  });
-
-  root.appendChild(tabBar);
   root.appendChild(content);
-  _renderTab(content);
-  // Replace tab-content's fixed CSS estimate with the tab-bar's real
-  // measured height (+ a small breathing gap), instead of a guessed
-  // buffer that was bigger than the real bar and wasted space.
-  content.style.paddingBottom = (tabBar.offsetHeight + 10) + 'px';
-}
-
-function _renderTab(content) {
-  content.innerHTML = '';
-  if (_activeTab === 'text') return _renderTextTab(content);
-  if (_activeTab === 'rime') return _renderRimeTab(content);
-  return content.appendChild(_placeholderPanel(_activeTab));
-}
-
-/* ---------- Rime tab ---------- */
-function _renderRimeTab(content) {
-  const wrap = el('div', { class: 'rime' });
-  content.appendChild(wrap);
-
-  const input = el('input', {
-    class: 'field__input rime__input',
-    type: 'text',
-    placeholder: 'Scrie un cuvânt…',
-    value: _rimeQuery,
-    oninput: debounce((e) => {
-      _rimeQuery = e.target.value;
-      _rimeShown = RIME_PAGE;   // new search starts from the top again
-      _rimeReading = 0;         // and from the word's leading reading
-      _runRimeSearch(wrap);
-    }, 250)
-  });
-  wrap.appendChild(el('div', { class: 'rime__search' }, [input]));
-
-  // Only perfect rhymes are offered, so there is no mode to choose.
-  const sylRow = el('div', { class: 'rime__filters rime__filters--syll' }, [
-    el('span', { class: 'rime__filters-label' }, ['Silabe']),
-    _segButton('Toate', _rimeSyll === 0, () => { _rimeSyll = 0; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); })
-  ]);
-  // The last bucket is open-ended: long rhymes are rare enough that giving
-  // 6, 7 and 8 their own buttons would mostly show empty result lists.
-  [1, 2, 3, 4, RIME_SYLL_MAX].forEach(n => {
-    const label = n === RIME_SYLL_MAX ? n + '+' : String(n);
-    sylRow.appendChild(_segButton(label, _rimeSyll === n, () => { _rimeSyll = n; _rimeShown = RIME_PAGE; _renderRimeTabKeepFocus(content); }));
-  });
-  wrap.appendChild(sylRow);
-
-  // Filled in by the search, once the word is known to have more than one
-  // reading. It lives here rather than inside .rime__body so it stays put
-  // with the other filters instead of scrolling away with the results.
-  wrap.appendChild(el('div', { class: 'rime__readings' }));
-
-  wrap.appendChild(el('div', { class: 'rime__body' }));
-  _runRimeSearch(wrap);
-  return wrap;
-}
-
-function _renderRimeTabKeepFocus(content) {
-  content.innerHTML = '';
-  _renderRimeTab(content);
-}
-
-function _segButton(label, active, onclick) {
-  return el('button', {
-    class: 'rime__seg' + (active ? ' rime__seg--active' : ''),
-    onclick: onclick
-  }, [label]);
-}
-
-async function _runRimeSearch(wrap) {
-  const body = wrap.querySelector('.rime__body');
-  if (!body) return;
-  const readingsRow = wrap.querySelector('.rime__readings');
-  if (readingsRow) readingsRow.innerHTML = '';
-  const q = (_rimeQuery || '').trim();
-
-  if (!q) {
-    body.innerHTML = '';
-    body.appendChild(el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Scrie un cuvânt ca să vezi cu ce rimează.'])
-    ]));
-    return;
-  }
-
-  // The index is several megabytes, so it loads on demand the first time
-  // you actually search — never at app boot.
-  if (window.Rhyme.state() !== 'ready') {
-    body.innerHTML = '';
-    const pct = el('div', { class: 'empty-state__hint' }, ['0%']);
-    body.appendChild(el('div', { class: 'loading-state' }, [
-      el('div', { class: 'spinner' }),
-      'Se încarcă dicționarul de rime…',
-      pct
-    ]));
-    try {
-      await window.Rhyme.load((p) => { pct.textContent = Math.round(p * 100) + '%'; });
-    } catch (err) {
-      body.innerHTML = '';
-      body.appendChild(el('div', { class: 'empty-state' }, [
-        'Nu am putut încărca dicționarul: ' + window.Rhyme.errorMessage()
-      ]));
-      return;
-    }
-    if ((_rimeQuery || '').trim() !== q) return;   // query changed while loading
-  }
-
-  const res = window.Rhyme.lookup(q, {
-    syllables: _rimeSyll,
-    syllablesOrMore: _rimeSyll === RIME_SYLL_MAX,
-    reading: _rimeReading
-  });
-  body.innerHTML = '';
-
-  if (!res.ok || !res.analysis) {
-    body.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut analiza cuvântul.']));
-    return;
-  }
-
-  // Not in the dictionary: no attested accent, so no division and no rhymes
-  // either. Both would be guesses, and a guess is indistinguishable on
-  // screen from the real thing.
-  if (res.unknown) {
-    body.appendChild(el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Cuvântul nu e în dicționar.']),
-      el('p', { class: 'empty-state__hint' }, ['Verifică ortografia sau încearcă alt cuvânt.'])
-    ]));
-    return;
-  }
-
-  const a = res.analysis;
-  const total = res.total || 0;
-
-  // Show the actual division with the stressed syllable highlighted
-  // ("cru-ce", "mân-tu-i-re") — more legible at a glance than describing it
-  // as "2 silabe · accent pe silaba 1".
-  const parts = a.syllableParts && a.syllableParts.length ? a.syllableParts : [a.word];
-  const line = el('div', { class: 'rime__analysis' });
-  parts.forEach((p, i) => {
-    if (i) line.appendChild(el('span', { class: 'rime__syl-sep' }, ['-']));
-    line.appendChild(el('span', {
-      class: 'rime__syl' + (i === a.stressIndex ? ' rime__syl--stressed' : '')
-    }, [p]));
-  });
-  line.appendChild(el('span', { class: 'rime__meta' }, [
-    (a.attested ? '' : ' · accent estimat') +
-    (total ? ' · ' + total + (total === 1 ? ' rezultat' : ' rezultate') : '')
-  ]));
-  body.appendChild(line);
-
-  // A spelling can be two words told apart only by stress — "c'asa" the
-  // house against "cas'a" the verb — and they rhyme differently. Offer each
-  // reading rather than silently picking one.
-  const readings = window.Rhyme.readingLabels(q);
-  if (readingsRow && readings.length > 1) {
-    const row = el('div', { class: 'rime__filters rime__filters--readings' }, [
-      el('span', { class: 'rime__filters-label' }, ['Accent'])
-    ]);
-    readings.forEach((r) => {
-      // r.reading is the reading's real index; the picker may have collapsed
-      // ones that read the same, so a button's position is not its index.
-      const i = r.reading;
-      const label = el('span', {});
-      r.parts.forEach((p, k) => {
-        if (k) label.appendChild(el('span', { class: 'rime__syl-sep' }, ['-']));
-        label.appendChild(el('span', {
-          class: k === r.stressIndex ? 'rime__syl--stressed' : ''
-        }, [p]));
-      });
-      const btn = el('button', {
-        class: 'rime__seg' + (i === _rimeReading ? ' rime__seg--active' : ''),
-        onclick: () => {
-          _rimeReading = i;
-          _rimeShown = RIME_PAGE;
-          // Rebuilds the results and this row itself. The search field is
-          // a sibling of both, so it keeps its text and its focus.
-          _runRimeSearch(wrap);
-        }
-      }, [label]);
-      row.appendChild(btn);
-    });
-    readingsRow.appendChild(row);
-  }
-
-  if (!res.results.length) {
-    body.appendChild(el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Niciun rezultat.']),
-      el('p', { class: 'empty-state__hint' }, [
-        _rimeSyll ? 'Încearcă fără filtrul de silabe.' : 'Încearcă alt cuvânt.'
-      ])
-    ]));
-    return;
-  }
-
-  const shown = res.results.slice(0, _rimeShown);
-  const list = el('div', { class: 'rime__results' });
-  shown.forEach(r => {
-    list.appendChild(el('button', {
-      class: 'rime__word',
-      title: r.syllables + ' silabe',
-      onclick: async () => {
-        const ok = await window.Utils.copyToClipboard(r.word);
-        toast(ok ? '„' + r.word + '” copiat.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
-      }
-    }, [r.word]));
-  });
-  body.appendChild(list);
-
-  const remaining = res.total - shown.length;
-  if (remaining > 0) {
-    body.appendChild(el('button', {
-      class: 'btn btn--wide',
-      onclick: () => { _rimeShown += RIME_PAGE; _runRimeSearch(wrap); }
-    }, ['Arată mai multe (' + remaining + ')']));
-  }
+  _renderTextTab(content);
 }
 
 function _activeVersion() {
@@ -893,18 +631,6 @@ async function _generateMotAMot(root) {
   } catch (err) {
     toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
   }
-}
-
-function _placeholderPanel(tabId) {
-  const copy = {
-    rime: 'Aici vei putea căuta rime pentru cuvintele din traducere.',
-    sinonime: 'Aici vei putea căuta sinonime pentru cuvintele din traducere.',
-    biblie: 'Aici vei putea vedea referințe biblice legate de text.'
-  }[tabId] || '';
-  return el('div', { class: 'empty-state' }, [
-    el('p', {}, [copy]),
-    el('p', { class: 'empty-state__hint' }, ['În curând.'])
-  ]);
 }
 
 window.SongDetail = { render };
