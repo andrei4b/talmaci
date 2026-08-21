@@ -1,15 +1,22 @@
-# Tălmaci - Your Song Translation Toolkit
+# Tălmaci — Atelier de versuri
 
-A PWA for translating songs from English to Romanian, shared across a
-translation team. Sign in with Google, and everyone in your group works
-from the same song library — each song opens into four tabs: **Text**,
-**Rime**, **Sinonime**, and **Biblie**. No build step: plain HTML/CSS/JS,
-backed by Firebase (Authentication + Firestore).
+A PWA for writing Romanian song lyrics, shared across a team. Sign in with
+Google, and everyone in your group works from the same library. A song is
+either a **translation** of an English original, which opens with the
+source alongside the text, or a **composition** of your own, which opens
+with a single box; the list filters by either. No build step: plain
+HTML/CSS/JS, backed by Firebase (Authentication + Firestore).
 
-This is a skeleton: the **Text** tab has working functionality (view the
-original, edit and save the Romanian translation); **Rime**, **Sinonime**,
-and **Biblie** are placeholders, ready for their functionality to be
-specified.
+Four tabs sit under every screen — **Text**, **Rime**, **Sinonime**,
+**Biblie** — so they are reachable from the song list without opening
+anything.
+
+**Text** and **Rime** work. Text edits a song's lyrics across multiple
+named versions, so several people can draft in parallel. Rime looks a word
+up in a 210k-word index built from dexonline and returns its perfect
+rhymes, with the stressed syllable marked — see `tools/rhyme/README.md` for
+how that index is built. **Sinonime** and **Biblie** are still
+placeholders.
 
 ## Run it locally
 

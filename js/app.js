@@ -211,7 +211,7 @@ function _renderSignIn(root) {
   root.appendChild(el('div', { class: 'gate' }, [
     el('div', { class: 'gate__card' }, [
       el('h1', { class: 'gate__title' }, ['Tălmaci']),
-      el('p', { class: 'gate__subtitle' }, ['Your Song Translation Toolkit']),
+      el('p', { class: 'gate__subtitle' }, ['Atelier de versuri']),
       el('button', {
         class: 'btn btn--primary btn--wide',
         onclick: async (e) => {

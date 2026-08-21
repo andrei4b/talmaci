@@ -1,7 +1,7 @@
 {
-  "name": "Tălmaci - Your Song Translation Toolkit",
+  "name": "Tălmaci — Atelier de versuri",
   "short_name": "Tălmaci",
-  "description": "Translate songs from English to Romanian — text, rhymes, synonyms, and Bible cross-references in one toolkit.",
+  "description": "Traduceri și compoziții de versuri în română — text, rime, sinonime și referințe biblice, într-un singur loc.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
