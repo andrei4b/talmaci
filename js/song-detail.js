@@ -158,6 +158,72 @@ function _syncUndoState(active) {
   _checkpointPending = false;
 }
 
+/* Where an undo or redo actually changed the text.
+ *
+ * The two versions share a prefix and a suffix; everything between them is
+ * what moved. The caret goes at the end of that span in the NEW text, which
+ * is where the edit being undone or redone left off — after the character
+ * redo just put back, or at the gap undo just opened.
+ *
+ * Both texts are whole documents rather than recorded edits, so the span
+ * has to be recovered by comparison. That also makes it right for edits
+ * that are neither pure insertions nor pure deletions. */
+function _changedCaret(oldText, newText) {
+  const max = Math.min(oldText.length, newText.length);
+  let pre = 0;
+  while (pre < max && oldText[pre] === newText[pre]) pre++;
+  let suf = 0;
+  while (suf < max - pre &&
+         oldText[oldText.length - 1 - suf] === newText[newText.length - 1 - suf]) suf++;
+  return newText.length - suf;
+}
+
+/* Put the caret's line on screen if it is not already.
+ *
+ * Measured by truncating the value at the caret and reading scrollHeight,
+ * which is the height of everything above it. Counting "\n" would be
+ * cheaper but wrong the moment a line soft-wraps, and these are lyrics in
+ * a narrow column on a phone. The truncation is reverted in the same tick,
+ * so nothing is painted.
+ *
+ * Only scrolls when the caret is outside the visible band — an undo you can
+ * already see should not make the view jump. */
+function _scrollCaretIntoView(ta, pos) {
+  const full = ta.value;
+  const keptScroll = ta.scrollTop;
+  ta.value = full.slice(0, pos);
+  const caretBottom = ta.scrollHeight;
+  ta.value = full;
+  ta.scrollTop = keptScroll;              // the round trip resets it
+
+  const cs = getComputedStyle(ta);
+  const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4) || 20;
+  const view = ta.clientHeight;
+  const above = caretBottom - lineHeight < ta.scrollTop;
+  const below = caretBottom > ta.scrollTop + view;
+  if (above || below) {
+    ta.scrollTop = Math.max(0, caretBottom - view / 2);
+  }
+}
+
+/* Swap the textarea to another point in its history and show where that
+ * changed things. Without this the caret landed at the end of the text and
+ * the view stayed put, so on anything longer than a screen an undo looked
+ * like nothing had happened. */
+function _applyHistoryText(ta, text) {
+  const caret = _changedCaret(ta.value, text);
+  ta.value = text;
+  // Scroll BEFORE placing the caret. The measurement reassigns .value, and
+  // assigning it drops any selection to the end of the field, so setting
+  // the caret first would silently undo this whole function.
+  _scrollCaretIntoView(ta, caret);
+  // Focus is not taken here. On a phone that would raise the keyboard just
+  // because you tapped undo — the same reason the buttons block mousedown.
+  // The selection is stored either way and is waiting when the field is
+  // next focused.
+  try { ta.setSelectionRange(caret, caret); } catch (e) { /* not focusable yet */ }
+}
+
 function _renderTextTab(content) {
   const active = _activeVersion();
   const canEdit = _canEditVersion(active);
@@ -220,7 +286,7 @@ function _renderTextTab(content) {
     if (!_undoStack.length) return;
     _redoStack.push(translation.value);
     const prev = _undoStack.pop();
-    translation.value = prev;
+    _applyHistoryText(translation, prev);
     _lastText = prev;
     _checkpointPending = false;
     _saveVersionText(prev);
@@ -231,7 +297,7 @@ function _renderTextTab(content) {
     if (!_redoStack.length) return;
     _undoStack.push(translation.value);
     const next = _redoStack.pop();
-    translation.value = next;
+    _applyHistoryText(translation, next);
     _lastText = next;
     _checkpointPending = false;
     _saveVersionText(next);
