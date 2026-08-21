@@ -547,16 +547,17 @@ function loadDexHyphenations(pathname) {
     }
     if (!candidates.length) continue;
 
+    // Where dexonline gives more than one division it lists the one by
+    // pronunciation first and the one by structure second: "tran-sfor-ma,
+    // trans-for-ma", "tran-sport, trans-port", "de-zob-stru-a,
+    // dez-ob-stru-a", "cla-rob-scur, clar-ob-scur", "or-to-" before
+    // "ort-o-". This project divides by pronunciation, so the first wins.
+    //
+    // Scoring the candidates against the rospell patterns, which is what
+    // used to happen here, picked the structural one throughout the
+    // "trans-" family: the patterns cut at the prefix too, so they voted
+    // for their own answer.
     let best = candidates[0];
-    if (candidates.length > 1 && hyphTable) {
-      const fromPatterns = new Set(H.cutPoints(form, hyphTable, -1));
-      let bestScore = -1;
-      for (const c of candidates) {
-        let agree = 0;
-        for (const cut of c.cuts) if (fromPatterns.has(cut)) agree++;
-        if (agree > bestScore) { bestScore = agree; best = c; }
-      }
-    }
     // dexonline divides the Greek "orto" prefix both ways and is heavily
     // one-sided about it: 15 of its entries read "or-to-" and 2 read
     // "ort-o-", those two being "ortografic" and "ortografiere". Even

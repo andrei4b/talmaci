@@ -72,6 +72,14 @@ WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
 // ending gives nothing away: "video" ends the same and is vi-de-o.
 WORD_EXCEPTIONS['vreo'] = 'vreo';
 
+// dexonline records only "abs-tract" for this one, the division by
+// structure cutting at the Latin prefix "abs-". Everywhere else it agrees
+// with pronunciation — "ob-ste-tric", "ob-stru-a", "sub-strat",
+// "se-mi-ob-scur" — and DOOM uses this very word as the example of its
+// four-consonant rule, VC-CCCV. So it is overridden here, by hand, since a
+// single reading leaves the tie-break nothing to choose between.
+WORD_EXCEPTIONS['abstract'] = 'ab-stract';
+
 // The "doină" family: "doi" is a falling diphthong, so "doi-nă", "doi-ne",
 // "doi-ni-to-rul". The patterns read it as hiatus and gave "do-i-nă", which
 // is a syllable too many and made it rhyme against the wrong set. DOOM 3
@@ -240,37 +248,42 @@ function phoneticFourOnset(word, cuts) {
   }).sort((x, y) => x - y);
 }
 
-/* "abstract" is "ab-stract", not "abs-tract". The second is the structural
- * division, cutting at the Latin prefix "abs-", and this project divides by
- * pronunciation everywhere.
+/* A three-consonant cluster whose middle letter is "s" or "ș" divides
+ * after the first, VC-CCV: DOOM's rule 1.3. "ab-stract" — the structural
+ * cut cutting at the Latin prefix "abs-" — but also "in-stinct",
+ * "ab-sti-nent", "ob-sta-col", "ob-scen", "tran-sport", "tran-sfor-ma",
+ * "tran-smi-te".
  *
- * DOOM 3 uses this very word as the worked example of its four-consonant
- * rule, VC-CCCV, and "bst"/"bstr" appear in none of its exception lists —
- * neither the three-consonant set (mpt, ncș, ncț, rtf, stm) nor the
- * four-consonant ones (ldsp, ndgr, ngst; rstn, rstv, stsm). dexonline's own
- * practice agrees almost without exception: "ob-ste-tric", "ob-stru-a",
- * "ob-stru-ant", "sub-strat", "se-mi-ob-scur", "cla-rob-scur",
- * "trans-sub-stan-ți-e-re". Of its 46 entries in this shape only
- * "abs-tract" cuts after the "s", which is the structural variant, so this
- * overrides it deliberately.
+ * The guard is that "s" plus what follows really opens a Romanian
+ * syllable: stea, spate, scara, sfat, smoala, snop, slab, and their "ș"
+ * counterparts. Everything else keeps its boundary, which is most of the
+ * two-consonant codas in the vocabulary — "func-ție", "simp-tom",
+ * "jert-fa", "as-tma", "sculp-ta", "hand-bal", "an-tarc-tic" all survive
+ * because "ct", "pt", "tf", "tm" and "db" open nothing. "habs-bur-gic"
+ * survives too: "sb" is not an onset either.
  *
- * Restricted to "s" followed by "t" or "c", the clusters that unambiguously
- * open a Romanian syllable — /st/, /str/, /sk/, /st͡ʃ/ as in "stea",
- * "stradă", "scară", "scenă". That is what keeps the rule off
- * "habs-bur-gic", where "sb" opens nothing.
- *
- * Deliberately not generalized to every two-consonant coda. Most of them
- * are right as they stand: "func-ție", "simp-tom", "jert-fa" and "as-tma"
- * are DOOM's own exceptions, and settling the "trans-" and "post-" families
- * would need the full exception list, which is not published in the section
- * that states the rules. */
-function phoneticBsOnset(word, cuts) {
+ * dexonline's own practice is one-sided wherever it has only one reading:
+ * 35 entries divide "n-s" here and none the other way, and it gives
+ * "in-stinc-tiv", "ob-ste-tric", "ob-stru-a", "sub-strat", "se-mi-ob-scur"
+ * and "cla-rob-scur". Where it offers two — "tran-sfor-ma, trans-for-ma",
+ * "tran-sport, trans-port", "tran-smi-te, trans-mi-te" — the first is the
+ * division by pronunciation and the second the one by structure, cutting
+ * at the prefix. This project takes the first everywhere, so the two
+ * entries for "abs-tract" are overridden on the same grounds. */
+const S_ONSETS = ['st', 'sp', 'sc', 'sf', 'sm', 'sn', 'sl',
+                  'șt', 'șp', 'șc', 'șf', 'șm', 'șn', 'șl'];
+
+function phoneticSOnset(word, cuts) {
   return cuts.map(c => {
-    if (c < 3 || c + 1 >= word.length) return c;
-    if (word[c - 1] !== 's' || word[c - 2] !== 'b') return c;
-    if (!isVowelCh(word[c - 3])) return c;
-    if (word[c] !== 't' && word[c] !== 'c') return c;
-    return c - 1;                                 // the "s" joins the onset
+    if (c < 2 || c + 1 >= word.length) return c;
+    let j = c;
+    while (j > 0 && !isVowelCh(word[j - 1])) j--;      // start of the cluster
+    if (j === 0 || c === j) return c;
+    let e = c;
+    while (e < word.length && !isVowelCh(word[e])) e++;
+    if (e >= word.length || e - j !== 3) return c;      // exactly three, then a vowel
+    if (S_ONSETS.indexOf(word.slice(j + 1, e)) < 0) return c;
+    return j + 1;
   }).sort((x, y) => x - y);
 }
 
@@ -611,7 +624,7 @@ function applyExceptions(word, cuts, stressOffset, head) {
   // diphthong "-iu" keeps its "i" as a glide under the article.
   cuts = mergeArticledGlideIU(word, cuts, stressOffset, head);
 
-  cuts = phoneticBsOnset(word, cuts);
+  cuts = phoneticSOnset(word, cuts);
   cuts = phoneticFourOnset(word, cuts);
 
   // "ci" and "gi" before a "u" spell /tʃ/ and /dʒ/, the "i" being a softener
@@ -1022,12 +1035,12 @@ function enforceOneNucleus(word, cuts, stressOffset, head) {
  * and "back-up" lost the boundary that is the whole point of them. Where
  * dexonline has looked at a word, its placement stands. */
 function finishImported(word, cuts, stressOffset, head) {
-  return phoneticFourOnset(word, phoneticBsOnset(word,
+  return phoneticFourOnset(word,
     splitFinalIIAfterVowel(word, splitFinalUU(word,
       mergeWhisperedFinalI(word,
         mergeVowellessPieces(word,
           splitStressedFinalI(word, cuts.slice(), stressOffset)),
-        stressOffset, head)))));
+        stressOffset, head))));
 }
 
 /* The division set by hand for a word, or null. Exported so the build can
