@@ -526,27 +526,16 @@ a { color: inherit; text-decoration: none; }
   color: var(--color-text-muted);
   padding: 2px 0 10px;
 }
-/* One sense: what part of speech it is, what it means, and the words. */
+/* One sense: a group of synonyms, with a number when there is more than
+   one. The rule between groups does the real work of keeping them apart. */
 .syn__sense { padding: 10px 0 14px; }
 .syn__sense + .syn__sense { border-top: 1px solid var(--color-border); }
-.syn__sense-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.syn__pos {
-  flex-shrink: 0;
+.syn__sense-head { margin-bottom: 8px; }
+.syn__sense-no {
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: var(--color-accent);
-}
-.syn__definition {
-  font-size: 0.85rem;
   color: var(--color-text-muted);
-  min-width: 0;
 }
 /* Result words are the Rime tab's, to the pixel — the two tabs are one tap
    apart and a word you tap to copy should not look like a different kind of

@@ -1,62 +1,74 @@
 # Licență și atribuire — `synonym-index.json`
 
 Fișierul `data/synonym-index.json` este generat, nu scris de mână. Vezi
-`tools/synonyms/build-index.py` pentru scriptul care îl produce și
-`tools/synonyms/README.md` pentru instrucțiuni de regenerare.
+`tools/synonyms/` pentru scripturile care îl produc și pentru instrucțiuni
+de regenerare.
 
-## Surse
+## Sursa
 
-### RoWordNet — sinonime și definiții
+Sinonimele provin din **tabela `Relation`** a dumpului de bază de date
+publicat oficial de [dexonline](https://dexonline.ro) la
+`https://dexonline.ro/static/download/dex-database.sql.gz` — aceeași sursă
+folosită de indexul de rime, sub aceleași condiții (vezi
+`data/RHYME-INDEX-LICENSE.md`).
 
-Sinonimele și definițiile provin din
-[RoWordNet](https://github.com/dumitrescustefan/RoWordNet), rețeaua
-semantică a limbii române, distribuită sub licența **MIT**
-(Copyright © 2020 Ștefan Daniel Dumitrescu).
+`Relation` este structura proprie dexonline: leagă un sens de un grup de
+cuvinte sinonime. Nu este textul niciunui dicționar de sinonime.
 
-Datele lingvistice din spatele acestei biblioteci au fost create în cadrul
-Academiei Române (RACAI). Autorii cer citarea:
+Din dump s-au citit **numai tabele structurale**:
 
-> Dan Tufiș, Verginica Barbu Mititelu, *The Lexical Ontology for Romanian*,
-> în Nuria Gala, Reinhard Rapp, Nuria Bel-Enguix (ed.), *Language
-> Production, Cognition, and the Lexicon*, seria Text, Speech and Language
-> Technology, vol. 48, Springer, 2014, p. 491–504.
+| tabelă | ce s-a luat |
+|--------|-------------|
+| `Relation` | perechile sens ↔ grup, doar cele de tip 1 (sinonimie) |
+| `Meaning` | **exclusiv** `id` și `treeId` |
+| `TreeEntry`, `EntryLexeme` | legăturile dintre grupuri și lexeme |
+| `Lexeme` | forma cuvântului și modelul flexionar |
 
-Iar pentru API-ul din care s-au extras datele:
+**Nu s-a extras niciun text de definiție.** În particular, din `Meaning` nu
+s-a citit `internalRep` — textul sensului, care aparține dicționarelor
+creditate de dexonline.
 
-> S. D. Dumitrescu, A. M. Avram, L. Morogan, S. Toma, *RoWordNet – A Python
-> API for the Romanian WordNet*, 2018 10th International Conference on
-> Electronics, Computers and Artificial Intelligence (ECAI).
+## De ce nu „Dicționarul de sinonime"
 
-Din RoWordNet s-au folosit doar:
+Sursa de la `dexonline.ro/source/sinonime` este *Dicționar de sinonime* de
+Mircea și Luiza Seche (Editura Litera Internațional, 2002), sursa cu `id =
+6` în dump.
 
-- literalii fiecărui synset (adică grupurile de sinonime);
-- definiția fiecărui synset;
-- clasa morfologică (substantiv, verb, adjectiv, adverb).
+Tabela `Source` are coloana **`canDistribute`**, prin care dexonline declară
+explicit ce surse are dreptul să redistribuie. Din cele 113 surse din dump,
+**doar două** au `canDistribute = 1`: DEX '96 și DEX '98. Toate cele șapte
+dicționare de sinonime, inclusiv sursa 6, au `canDistribute = 0`.
 
-S-au păstrat **numai** synset-urile cu cel puțin doi literali — restul nu
-oferă niciun sinonim.
+Prezența unei surse în dump nu înseamnă deci permisiunea de a o
+redistribui — dumpul conține schema și rândurile pentru tot, iar coloana
+`canDistribute` este declarația dexonline despre ce se poate mai departe.
+Din acest motiv, conținutul acelui dicționar nu este folosit aici.
 
-### dexonline — forme flexionare
+## Filtrare
 
-Legătura dintre o formă flexionară („frumoasă", „mergeau") și cuvântul-titlu
-sub care RoWordNet o cunoaște („frumos", „merge") vine din același dump
-oficial dexonline folosit de indexul de rime — vezi
-`data/RHYME-INDEX-LICENSE.md` pentru detalii despre sursă, licență (**GPL
-v2+**) și despre faptul că **nu s-au folosit definiții** din dexonline.
+Sinonimele sunt păstrate doar dacă apar în lista de cuvinte a indexului de
+rime — adică sunt atestate într-unul dintre cele două corpusuri de frecvență
+(subtitrări și Wikipedia). Se elimină astfel variantele regionale și arhaice
+pe care dexonline le păstrează alături de cele curente.
 
-Din acel dump s-au folosit aici doar perechile *formă → cuvânt-titlu*.
+Se elimină de asemenea cuvintele ale căror modele flexionare sunt toate
+„zgomot" (`T`, `SP`, `I/2*`, `I/3`, `I/4`, `I/6`) — în principal denumiri
+latinești de plante, care altfel apar ca sinonime pentru că împart un sens
+de dicționar cu un cuvânt obișnuit.
 
 ## Licența fișierului generat
 
-Indexul combină date sub MIT (RoWordNet) cu date sub GPL v2+ (formele
-flexionare dexonline). Fiind o operă derivată din ambele, se distribuie sub
-condiția mai restrictivă: **GPL v2 sau ulterioară**.
+Fiind derivat din dumpul dexonline, distribuit sub **GNU GPL v2 sau
+ulterioară**, indexul se distribuie sub aceeași licență: **GPL v2+**.
 
 ## Ce conține fișierul
 
 | câmp | conținut |
 |------|----------|
 | `words` | cuvintele care au cel puțin un sinonim, ordonate alfabetic |
-| `senses` | pentru fiecare cuvânt: sensurile lui, fiecare cu clasa morfologică, definiția și sinonimele |
+| `senses` | pentru fiecare cuvânt: sensurile lui, fiecare un grup de sinonime |
 | `forms` | forme flexionare, ordonate alfabetic |
-| `formTo` | cuvântul-titlu la care trimite fiecare formă |
+| `formTo` | cuvântul de dicționar la care trimite fiecare formă |
+
+Sensurile nu au explicație atașată: textul care ar explica fiecare sens se
+află în surse pe care dexonline nu le poate redistribui.

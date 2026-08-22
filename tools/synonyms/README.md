@@ -4,62 +4,90 @@ Generates `data/synonym-index.json`, the dataset behind the **Sinonime**
 tab. Runs on your machine only — nothing here ships to the browser except
 the generated JSON.
 
-See `data/SYNONYM-INDEX-LICENSE.md` for sources and attribution.
+See `data/SYNONYM-INDEX-LICENSE.md` for sources, licensing, and why the
+synonym *dictionaries* in dexonline are not used.
 
 ## Rebuilding
 
+The extracted relations are committed, so the usual rebuild needs no
+download:
+
 ```bash
-mkdir -p /tmp/rwn/rowordnet
-B=https://raw.githubusercontent.com/dumitrescustefan/RoWordNet/master/rowordnet
-for f in __init__.py synset.py rowordnet.py exceptions.py rowordnet.pickle; do
-  curl -sL -o /tmp/rwn/rowordnet/$f $B/$f
-done
-python3 tools/synonyms/build-index.py /tmp/rwn/rowordnet/rowordnet.pickle
+python3 tools/synonyms/build-index.py data/build-inputs/synonym-pairs.txt.gz
 ```
 
-The four `.py` files come along because the data is a Python pickle of
-`rowordnet.*` objects: unpickling needs those classes importable, so the
-package has to sit next to the pickle rather than the pickle standing
-alone.
+That reads `data/build-inputs/forms_typed.txt.gz` and
+`data/rhyme-index.json` as well, both already in the repo.
 
-The second argument is the dexonline forms dump and defaults to
-`data/build-inputs/forms_typed.txt.gz`, which the rhyme build already
-commits — see `tools/rhyme/README.md`.
+### Re-extracting from the dump
 
-### Why this input is not committed
+Only needed to pick up a newer dexonline dump.
 
-The rhyme build's inputs are committed because re-deriving them means a
-378 MB dexonline archive and a multi-gigabyte Wikipedia dump — slow enough
-to stand between an edit and its effect. This one is a single 36 MB file
-(11 MB gzipped) at a stable URL under a permissive licence, and fetching it
-takes seconds. Committing more than the entire rhyme input set to save that
-is not the same trade.
+```bash
+curl -sL -o dex-database.sql.gz \
+  https://dexonline.ro/static/download/dex-database.sql.gz
+python3 tools/synonyms/extract-relations.py dex-database.sql.gz \
+  | gzip -9 > data/build-inputs/synonym-pairs.txt.gz
+```
+
+The extract is 1.7 MB gzipped against the dump's 378 MB, which is why it is
+committed and the dump is not.
+
+## Where the synonyms come from
+
+dexonline's **`Relation`** table — its own structured synonymy, 152,215
+synonym relations, the same category of data as the `InflectedForm` table
+the rhyme index uses. Not the text of any synonym dictionary: every one of
+those is marked `canDistribute = 0` in the dump, and only 2 of dexonline's
+113 sources are marked otherwise. `data/SYNONYM-INDEX-LICENSE.md` has the
+detail.
+
+Only structural columns are read. From `Meaning` the extractor takes `id`
+and `treeId` and nothing else — never `internalRep`, which is the meaning's
+text.
 
 ## What the build decides
 
-- **Only synsets with more than one literal.** A synset with a single
-  literal names a concept but offers no synonym, and 40,583 of RoWordNet's
-  59,348 are like that. Keeping them would triple the index to say nothing.
-- **Definitions are kept.** A word here averages 1.92 senses, so it usually
-  has more than one group of synonyms, and the definition is the only thing
-  that distinguishes them — "dragoste" the feeling from "dragoste" the
-  person. Costs roughly 0.6 MB gzipped.
-- **Inflected forms are resolved.** RoWordNet is keyed by lemma, so
-  "frumoasă" and "mergeau" would find nothing on their own. 173,469 forms
-  are mapped back to their lemma through the dexonline dump, which is what
-  makes the tab usable while actually writing.
-- **Multi-word literals are offered but not indexed.** "trăsătură
-  psihologică" is a fine synonym to be shown; nobody searches for one.
-- **Clitic brackets are unwrapped.** RoWordNet writes `[se] potrivi` and
-  `|se| întinde` to mark the clitic as part of the entry. The brackets are
-  noise on screen and the clitic belongs, so they become "se potrivi" and
-  "se întinde". A leading hyphen is kept — without it `[-și] aminti` reads
-  as "și aminti", and "și" alone is the everyday word for "and".
+- **Senses stay apart.** Flattening every relation for a word together is
+  what makes the results useless: merged, "iubire" is offered next to
+  "sedum" and "trist" next to "stachys", because a plant genuinely shares a
+  dictionary sense with them. Kept apart, "trist" reads as
+  abătut/amărât/mâhnit, then dureros, then deprimant/dezolant.
+
+- **Only the left-hand side of a relation is keyed by its meaning.** A
+  relation names the meaning it hangs off, and that meaning belongs to the
+  words on one side only. Filing the other side under the same id looks
+  even-handed and shatters them — it produced 4.6 groups of 1.7 words each
+  where the sense really held five. Nothing is lost: every group appears on
+  the left of some relation.
+
+- **Overlapping groups are folded together.** Sharing a word is the
+  evidence that two groups are one sense. It cannot merge distinct senses
+  unless they already overlap, which is why "trist" keeps its three.
+
+- **Words are filtered to attested vocabulary.** Everything is checked
+  against the rhyme index's word list, which is already limited to forms
+  attested in a subtitle or Wikipedia corpus. That removes the regional and
+  archaic spellings dexonline keeps beside current ones — "amoriu", "amur",
+  "melanhonic".
+
+- **Noise models are dropped.** A word whose every inflection model is
+  `T`, `SP`, `I/2*`, `I/3`, `I/4` or `I/6` is discarded. `I/2*` matters
+  most: it is what dexonline gives Latin binomials, and they survive the
+  corpus filter because Wikipedia is full of plant names.
+
+- **Inflected forms resolve to their dictionary form.** 271,970 of them,
+  through the dexonline forms dump. The relations hold dictionary forms, so
+  "frumoasă" and "mergeau" would otherwise find nothing — and an inflected
+  word is what you actually type mid-line.
 
 ## Notes
 
-- The index is loaded on demand, the first time somebody searches — never
-  at app boot. It is 7.0 MB raw, 1.6 MB gzipped.
-- Words with no synonym at all are simply absent. The tab reports that
-  honestly rather than inventing something, the same rule the Rime tab
-  follows for words with no attested stress.
+- The index is 6.7 MB raw, 1.3 MB gzipped, loaded on demand the first time
+  somebody searches — never at app boot.
+- 30,928 words, 1.52 senses each, 3.1 synonyms per sense.
+- Senses carry no gloss, because the text that would explain them lives in
+  the non-distributable sources. The tab numbers them instead.
+- A word with no synonym is simply absent, and the tab says so rather than
+  inventing something — the same rule the Rime tab follows for a word with
+  no attested stress.

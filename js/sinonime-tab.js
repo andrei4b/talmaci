@@ -6,10 +6,16 @@
  * top, a scrolling panel of results under it, and a word copied to the
  * clipboard when you tap it.
  *
- * Grouped by sense rather than flattened into one list. A word here has
- * 1.92 senses on average, and "dragoste" as a feeling and "dragoste" as the
- * person you love do not offer interchangeable words. The definition is
- * what tells the two groups apart, so it heads each group.
+ * Grouped by sense rather than flattened into one list, which is the whole
+ * difference between a useful answer and a pile. Flattened, "iubire" comes
+ * out alongside a plant that shares one of its dictionary senses; grouped,
+ * "trist" reads as abătut/amărât/mâhnit, then dureros, then
+ * deprimant/dezolant.
+ *
+ * The groups carry no gloss — dexonline's synonym relations are usable but
+ * the dictionary text that would explain each sense is not. So they are
+ * numbered, which is enough to show that they are separate readings and
+ * not one list broken up at random.
  *
  * State is module-level, like the Rime tab's, so a lookup survives a trip
  * to the Text tab and back.
@@ -18,10 +24,6 @@
 const { el, toast, debounce } = window.Utils;
 
 let _query = '';
-
-// RoWordNet's part-of-speech letters, in the language the rest of the app
-// is written in.
-const POS_LABEL = { n: 'substantiv', v: 'verb', a: 'adjectiv', r: 'adverb' };
 
 function render(host) {
   const panel = el('div', { class: 'syn' });
@@ -97,16 +99,18 @@ async function _run(panel) {
     ]));
   }
 
-  res.senses.forEach(sense => {
-    const head = el('div', { class: 'syn__sense-head' }, [
-      el('span', { class: 'syn__pos' }, [POS_LABEL[sense.pos] || sense.pos])
-    ]);
-    if (sense.definition) {
-      head.appendChild(el('span', { class: 'syn__definition' }, [sense.definition]));
-    }
+  const many = res.senses.length > 1;
+  res.senses.forEach((sense, i) => {
+    // Numbered only when there is more than one: a lone "Sensul 1" is a
+    // label with nothing to distinguish it from.
+    const head = many
+      ? el('div', { class: 'syn__sense-head' }, [
+          el('span', { class: 'syn__sense-no' }, ['Sensul ' + (i + 1)])
+        ])
+      : null;
 
     const words = el('div', { class: 'syn__words' });
-    sense.synonyms.forEach(w => {
+    sense.forEach(w => {
       words.appendChild(el('button', {
         class: 'syn__word',
         onclick: async () => {
@@ -116,7 +120,7 @@ async function _run(panel) {
       }, [w]));
     });
 
-    panel.appendChild(el('div', { class: 'syn__sense' }, [head, words]));
+    panel.appendChild(el('div', { class: 'syn__sense' }, [head, words].filter(Boolean)));
   });
 }
 

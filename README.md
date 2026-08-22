@@ -15,7 +15,8 @@ anything.
 multiple named versions, so several people can draft in parallel. Rime
 looks a word up in a 210k-word index built from dexonline and returns its
 perfect rhymes, with the stressed syllable marked. Sinonime returns its
-synonyms from RoWordNet, grouped by sense so the right shade is pickable.
+synonyms from dexonline's own relation data, grouped by sense so the right
+shade is pickable.
 Both indexes are built offline — see `tools/rhyme/README.md` and
 `tools/synonyms/README.md`. **Biblie** is still a placeholder.
 
@@ -194,8 +195,12 @@ The index (~5.3 MB) loads the first time you open the tab, never at app
 boot, and is cached afterwards. See `tools/rhyme/README.md` to rebuild it
 and `data/RHYME-INDEX-LICENSE.md` for sources and attribution.
 
+The **Sinonime** tab works the same way, from dexonline's own relation
+data — see `tools/synonyms/README.md` and
+`data/SYNONYM-INDEX-LICENSE.md`, which also records why the synonym
+*dictionaries* in the dump cannot be used.
+
 ## What's next
 
-- **Sinonime** tab: synonym lookup (RoWordNet is MIT-licensed and fits).
 - **Biblie** tab: Bible cross-references relevant to the text.
 - Real app icons (the current ones are a generated placeholder).

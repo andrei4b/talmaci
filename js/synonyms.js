@@ -1,22 +1,27 @@
 /* synonyms.js — loads and queries data/synonym-index.json for the Sinonime
- * tab. Mirrors rhyme.js: the index is several megabytes, so it is fetched
- * the first time somebody actually searches and never at app boot.
+ * tab. Mirrors rhyme.js: the index is over a megabyte, so it is fetched the
+ * first time somebody actually searches and never at app boot.
  *
  * The index holds three parallel things:
- *   words    lemmas that have at least one synonym, sorted, newline-joined
- *   senses   one line per word: its senses, each pos + definition + synonyms
+ *   words    words that have at least one synonym, sorted, newline-joined
+ *   senses   one line per word: its senses, each a group of synonyms
  *   forms    inflected forms, sorted, each resolving to a word id in formTo
  *
- * `forms` is what makes the tab usable while writing. RoWordNet is keyed by
- * lemma, so "frumoasă" and "mergeau" only find anything because the
- * dexonline dump could map them back to "frumos" and "merge".
+ * A sense carries no gloss. The synonyms come from dexonline's own Relation
+ * table, and the text that would explain each sense lives in dictionaries
+ * dexonline may not redistribute — see data/SYNONYM-INDEX-LICENSE.md. The
+ * groups still stand apart, which is the part that matters: "trist" offers
+ * abătut/amărât/mâhnit separately from deprimant/dezolant.
+ *
+ * `forms` is what makes the tab usable while writing. The relations hold
+ * dictionary forms, so "frumoasă" and "mergeau" only find anything because
+ * the dexonline dump could map them back to "frumos" and "merge".
  */
 (function () {
 
 const INDEX_URL = './data/synonym-index.json';
 
 const SENSE_SEP = '';
-const FIELD_SEP = '';
 const SYN_SEP = '';
 
 let _state = 'idle';        // idle | loading | ready | error
@@ -131,14 +136,9 @@ function resolve(query) {
 
 function parseSenses(line) {
   if (!line) return [];
-  return line.split(SENSE_SEP).map(part => {
-    const bits = part.split(FIELD_SEP);
-    return {
-      pos: bits[0] || '',
-      definition: bits[1] || '',
-      synonyms: (bits[2] || '').split(SYN_SEP).filter(Boolean)
-    };
-  }).filter(s => s.synonyms.length);
+  return line.split(SENSE_SEP)
+    .map(part => part.split(SYN_SEP).filter(Boolean))
+    .filter(group => group.length);
 }
 
 /* Look a word up. Always answers; `found` says whether there was anything
