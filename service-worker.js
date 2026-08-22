@@ -11,7 +11,7 @@
  * own bytes change, so editing styles.css/app.js/etc. alone never
  * refreshes what's cached. Network-first fixes that: online users always
  * get the latest deploy, offline users still get the last-seen version. */
-const CACHE_NAME = 'talmaci-shell-v27';
+const CACHE_NAME = 'talmaci-shell-v28';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -25,7 +25,6 @@ const SHELL_FILES = [
   './js/ro-phonetics.js',
   './js/rhyme.js',
   './js/songs.js',
-  './js/synonyms.js',
   './js/rime-tab.js',
   './js/sinonime-tab.js',
   './js/song-detail.js',

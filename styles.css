@@ -511,74 +511,19 @@ a { color: inherit; text-decoration: none; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 
-/* Sinonime tab — same skeleton as Rime below the shared .search-bar: a
-   scrolling panel that carries its own padding and tab-bar clearance. */
-.syn {
+/* Sinonime tab — dexonline's own page, filling the tab. Nothing of ours
+   around it: no local results, no search field, no chrome. dexonline
+   carries its own search box, and its page is the whole point. */
+.syn__frame {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 0 20px calc(var(--tabbar-h, 70px) + 10px);
-}
-/* Shown only when the answer is about a different word than the one typed:
-   the lemma behind an inflected form, or the properly accented spelling. */
-.syn__resolved {
-  font-size: 0.85rem;
-  color: var(--color-text-muted);
-  padding: 2px 0 10px;
-}
-/* One sense: a group of synonyms, with a number when there is more than
-   one. The rule between groups does the real work of keeping them apart. */
-.syn__sense { padding: 10px 0 14px; }
-.syn__sense + .syn__sense { border-top: 1px solid var(--color-border); }
-.syn__sense-head { margin-bottom: 8px; }
-.syn__sense-no {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-text-muted);
-}
-/* Result words are the Rime tab's, to the pixel — the two tabs are one tap
-   apart and a word you tap to copy should not look like a different kind of
-   thing on each. */
-.syn__words { display: flex; flex-wrap: wrap; gap: 6px; }
-.syn__word {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border-radius: var(--radius-sm);
-  padding: 7px 11px;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-/* The link out to dexonline's own page, under the local results. */
-.syn__dexlink { padding: 14px 0 4px; }
-.syn__dexlink .btn { text-align: center; }
-
-/* dexonline shown inside the tab. The bar carries a way back and a way out
-   to a real browser tab — some things (following a link, signing in) want a
-   proper window, and a frame should never be a trap. */
-.syn__dexbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0 8px;
-  border-bottom: 1px solid var(--color-border);
-  margin-bottom: 8px;
-}
-.syn__dexframe {
   width: 100%;
-  flex: 1;
-  min-height: 60vh;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: none;
   background: #fff;
+  /* The tab bar is fixed and would otherwise sit over the bottom of the
+     page. --tabbar-h is its measured height, published by app.js. */
+  margin-bottom: var(--tabbar-h, 70px);
 }
-/* While the frame is showing, the panel is the frame's container rather
-   than a list, so it lays out as a column instead of scrolling its own
-   content behind the tab bar. */
-.syn:has(.syn__dexframe) { display: flex; flex-direction: column; }
 
 /* Rime tab */
 /* Sits below .search-bar, which is the very same element the song list
