@@ -122,7 +122,9 @@ function _renderList(listWrap) {
 
 function _openAddSong() {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
-  const titleInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Titlul melodiei', autofocus: true });
+  // Not autofocused. The first thing to decide here is the type, and
+  // focusing the title raises the keyboard over the choice on a phone.
+  const titleInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Titlul melodiei' });
   const textInput = el('textarea', { class: 'field__input field__input--textarea', placeholder: 'Textul original (engleză)', rows: 6 });
 
   // A composition has no source to translate from, so the field for it is
@@ -186,7 +188,6 @@ function _openAddSong() {
   ]);
   overlay.appendChild(sheet);
   openSheet(overlay);
-  titleInput.focus();
 }
 
 function _offerMotAMot(songId, originalText) {
