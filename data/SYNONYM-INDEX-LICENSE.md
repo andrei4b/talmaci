@@ -56,6 +56,23 @@ Se elimină de asemenea cuvintele ale căror modele flexionare sunt toate
 latinești de plante, care altfel apar ca sinonime pentru că împart un sens
 de dicționar cu un cuvânt obișnuit.
 
+## Legătura către dexonline din aplicație
+
+Tabul Sinonime are, sub rezultatele locale, o legătură către pagina
+dexonline a cuvântului căutat:
+
+    https://dexonline.ro/definitie-sinonime/<cuvânt>
+
+Acolo se vede *Dicționarul de sinonime* (Seche, 2002) — cel mai bun
+dicționar de sinonime al limbii române, dar al cărui text nu se află în
+niciunul dintre canalele de distribuție dexonline (vezi mai sus), deci nu
+poate fi inclus în index.
+
+Legătura nu preia nimic: pagina este servită de dexonline direct
+cititorului, cu propria atribuire și propria finanțare intacte. Se deschide
+într-un panou în aplicație, cu un buton care o deschide într-o filă
+obișnuită de browser.
+
 ## Licența fișierului generat
 
 Fiind derivat din dumpul dexonline, distribuit sub **GNU GPL v2 sau

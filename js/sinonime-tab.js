@@ -17,6 +17,17 @@
  * numbered, which is enough to show that they are separate readings and
  * not one list broken up at random.
  *
+ * Under the local results sits a link into dexonline's own page for the
+ * word. Its "Dicționar de sinonime" (Seche, 2002) is the best synonym
+ * dictionary there is for Romanian and the one worth reading, but its text
+ * is in neither of dexonline's distributable channels — see
+ * data/SYNONYM-INDEX-LICENSE.md — so it cannot be shipped in the index.
+ * Linking costs nothing and takes nothing: the page is served by dexonline
+ * to the reader, with its own attribution and its own funding intact.
+ *
+ * It opens in a panel inside the app rather than throwing you out to a
+ * browser, since the point is to glance at a word mid-line and come back.
+ *
  * State is module-level, like the Rime tab's, so a lookup survives a trip
  * to the Text tab and back.
  */
@@ -24,6 +35,45 @@
 const { el, toast, debounce } = window.Utils;
 
 let _query = '';
+
+const DEX_WORD_URL = 'https://dexonline.ro/definitie-sinonime/';
+
+/* Swap the panel for dexonline's page on this word, with a way back and a
+ * way out to a real browser tab. Nothing is read from the frame — it is
+ * their page, shown as their page. */
+function _openDexonline(panel, word) {
+  const url = DEX_WORD_URL + encodeURIComponent(word);
+  panel.innerHTML = '';
+  panel.appendChild(el('div', { class: 'syn__dexbar' }, [
+    el('button', {
+      class: 'btn btn--text',
+      onclick: () => _run(panel)
+    }, ['← Înapoi']),
+    el('a', {
+      class: 'btn btn--text',
+      href: url,
+      target: '_blank',
+      rel: 'noopener noreferrer'
+    }, ['Deschide în browser ↗'])
+  ]));
+  panel.appendChild(el('iframe', {
+    class: 'syn__dexframe',
+    src: url,
+    title: 'dexonline — ' + word,
+    loading: 'lazy',
+    referrerpolicy: 'no-referrer-when-downgrade'
+  }));
+}
+
+// The link itself, shown under whatever the local index had to say.
+function _dexLink(panel, word) {
+  return el('div', { class: 'syn__dexlink' }, [
+    el('button', {
+      class: 'btn btn--wide',
+      onclick: () => _openDexonline(panel, word)
+    }, ['Vezi „' + word + '” în Dicționarul de sinonime (dexonline)'])
+  ]);
+}
 
 function render(host) {
   const panel = el('div', { class: 'syn' });
@@ -82,11 +132,12 @@ async function _run(panel) {
 
   if (!res.found) {
     panel.appendChild(el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Niciun sinonim pentru acest cuvânt.']),
+      el('p', {}, ['Niciun sinonim pentru acest cuvânt aici.']),
       el('p', { class: 'empty-state__hint' }, [
-        'Verifică ortografia, sau încearcă forma de dicționar a cuvântului.'
+        'Verifică ortografia — sau caută-l în dicționarul de sinonime.'
       ])
     ]));
+    panel.appendChild(_dexLink(panel, q));
     return;
   }
 
@@ -122,6 +173,8 @@ async function _run(panel) {
 
     panel.appendChild(el('div', { class: 'syn__sense' }, [head, words].filter(Boolean)));
   });
+
+  panel.appendChild(_dexLink(panel, res.word));
 }
 
 window.SinonimeTab = { render };
