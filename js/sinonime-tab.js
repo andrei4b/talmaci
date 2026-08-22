@@ -58,7 +58,11 @@ function actions() {
 
 function render(host) {
   if (!_frame) _frame = _newFrame();
-  host.appendChild(_frame);
+  // Only when it is not already there. appendChild on a node that is
+  // already a child MOVES it, and a moved iframe is an unmounted one as far
+  // as the browser is concerned — it reloads, losing the page you were on.
+  // That is the whole reason the layer outlives the render.
+  if (_frame.parentNode !== host) host.appendChild(_frame);
   return _frame;
 }
 

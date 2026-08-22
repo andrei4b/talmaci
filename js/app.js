@@ -112,6 +112,29 @@ function goUpToList() {
   else location.hash = '#/';
 }
 
+/* A layer that survives re-rendering, for content that cannot be rebuilt
+ * without losing its state.
+ *
+ * Only the Sinonime frame needs it, and it needs it badly: taking an iframe
+ * out of the DOM and putting it back makes the browser reload it, so
+ * keeping the same element is not enough — glancing at the Text tab threw
+ * away whatever page you had reached inside dexonline. The only way to hold
+ * it is never to unmount it, so this lives outside every render and is
+ * hidden rather than removed.
+ *
+ * It sits after .shell visually through CSS order, not DOM order: moving it
+ * to its right place would be another unmount, which is the whole problem.
+ */
+let _persist = null;
+
+function _persistLayer(root) {
+  if (!_persist) {
+    _persist = el('div', { class: 'persist', hidden: true });
+    root.appendChild(_persist);
+  }
+  return _persist;
+}
+
 function _tabForHash(hash) {
   const t = TABS.find(x => x.id !== 'text' && x.route === hash);
   return t ? t.id : 'text';
@@ -132,7 +155,13 @@ function _renderRoute(root) {
     history.replaceState({ talmaciFromList: _prevRoute === '#/' }, '');
   }
 
-  root.innerHTML = '';
+  // Everything except the persistent layer, which must not be unmounted.
+  const layer = _persistLayer(root);
+  for (const child of [...root.children]) {
+    if (child !== layer) child.remove();
+  }
+  layer.hidden = (tab !== 'sinonime');
+
   const content = el('div', { class: 'shell' });
   root.appendChild(content);
 
@@ -143,8 +172,11 @@ function _renderRoute(root) {
   } else if (tab === 'rime') {
     _renderSimpleTab(content, 'Rime', (host) => window.RimeTab.render(host));
   } else if (tab === 'sinonime') {
-    _renderSimpleTab(content, 'Sinonime', (host) => window.SinonimeTab.render(host),
-                     window.SinonimeTab.actions());
+    // The topbar is rebuilt as usual; the frame under it is mounted into
+    // the persistent layer instead, once, and simply revealed after that.
+    content.classList.add('shell--header-only');
+    _renderSimpleTab(content, 'Sinonime', () => {}, window.SinonimeTab.actions());
+    window.SinonimeTab.render(layer);
   } else {
     _renderSimpleTab(content, TABS.find(t => t.id === tab).label, (host) => {
       const panel = el('div', { class: 'tab-content' });

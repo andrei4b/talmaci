@@ -511,19 +511,31 @@ a { color: inherit; text-decoration: none; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 
-/* Sinonime tab — our search field over dexonline's own page. The field is
-   .search-bar/.search-bar__input, the very elements the song list and the
-   Rime tab use, so it sits in the same place and looks the same across all
-   three. Below it the frame takes the rest. */
+/* The layer that outlives a render, holding the Sinonime frame. Ordered
+   after .shell rather than placed after it: moving it in the DOM would
+   unmount the iframe, which is exactly what this exists to avoid. */
+.shell { order: 0; }
+.persist {
+  order: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* The tab bar is fixed and would otherwise cover the bottom. */
+  margin-bottom: var(--tabbar-h, 70px);
+}
+/* On the Sinonime tab the shell carries only the topbar, so it must not
+   take the height the frame needs. */
+.shell--header-only { flex: 0 0 auto; }
+
+/* Sinonime tab — dexonline's page filling the layer, nothing of ours over
+   it. The only control is the reset in the topbar. */
 .syn__frame {
   flex: 1;
   min-height: 0;
   width: 100%;
   border: none;
   background: #fff;
-  /* The tab bar is fixed and would otherwise sit over the bottom of the
-     page. --tabbar-h is its measured height, published by app.js. */
-  margin-bottom: var(--tabbar-h, 70px);
 }
 
 /* Rime tab */
