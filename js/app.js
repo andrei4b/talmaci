@@ -143,7 +143,8 @@ function _renderRoute(root) {
   } else if (tab === 'rime') {
     _renderSimpleTab(content, 'Rime', (host) => window.RimeTab.render(host));
   } else if (tab === 'sinonime') {
-    _renderSimpleTab(content, 'Sinonime', (host) => window.SinonimeTab.render(host));
+    _renderSimpleTab(content, 'Sinonime', (host) => window.SinonimeTab.render(host),
+                     window.SinonimeTab.actions());
   } else {
     _renderSimpleTab(content, TABS.find(t => t.id === tab).label, (host) => {
       const panel = el('div', { class: 'tab-content' });
@@ -162,9 +163,12 @@ function _renderRoute(root) {
 // so a tab can put something directly under the topbar. Rime needs that:
 // its search field has to sit exactly where the song list's does, and the
 // scrolling panel starts below it.
-function _renderSimpleTab(content, title, fill) {
+function _renderSimpleTab(content, title, fill, actions) {
+  // A tab may add its own controls; they sit to the left of the account
+  // menu, which stays last so its position never moves between tabs.
   content.appendChild(el('div', { class: 'topbar' }, [
     el('h1', { class: 'topbar__title' }, [title]),
+    ...(actions || []),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Cont',
       html: icons.kebab, onclick: () => openAccountMenu()
