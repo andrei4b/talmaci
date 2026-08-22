@@ -141,7 +141,9 @@ function _renderRoute(root) {
     if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]));
     else window.Songs.render(content);
   } else if (tab === 'rime') {
-    _renderSimpleTab(content, 'Rime', (panel) => window.RimeTab.render(panel));
+    _renderSimpleTab(content, 'Rime', (host) => window.RimeTab.render(host));
+  } else if (tab === 'sinonime') {
+    _renderSimpleTab(content, 'Sinonime', (host) => window.SinonimeTab.render(host));
   } else {
     _renderSimpleTab(content, TABS.find(t => t.id === tab).label, (host) => {
       const panel = el('div', { class: 'tab-content' });
@@ -173,7 +175,6 @@ function _renderSimpleTab(content, title, fill) {
 
 function _placeholderPanel(tabId) {
   const copy = {
-    sinonime: 'Aici vei putea căuta sinonime pentru cuvintele din text.',
     biblie: 'Aici vei putea vedea referințe biblice legate de text.'
   }[tabId] || '';
   return el('div', { class: 'empty-state' }, [

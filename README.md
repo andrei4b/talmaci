@@ -11,12 +11,13 @@ Four tabs sit under every screen — **Text**, **Rime**, **Sinonime**,
 **Biblie** — so they are reachable from the song list without opening
 anything.
 
-**Text** and **Rime** work. Text edits a song's lyrics across multiple
-named versions, so several people can draft in parallel. Rime looks a word
-up in a 210k-word index built from dexonline and returns its perfect
-rhymes, with the stressed syllable marked — see `tools/rhyme/README.md` for
-how that index is built. **Sinonime** and **Biblie** are still
-placeholders.
+**Text**, **Rime** and **Sinonime** work. Text edits a song's lyrics across
+multiple named versions, so several people can draft in parallel. Rime
+looks a word up in a 210k-word index built from dexonline and returns its
+perfect rhymes, with the stressed syllable marked. Sinonime returns its
+synonyms from RoWordNet, grouped by sense so the right shade is pickable.
+Both indexes are built offline — see `tools/rhyme/README.md` and
+`tools/synonyms/README.md`. **Biblie** is still a placeholder.
 
 ## Run it locally
 

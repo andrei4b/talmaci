@@ -511,6 +511,57 @@ a { color: inherit; text-decoration: none; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 
+/* Sinonime tab — same skeleton as Rime below the shared .search-bar: a
+   scrolling panel that carries its own padding and tab-bar clearance. */
+.syn {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px calc(var(--tabbar-h, 70px) + 10px);
+}
+/* Shown only when the answer is about a different word than the one typed:
+   the lemma behind an inflected form, or the properly accented spelling. */
+.syn__resolved {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  padding: 2px 0 10px;
+}
+/* One sense: what part of speech it is, what it means, and the words. */
+.syn__sense { padding: 10px 0 14px; }
+.syn__sense + .syn__sense { border-top: 1px solid var(--color-border); }
+.syn__sense-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.syn__pos {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-accent);
+}
+.syn__definition {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  min-width: 0;
+}
+/* Result words are the Rime tab's, to the pixel — the two tabs are one tap
+   apart and a word you tap to copy should not look like a different kind of
+   thing on each. */
+.syn__words { display: flex; flex-wrap: wrap; gap: 6px; }
+.syn__word {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 7px 11px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 /* Rime tab */
 /* Sits below .search-bar, which is the very same element the song list
    uses — so the field lines up across the two tabs and this panel takes
