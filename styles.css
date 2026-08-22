@@ -511,9 +511,10 @@ a { color: inherit; text-decoration: none; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 
-/* Sinonime tab — dexonline's own page, filling the tab. Nothing of ours
-   around it: no local results, no search field, no chrome. dexonline
-   carries its own search box, and its page is the whole point. */
+/* Sinonime tab — our search field over dexonline's own page. The field is
+   .search-bar/.search-bar__input, the very elements the song list and the
+   Rime tab use, so it sits in the same place and looks the same across all
+   three. Below it the frame takes the rest. */
 .syn__frame {
   flex: 1;
   min-height: 0;

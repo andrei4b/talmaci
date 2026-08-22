@@ -1,41 +1,72 @@
-/* sinonime-tab.js — the Sinonime tab: dexonline's synonym dictionary, shown
- * in the app.
+/* sinonime-tab.js — the Sinonime tab: dexonline's "Dicționar de sinonime",
+ * one word at a time.
  *
- * There is no local index and no search field of our own. Both were tried
- * and both were worse than the thing they stood in for: the synonym data
- * that can actually be redistributed — RoWordNet, and dexonline's own
- * Relation table — gives thin, noisy lists, while the dictionary worth
- * reading, Seche's "Dicționar de sinonime", is in neither of dexonline's
- * distributable channels and cannot be shipped. Its page can be opened,
- * though, and dexonline carries a search box of its own, so a second one
- * here would only be in the way.
+ * A search field of ours, matching the song list's and the Rime tab's down
+ * to the class, and under it dexonline's own page for whatever is typed.
  *
- * Nothing is taken or copied. The page is served by dexonline straight to
- * the reader, with its own attribution and its own funding intact.
+ * The results are not read, parsed or reshaped, and that is deliberate
+ * rather than lazy. dexonline's terms — printed on the page itself —
+ * forbid taking data from the site by automated means, excepting the
+ * datasets it publishes for the purpose, and this dictionary is in none of
+ * them. Their page also sends no CORS header, so a browser could not fetch
+ * it even if the terms allowed. Showing it is a reader reading their site,
+ * which is what it is for, and it carries their attribution and their
+ * donate link along with it.
  *
- * The frame is built once and kept, then re-attached on later renders. The
- * other tabs hold their state across a trip to the Text tab and this one
- * should too — rebuilding the element would reload dexonline and throw away
- * whatever you had looked up.
- *
- * Nothing of ours sits around it: no toolbar, no "open in browser". The
- * page is the tab.
+ * Empty field lands on the dictionary's own page, which is a reasonable
+ * thing to look at while deciding what to search for.
  */
 (function () {
-const { el } = window.Utils;
+const { el, debounce } = window.Utils;
 
-const START_URL = 'https://dexonline.ro/source/sinonime';
+const SOURCE_URL = 'https://dexonline.ro/source/sinonime';
+const WORD_URL = 'https://dexonline.ro/definitie-sinonime/';
 
+let _query = '';
 let _frame = null;
 
+function _urlFor(word) {
+  const w = (word || '').trim();
+  return w ? WORD_URL + encodeURIComponent(w) : SOURCE_URL;
+}
+
+/* Build a fresh iframe rather than reassigning src on the one already in
+ * the page. Navigating a live frame pushes onto the joint session history,
+ * which would put every word searched in front of the hardware back button
+ * — and getting back out of the app to the song list took some care to fix.
+ * A new element carrying its src from birth adds nothing to history. */
+function _frameFor(word) {
+  return el('iframe', {
+    class: 'syn__frame',
+    src: _urlFor(word),
+    title: 'dexonline — Dicționar de sinonime',
+    referrerpolicy: 'no-referrer-when-downgrade'
+  });
+}
+
+function _show(word) {
+  const next = _frameFor(word);
+  if (_frame && _frame.parentNode) _frame.replaceWith(next);
+  _frame = next;
+}
+
 function render(host) {
-  if (!_frame) {
-    _frame = el('iframe', {
-      class: 'syn__frame',
-      src: START_URL,
-      title: 'dexonline — Dicționar de sinonime',
-      referrerpolicy: 'no-referrer-when-downgrade'
-    });
+  const input = el('input', {
+    class: 'search-bar__input',
+    type: 'search',
+    placeholder: 'Scrie un cuvânt…',
+    value: _query,
+    oninput: debounce((e) => {
+      _query = e.target.value;
+      _show(_query);
+    }, 400)
+  });
+  host.appendChild(el('div', { class: 'search-bar' }, [input]));
+
+  // Reuse the frame across tab switches when it is already showing the
+  // right word, so a glance at the Text tab does not reload dexonline.
+  if (!_frame || _frame.getAttribute('src') !== _urlFor(_query)) {
+    _frame = _frameFor(_query);
   }
   host.appendChild(_frame);
   return _frame;
