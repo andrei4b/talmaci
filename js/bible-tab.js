@@ -61,7 +61,12 @@ const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.7"/><circle cx="6" cy="12" r="2.7"/><circle cx="18" cy="19" r="2.7"/><path d="M8.4 10.6l7.2-4.2M8.4 13.4l7.2 4.2"/></svg>`;
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 
+// Kept so the popstate listener below — which runs outside any render call,
+// possibly long after one — has something to re-render into.
+let _lastHost = null;
+
 function render(host) {
+  _lastHost = host;
   host.innerHTML = '';
   if (_state !== 'ready') {
     host.appendChild(el('div', { class: 'topbar' }, [
@@ -183,7 +188,14 @@ function _buildReaderTopbar(host) {
     ]),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Caută în Biblie', html: SEARCH_ICON,
-      onclick: () => { _view = 'search'; render(host); }
+      onclick: () => {
+        // A pushed entry, not just a state flip — otherwise hardware back
+        // has nothing of ours to land on and falls through to whatever
+        // was open before the Biblie tab entirely.
+        history.pushState({ talmaciBibleSearch: true }, '', location.hash);
+        _view = 'search';
+        render(host);
+      }
     })
   ]);
 }
@@ -365,7 +377,14 @@ function _renderSearch(host) {
   host.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Înapoi la lectură', html: window.Utils.icons.back,
-      onclick: () => { _view = 'read'; render(host); }
+      onclick: () => {
+        _view = 'read';
+        render(host);
+        // Consumes the entry pushed on the way in. _view is already 'read'
+        // by the time the resulting popstate arrives, so the listener
+        // below sees nothing to do and this doesn't render a second time.
+        history.back();
+      }
     }),
     el('h1', { class: 'topbar__title' }, ['Caută'])
   ]));
@@ -422,6 +441,9 @@ function _runSearch(host, results) {
           const row = rows[m.verse - 1];
           if (row) row.scrollIntoView({ block: 'center' });
         }
+        // Same reasoning as the back arrow: consumes the pushed entry
+        // without a second render, since _view is already 'read'.
+        history.back();
       }
     }, [
       el('div', { class: 'bible-search__ref' }, [_books[m.bookIdx].name + ' ' + m.chapter + ':' + m.verse]),
@@ -448,6 +470,21 @@ function _highlight(text, folded, needle) {
   frag.appendChild(document.createTextNode(text.slice(at + needle.length)));
   return frag;
 }
+
+// Hardware back while search is showing: every path that closes search
+// from inside the app (the back arrow, tapping a result) already flips
+// _view to 'read' before consuming its own pushed entry, so by the time
+// their popstate lands here there's nothing left to do — this only fires
+// for a back press the app didn't originate itself. The hash check keeps
+// it from reacting to an unrelated pop that happens to land elsewhere
+// while a stale 'search' _view is sitting around from an earlier visit
+// (switching tabs never touches _view, by design — see the file header).
+window.addEventListener('popstate', () => {
+  if (_view === 'search' && location.hash === '#/biblie') {
+    _view = 'read';
+    render(_lastHost);
+  }
+});
 
 window.BibleTab = { render };
 
