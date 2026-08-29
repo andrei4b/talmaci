@@ -61,21 +61,13 @@ function render(host) {
   host.innerHTML = '';
   if (_state !== 'ready') {
     host.appendChild(el('div', { class: 'topbar' }, [
-      el('h1', { class: 'topbar__title' }, ['Biblie']),
-      _kebabBtn()
+      el('h1', { class: 'topbar__title' }, ['Biblie'])
     ]));
     host.appendChild(_loadingOrError(host));
     return;
   }
   if (_view === 'search') _renderSearch(host);
   else _renderReader(host);
-}
-
-function _kebabBtn() {
-  return el('button', {
-    class: 'btn btn--icon', 'aria-label': 'Cont',
-    html: window.Utils.icons.kebab, onclick: () => window.App.openAccountMenu()
-  });
 }
 
 function _loadingOrError(host) {
@@ -188,8 +180,7 @@ function _buildReaderTopbar(host) {
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Caută în Biblie', html: SEARCH_ICON,
       onclick: () => { _view = 'search'; _searchShown = SEARCH_PAGE; render(host); }
-    }),
-    _kebabBtn()
+    })
   ]);
 }
 
