@@ -172,12 +172,7 @@ function _renderList(listWrap) {
         href: `#/song/${song.id}`,
         class: 'song-list__link'
       }, [
-        el('span', { class: 'song-list__head' }, [
-          el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
-          isOriginal(song)
-            ? el('span', { class: 'song-list__kind' }, ['Compoziție'])
-            : null
-        ].filter(Boolean)),
+        el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
         el('span', { class: 'song-list__snippet' }, [(song.originalText || '').slice(0, 80)])
       ])
     ]));

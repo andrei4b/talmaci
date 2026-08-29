@@ -186,25 +186,6 @@ a { color: inherit; text-decoration: none; }
 }
 .song-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .song-list__item { }
-/* Title and its type label share a row; the label is pushed to the end and
-   never squeezes the title, which truncates on its own. */
-.song-list__head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-.song-list__kind {
-  flex-shrink: 0;
-  margin-left: auto;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
 .song-list__link {
   display: flex;
   flex-direction: column;
