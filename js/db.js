@@ -21,10 +21,15 @@
  *                                // isn't lost; see listVersions' migration.
  *     groupId: string,
  *     shared: boolean,          // visible to the whole group, vs personal —
- *                               // read it through Utils.isShared, never
- *                               // directly; absent (every song predating
- *                               // this field) means shared, same reasoning
- *                               // as `kind` above.
+ *                               // read it through Utils.isShared for
+ *                               // display, which treats absent as shared.
+ *                               // listSongs itself needs it explicit, not
+ *                               // just as a default: unlike `kind`, this
+ *                               // field is queried on directly (see
+ *                               // firestore.rules), so a song predating
+ *                               // it had to be backfilled with shared:
+ *                               // true by a one-time migration rather
+ *                               // than left to a client-side default.
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -48,10 +53,22 @@
 
 function fs() { return firebase.firestore(); }
 
-async function listSongs(groupId) {
+// Two queries, not one — see firestore.rules for why a single
+// groupId-only query can no longer be proven safe against a rule that also
+// depends on `shared`/`createdBy` per document. Each of these two is
+// provable on its own: one via shared == true, one via createdBy == you.
+// A song that's both mine and shared matches both, so results are merged
+// by id rather than concatenated.
+async function listSongs(groupId, myUid) {
   if (!groupId) return [];
-  const snap = await fs().collection('songs').where('groupId', '==', groupId).get();
-  const songs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const byId = new Map();
+  const add = (snap) => snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
+
+  const queries = [fs().collection('songs').where('groupId', '==', groupId).where('shared', '==', true).get()];
+  if (myUid) queries.push(fs().collection('songs').where('groupId', '==', groupId).where('createdBy', '==', myUid).get());
+  (await Promise.all(queries)).forEach(add);
+
+  const songs = [...byId.values()];
   songs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   return songs;
 }

@@ -116,7 +116,7 @@ async function _loadSongs() {
     'Se încarcă…'
   ]));
   try {
-    _songs = await window.Db.listSongs(window.Auth.currentGroupId());
+    _songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
   } catch (err) {
     toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
     _songs = [];

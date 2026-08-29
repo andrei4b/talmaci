@@ -19,21 +19,31 @@ rules_version = '2';
 // ownership model as translation versions below. Translation versions
 // inherit the parent song's group check via get().
 //
-// `shared` (bool, defaults to true when absent — every song predates this
-// field) marks whether the rest of the group can see a song at all. A
-// personal song (shared == false) is readable, writable and deletable only
-// by whoever created it — not even an admin gets an override, since the
-// whole point of "not shared" is that it isn't the group's to manage.
+// `shared` (bool) marks whether the rest of the group can see a song at
+// all. A personal song (shared == false) is readable, writable and
+// deletable only by whoever created it — not even an admin gets an
+// override, since the whole point of "not shared" is that it isn't the
+// group's to manage.
 //
-// One gap this doesn't close: `allow list` on /songs can't check `shared`
-// (see the comment at that rule), so a raw devtools query for a group's
-// songs — not anything the app itself ever does — still gets every
-// personal song's fields back, just not access to open, edit or delete
-// one by id. Closing that fully needs the list query itself to be
-// structured so a personal song can't match it at all, which needs either
-// a one-time migration (every song predates `shared`, so a shared-only
-// query would silently drop them) or moving personal songs out of the
-// group's own groupId. Left alone for now rather than rushed.
+// PASTE ORDER MATTERS FOR THIS FILE. The songs read rule below requires
+// `shared` to be an explicit boolean on every document, not absent — a
+// song predating this field won't satisfy it. Before pasting this version
+// in, every existing song needs `shared: true` backfilled onto it (a song
+// that predates the field was always visible to the whole group, so true
+// is the correct value, not a guess). Run the one-time migration snippet
+// first, confirm it reports 0 left to patch, and only then replace the
+// rules — pasting this first would make every legacy song vanish from
+// both lists until it's patched, not just personal ones.
+//
+// Why a plain "absent means shared" tolerance (like listVersions below
+// still has, safely) doesn't work here: `listSongs` has to be two actual
+// queries — one for `shared == true`, one for `createdBy == you` — because
+// Firestore proves a *list* query safe from its shape alone, before
+// running it, and a query only constrained by groupId can't prove
+// anything about shared/createdBy for documents it hasn't looked at yet.
+// Each of those two queries needs its own field to literally equal
+// something for Firestore to accept it, and "the field is absent" isn't a
+// value a query can match against.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -100,22 +110,26 @@ service cloud.firestore {
     }
 
     match /songs/{songId} {
+      // Two different tolerances on purpose. `isShared` (used by
+      // update/delete and by the versions rule below, neither of which
+      // ever runs as a list query) treats an absent field as shared — the
+      // correct reading for a song that predates this feature. The read
+      // rule below needs `shared` to be an actual `true`, because it has
+      // to stay provable for a list query — see the file header.
       function isShared(data) {
         return data.shared != false;
       }
-      // Split rather than one `allow read` covering both: Firestore proves
-      // a `list` query safe from its shape alone, before running it — it
-      // has no per-document result to check yet, only what the query's own
-      // where()s guarantee. listSongs() queries by groupId only, so a rule
-      // that also depends on `shared`/`createdBy` (fields the query doesn't
-      // constrain) can't be proven and the ENTIRE query is rejected, not
-      // just the documents that would have failed it — this is what broke
-      // every group member's song list, not just access to personal songs.
-      // `get` has an actual document in hand and isn't subject to this, so
-      // opening a song by its id still fully enforces personal ownership.
-      allow list: if isSignedIn() && resource.data.groupId == myGroup();
-      allow get: if isSignedIn() && resource.data.groupId == myGroup()
-        && (isShared(resource.data) || resource.data.createdBy == request.auth.uid);
+      // One rule serves both get and list here, unlike the tightened
+      // version this replaced: this shape is provable for get (a real
+      // document, always) AND for both of listSongs' two queries — one
+      // constrained by `shared == true`, one by `createdBy == you` — since
+      // each query's own equality filter is exactly what satisfies one
+      // side of this OR for every document it could possibly return. A
+      // raw query with neither filter (list everything in the group) is
+      // NOT provable and gets rejected outright, which is the point: nothing
+      // can enumerate a group's songs including personal ones anymore.
+      allow read: if isSignedIn() && resource.data.groupId == myGroup()
+        && (resource.data.shared == true || resource.data.createdBy == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.groupId == myGroup();
       allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId')
         && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(resource.data)));
