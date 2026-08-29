@@ -18,6 +18,10 @@ function songKind(song) {
 }
 function isOriginal(song) { return songKind(song) === 'original'; }
 
+// Visible to the whole group, vs personal. Absent (every song written
+// before this existed) defaults to shared — same reasoning as songKind.
+function isShared(song) { return !song || song.shared !== false; }
+
 function $(sel, root) { return (root || document).querySelector(sel); }
 function $all(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
 
@@ -135,6 +139,6 @@ window.addEventListener('popstate', () => {
 });
 
 window.Utils = { $, $all, el, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
-                 songKind, isOriginal };
+                 songKind, isOriginal, isShared };
 
 })();

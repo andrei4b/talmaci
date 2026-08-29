@@ -1,6 +1,8 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, isOriginal } = window.Utils;
+const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, isOriginal, isShared } = window.Utils;
+
+const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 
 let _songs = [];
 let _query = '';
@@ -8,12 +10,20 @@ let _query = '';
 // _query, deliberately not localStorage: a filter that quietly persists
 // across sessions is a good way to wonder where half your songs went.
 let _kindFilter = '';
+// Which list is showing: the group's shared songs, or this user's own
+// personal ones. Same module-state reasoning as _kindFilter above.
+let _scope = 'group';
+// Fetched once per session and cached — every visit after the first shows
+// the real name immediately instead of a placeholder.
+let _groupName = '';
+let _scopeBtnEl = null;
 let _listWrap = null;
 
 async function render(root) {
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('h1', { class: 'topbar__title' }, ['Tălmaci']),
+    _renderScopeButton(),
     el('button', { class: 'btn btn--icon', 'aria-label': 'Cont', html: icons.kebab, onclick: () => window.App.openAccountMenu() })
   ]));
 
@@ -36,7 +46,49 @@ async function render(root) {
     onclick: () => _openAddSong()
   }, ['+']));
 
+  // Fire-and-forget: doesn't hold up the tab's first paint the way
+  // awaiting it here would, and it only ever needs to run once.
+  if (!_groupName) _loadGroupName();
   await _loadSongs();
+}
+
+function _renderScopeButton() {
+  _scopeBtnEl = el('button', { class: 'scope-btn', onclick: _openScopeSheet }, [
+    el('span', { class: 'scope-btn__label' }, [_scope === 'personal' ? 'Personal' : (_groupName || 'Grup')]),
+    el('span', { html: CHEVRON_DOWN_ICON, 'aria-hidden': 'true' })
+  ]);
+  return _scopeBtnEl;
+}
+
+async function _loadGroupName() {
+  try {
+    const group = await window.Db.getGroup(window.Auth.currentGroupId());
+    _groupName = (group && group.name) || 'Grup';
+  } catch (_) {
+    _groupName = 'Grup';
+  }
+  // Only worth repainting if the button is still showing the group option
+  // (and still mounted at all — a tab switch in the meantime leaves
+  // _scopeBtnEl pointing at a detached node, and replaceWith on that is
+  // harmless but pointless).
+  if (_scope === 'group' && _scopeBtnEl) _scopeBtnEl.replaceWith(_renderScopeButton());
+}
+
+function _openScopeSheet() {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const pick = (value) => {
+    closeSheet(overlay);
+    if (_scope === value) return;
+    _scope = value;
+    _scopeBtnEl.replaceWith(_renderScopeButton());
+    _renderList(_listWrap);
+  };
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Alege lista']),
+    el('button', { class: 'btn btn--wide' + (_scope === 'group' ? ' btn--primary' : ''), onclick: () => pick('group') }, [_groupName || 'Grup']),
+    el('button', { class: 'btn btn--wide' + (_scope === 'personal' ? ' btn--primary' : ''), onclick: () => pick('personal') }, ['Personal'])
+  ]));
+  openSheet(overlay);
 }
 
 function _renderKindFilter() {
@@ -81,8 +133,17 @@ async function refresh() {
 
 function _renderList(listWrap) {
   listWrap.innerHTML = '';
+  const myUid = window.Auth.currentUser().uid;
+  // Firestore's own rules already keep another member's personal songs out
+  // of what _loadSongs fetches at all — the createdBy check here is just
+  // this list being explicit about what "personal" means, not a second
+  // enforcement layer.
+  const scoped = _songs.filter(s => _scope === 'personal'
+    ? (!isShared(s) && s.createdBy === myUid)
+    : isShared(s));
+
   const q = _query.trim().toLowerCase();
-  const filtered = _songs.filter(s => {
+  const filtered = scoped.filter(s => {
     if (q && !(s.title || '').toLowerCase().includes(q)) return false;
     if (_kindFilter === 'original') return isOriginal(s);
     if (_kindFilter === 'translation') return !isOriginal(s);
@@ -90,8 +151,12 @@ function _renderList(listWrap) {
   });
 
   if (!filtered.length) {
-    let msg = 'Nu ai adăugat încă nicio melodie. Apasă „+” pentru a începe.';
-    if (_songs.length) {
+    let msg;
+    if (!scoped.length) {
+      msg = _scope === 'personal'
+        ? 'Nu ai nicio melodie personală. Apasă „+” pentru a începe.'
+        : 'Nu a fost adăugată încă nicio melodie în grup. Apasă „+” pentru a începe.';
+    } else {
       msg = _kindFilter === 'original' ? 'Nicio compoziție.'
           : _kindFilter === 'translation' ? 'Nicio traducere.'
           : 'Nicio melodie găsită.';
@@ -150,9 +215,27 @@ function _openAddSong() {
   };
   paintKind();
 
+  // Defaults to whichever list is currently open — most of the time,
+  // adding a song while looking at Personal means you want another
+  // personal one — but it's a real choice, not inferred silently: it's
+  // shown and can be flipped right here either way.
+  let visibility = _scope === 'personal' ? 'personal' : 'group';
+  const visRow = el('div', { class: 'kind-filter' });
+  const paintVis = () => {
+    visRow.innerHTML = '';
+    [['group', _groupName || 'Grup'], ['personal', 'Personal']].forEach(([value, label]) => {
+      visRow.appendChild(el('button', {
+        class: 'seg' + (visibility === value ? ' seg--active' : ''),
+        onclick: () => { visibility = value; paintVis(); }
+      }, [label]));
+    });
+  };
+  paintVis();
+
   const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Melodie nouă']),
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Tip']), kindRow]),
+    el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Vizibilitate']), visRow]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     originalField,
     el('div', { class: 'sheet__actions' }, [
@@ -168,6 +251,7 @@ function _openAddSong() {
               title,
               kind,
               originalText,
+              shared: visibility !== 'personal',
               groupId: window.Auth.currentGroupId(),
               createdBy: window.Auth.currentUser().uid
             });

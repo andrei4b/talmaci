@@ -11,13 +11,19 @@ rules_version = '2';
 //   /users/{uid}      { email, displayName, role: 'admin'|'user', groupId, createdAt }
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /invites/{code}   { groupId, createdBy, createdAt }
-//   /songs/{songId}   { title, originalText, translatedText, groupId, createdBy, createdAt, updatedAt }
+//   /songs/{songId}   { title, originalText, translatedText, groupId, shared, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
 //
 // Any group member can create a song, but editing (rename, original text)
 // or deleting one is limited to whoever created it, or an admin — same
 // ownership model as translation versions below. Translation versions
 // inherit the parent song's group check via get().
+//
+// `shared` (bool, defaults to true when absent — every song predates this
+// field) marks whether the rest of the group can see a song at all. A
+// personal song (shared == false) is readable, writable and deletable only
+// by whoever created it — not even an admin gets an override, since the
+// whole point of "not shared" is that it isn't the group's to manage.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -84,26 +90,35 @@ service cloud.firestore {
     }
 
     match /songs/{songId} {
-      allow read: if isSignedIn() && resource.data.groupId == myGroup();
+      function isShared(data) {
+        return data.shared != false;
+      }
+      allow read: if isSignedIn() && resource.data.groupId == myGroup()
+        && (isShared(resource.data) || resource.data.createdBy == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.groupId == myGroup();
       allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId')
-        && (resource.data.createdBy == request.auth.uid || isAdmin());
+        && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(resource.data)));
       allow delete: if isSignedIn() && resource.data.groupId == myGroup()
-        && (resource.data.createdBy == request.auth.uid || isAdmin());
+        && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(resource.data)));
 
       // Everyone in the group can see every version and add new ones, but
       // editing/deleting an existing version is limited to whoever created
       // it, or an admin — this is what stops one person's draft from being
-      // overwritten by someone else without permission.
+      // overwritten by someone else without permission. A personal song's
+      // versions follow the same not-even-an-admin rule as the song itself.
       match /versions/{versionId} {
-        function parentSongGroup() {
-          return get(/databases/$(database)/documents/songs/$(songId)).data.groupId;
+        function parentSong() {
+          return get(/databases/$(database)/documents/songs/$(songId)).data;
         }
-        allow read: if isSignedIn() && parentSongGroup() == myGroup();
-        allow create: if isSignedIn() && parentSongGroup() == myGroup()
+        function canSeeParent() {
+          return parentSong().groupId == myGroup()
+            && (isShared(parentSong()) || parentSong().createdBy == request.auth.uid);
+        }
+        allow read: if isSignedIn() && canSeeParent();
+        allow create: if isSignedIn() && canSeeParent()
           && request.resource.data.createdBy == request.auth.uid;
-        allow update, delete: if isSignedIn() && parentSongGroup() == myGroup()
-          && (resource.data.createdBy == request.auth.uid || isAdmin());
+        allow update, delete: if isSignedIn() && canSeeParent()
+          && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(parentSong())));
       }
     }
   }
