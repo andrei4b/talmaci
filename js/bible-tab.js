@@ -31,6 +31,12 @@ let _query = '';
 let _searchIndex = null;   // built lazily: [{ bookIdx, chapter, verse, text, folded }]
 const SEARCH_PAGE = 80;
 let _searchShown = SEARCH_PAGE;
+// Leaving the search screen — a tab switch, or tapping a result to read
+// it — rebuilds .bible-search from scratch on return, which would
+// otherwise reset scroll to the top every time. Saved on every scroll
+// event and restored after each rebuild; a fresh query is the one case
+// that should start at the top, so typing resets it explicitly.
+let _searchScrollTop = 0;
 
 // Verse selection — a long press starts it, a plain tap on another verse
 // extends it. Scoped to the chapter on screen: navigating away implicitly
@@ -343,6 +349,7 @@ function _renderSearch(host) {
     oninput: debounce((e) => {
       _query = e.target.value;
       _searchShown = SEARCH_PAGE;
+      _searchScrollTop = 0;
       _runSearch(host, results);
     }, 250)
   });
@@ -357,6 +364,7 @@ function _renderSearch(host) {
   host.appendChild(el('div', { class: 'search-bar' }, [input]));
 
   const results = el('div', { class: 'bible-search' });
+  results.addEventListener('scroll', () => { _searchScrollTop = results.scrollTop; });
   host.appendChild(results);
   _runSearch(host, results);
 
@@ -374,7 +382,6 @@ function _runSearch(host, results) {
     ]));
     return;
   }
-
   const idx = _buildSearchIndex();
   const needle = fold(q);
   const matches = [];
@@ -422,6 +429,11 @@ function _runSearch(host, results) {
       onclick: () => { _searchShown += SEARCH_PAGE; _runSearch(host, results); }
     }, ['Arată mai multe (' + remaining + ')']));
   }
+
+  // Rebuilding just cleared and repopulated this, which drops scrollTop
+  // to 0 — put it back where the last scroll (or a previous rebuild)
+  // left it, now that there's actually content to scroll through.
+  results.scrollTop = _searchScrollTop;
 }
 
 // fold() maps one character to one character, so an index found in the
