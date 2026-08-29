@@ -11,7 +11,7 @@
  * to the same page instead of resetting to Geneza 1.
  */
 (function () {
-const { el, debounce, toast, copyToClipboard } = window.Utils;
+const { el, toast, copyToClipboard } = window.Utils;
 
 const DATA_URL = './data/bible-cornilescu.json';
 // The RCCV export lists books in the standard order; the Old Testament
@@ -29,13 +29,11 @@ let _chapter = 1;
 let _view = 'read';    // read | search
 let _query = '';
 let _searchIndex = null;   // built lazily: [{ bookIdx, chapter, verse, text, folded }]
-const SEARCH_PAGE = 80;
-let _searchShown = SEARCH_PAGE;
 // Leaving the search screen — a tab switch, or tapping a result to read
 // it — rebuilds .bible-search from scratch on return, which would
 // otherwise reset scroll to the top every time. Saved on every scroll
-// event and restored after each rebuild; a fresh query is the one case
-// that should start at the top, so typing resets it explicitly.
+// event and restored after each rebuild; a newly confirmed search is the
+// one case that should start at the top, so submitting resets it.
 let _searchScrollTop = 0;
 
 // Verse selection — a long press starts it, a plain tap on another verse
@@ -185,7 +183,7 @@ function _buildReaderTopbar(host) {
     ]),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Caută în Biblie', html: SEARCH_ICON,
-      onclick: () => { _view = 'search'; _searchShown = SEARCH_PAGE; render(host); }
+      onclick: () => { _view = 'search'; render(host); }
     })
   ]);
 }
@@ -346,13 +344,23 @@ function _renderSearch(host) {
     placeholder: 'Caută în Biblie…',
     value: _query,
     autofocus: true,
-    oninput: debounce((e) => {
-      _query = e.target.value;
-      _searchShown = SEARCH_PAGE;
+    enterkeyhint: 'search'
+  });
+  // A <form> rather than a keydown check: it's what makes a mobile
+  // keyboard show a "Search"/"Go" confirmation key at all (enterkeyhint
+  // alone is a hint, not a guarantee) and it's the one event that fires
+  // for both that key and a hardware Enter. preventDefault stops it from
+  // trying to actually navigate; blur is what closes the keyboard — nothing
+  // does that on its own once the field has focus.
+  const form = el('form', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      _query = input.value;
       _searchScrollTop = 0;
       _runSearch(host, results);
-    }, 250)
-  });
+      input.blur();
+    }
+  }, [input]);
 
   host.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
@@ -361,7 +369,7 @@ function _renderSearch(host) {
     }),
     el('h1', { class: 'topbar__title' }, ['Caută'])
   ]));
-  host.appendChild(el('div', { class: 'search-bar' }, [input]));
+  host.appendChild(el('div', { class: 'search-bar' }, [form]));
 
   const results = el('div', { class: 'bible-search' });
   results.addEventListener('scroll', () => { _searchScrollTop = results.scrollTop; });
@@ -399,7 +407,7 @@ function _runSearch(host, results) {
   }
 
   const list = el('div', { class: 'bible-search__list' });
-  matches.slice(0, _searchShown).forEach(m => {
+  matches.forEach(m => {
     list.appendChild(el('button', {
       class: 'bible-search__item',
       onclick: () => {
@@ -421,14 +429,6 @@ function _runSearch(host, results) {
     ]));
   });
   results.appendChild(list);
-
-  const remaining = matches.length - Math.min(_searchShown, matches.length);
-  if (remaining > 0) {
-    results.appendChild(el('button', {
-      class: 'btn btn--wide',
-      onclick: () => { _searchShown += SEARCH_PAGE; _runSearch(host, results); }
-    }, ['Arată mai multe (' + remaining + ')']));
-  }
 
   // Rebuilding just cleared and repopulated this, which drops scrollTop
   // to 0 — put it back where the last scroll (or a previous rebuild)
