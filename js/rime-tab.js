@@ -47,6 +47,13 @@ function _renderRimeTab(host) {
   host.appendChild(el('div', { class: 'search-bar' }, [input]));
   host.appendChild(wrap);
   _renderPanel(wrap);
+
+  // Only on an empty search — this tab is re-rendered fresh every time the
+  // Text/Sinonime/Biblie tabs are switched away from and back, and stealing
+  // focus (and the keyboard) away from whatever the user already typed
+  // would be the wrong kind of eager.
+  if (!_rimeQuery) input.focus();
+
   return wrap;
 }
 
