@@ -679,6 +679,32 @@ a { color: inherit; text-decoration: none; }
   align-items: baseline;
   gap: 8px;
   line-height: 1.55;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s;
+  /* A long press selects a verse instead of triggering the browser's own
+     text-selection loupe or context menu — both would fight the gesture
+     below rather than the other way around. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+.bible-verse--selected { background: var(--color-panel); }
+
+/* The selection count replaces .topbar__title while selecting — a
+   contextual action-bar label, not a page heading, so it stays in the
+   body font rather than the serif used for "Geneza"/"Rime"/etc.: at that
+   size "N versete selectate" would truncate against the three icons
+   beside it, and it isn't a heading anyway. */
+.bible-selbar__count {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bible-verse__num {
   flex-shrink: 0;

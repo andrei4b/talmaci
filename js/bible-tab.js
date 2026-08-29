@@ -11,7 +11,7 @@
  * to the same page instead of resetting to Geneza 1.
  */
 (function () {
-const { el, debounce } = window.Utils;
+const { el, debounce, toast, copyToClipboard } = window.Utils;
 
 const DATA_URL = './data/bible-cornilescu.json';
 // The RCCV export lists books in the standard order; the Old Testament
@@ -32,6 +32,14 @@ let _searchIndex = null;   // built lazily: [{ bookIdx, chapter, verse, text, fo
 const SEARCH_PAGE = 80;
 let _searchShown = SEARCH_PAGE;
 
+// Verse selection — a long press starts it, a plain tap on another verse
+// extends it. Scoped to the chapter on screen: navigating away implicitly
+// clears it, so a stale selection can never point at verses no longer
+// showing.
+let _selected = new Set();
+let _topbarSlot = null;    // the .topbar node in the DOM, swapped in place
+let _verseEls = null;      // verse number -> its row, for in-place restyling
+
 function load() {
   if (_promise) return _promise;
   _state = 'loading';
@@ -45,6 +53,9 @@ function load() {
 const CHEVRON_LEFT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7"/></svg>`;
 const CHEVRON_RIGHT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`;
 const SEARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`;
+const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`;
+const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.7"/><circle cx="6" cy="12" r="2.7"/><circle cx="18" cy="19" r="2.7"/><path d="M8.4 10.6l7.2-4.2M8.4 13.4l7.2 4.2"/></svg>`;
+const CLOSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 
 function render(host) {
   host.innerHTML = '';
@@ -88,7 +99,80 @@ function _renderReader(host) {
   if (_chapter > book.chapters.length) _chapter = book.chapters.length;
   if (_chapter < 1) _chapter = 1;
 
-  host.appendChild(el('div', { class: 'topbar' }, [
+  _topbarSlot = _selected.size ? _buildSelectionTopbar(host) : _buildReaderTopbar(host);
+  host.appendChild(_topbarSlot);
+
+  const body = el('div', { class: 'bible-body' });
+  const verses = book.chapters[_chapter - 1];
+  _verseEls = new Map();
+  verses.forEach((text, i) => {
+    if (!text) return;
+    const n = i + 1;
+    const row = el('div', { class: 'bible-verse' + (_selected.has(n) ? ' bible-verse--selected' : '') }, [
+      el('span', { class: 'bible-verse__num' }, [String(n)]),
+      el('span', { class: 'bible-verse__text' }, [text])
+    ]);
+    _attachPress(row,
+      () => { if (_selected.size) _toggleVerse(host, n); },
+      () => { if (!_selected.size) { _selected.add(n); _refreshSelectionUI(host); } else _toggleVerse(host, n); }
+    );
+    _verseEls.set(n, row);
+    body.appendChild(row);
+  });
+  host.appendChild(body);
+}
+
+/* A tap toggles selection once selecting has started; a long press starts
+ * it. Built on pointer events rather than a 'contextmenu'/'touchstart'
+ * pair so mouse and touch share one path — this runs inside an installed
+ * PWA as often as a browser tab, and a right-click context menu on desktop
+ * would be the wrong affordance anyway. Movement past a small threshold
+ * cancels the long press, so a scroll gesture that starts on a verse
+ * doesn't also select it. */
+const LONG_PRESS_MS = 500;
+const MOVE_TOLERANCE = 10;
+function _attachPress(elx, onTap, onLongPress) {
+  let timer = null, startX = 0, startY = 0, moved = false, fired = false;
+  elx.addEventListener('pointerdown', (e) => {
+    moved = false;
+    fired = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    timer = setTimeout(() => { fired = true; timer = null; onLongPress(); }, LONG_PRESS_MS);
+  });
+  elx.addEventListener('pointermove', (e) => {
+    if (moved) return;
+    if (Math.abs(e.clientX - startX) > MOVE_TOLERANCE || Math.abs(e.clientY - startY) > MOVE_TOLERANCE) {
+      moved = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+    }
+  });
+  elx.addEventListener('pointerup', () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (!moved && !fired) onTap();
+  });
+  elx.addEventListener('pointercancel', () => { if (timer) clearTimeout(timer); timer = null; });
+  elx.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+function _toggleVerse(host, n) {
+  if (_selected.has(n)) _selected.delete(n); else _selected.add(n);
+  _refreshSelectionUI(host);
+}
+
+// Restyles the already-mounted verses and swaps only the topbar, rather
+// than going through render()/host.innerHTML — a full rebuild would reset
+// scroll to the top on every single tap while selecting.
+function _refreshSelectionUI(host) {
+  _verseEls.forEach((rowEl, n) => rowEl.classList.toggle('bible-verse--selected', _selected.has(n)));
+  const next = _selected.size ? _buildSelectionTopbar(host) : _buildReaderTopbar(host);
+  host.replaceChild(next, _topbarSlot);
+  _topbarSlot = next;
+}
+
+function _buildReaderTopbar(host) {
+  const book = _books[_bookIdx];
+  return el('div', { class: 'topbar' }, [
     el('button', { class: 'bible__book-btn', onclick: () => _openBookPicker(host) }, [book.name]),
     el('div', { class: 'bible__chapnav' }, [
       el('button', {
@@ -106,18 +190,62 @@ function _renderReader(host) {
       onclick: () => { _view = 'search'; _searchShown = SEARCH_PAGE; render(host); }
     }),
     _kebabBtn()
-  ]));
+  ]);
+}
 
-  const body = el('div', { class: 'bible-body' });
+function _buildSelectionTopbar(host) {
+  const n = _selected.size;
+  return el('div', { class: 'topbar' }, [
+    el('div', { class: 'bible-selbar__count' }, [n + (n === 1 ? ' verset selectat' : ' versete selectate')]),
+    el('button', {
+      class: 'btn btn--icon', 'aria-label': 'Copiază', html: COPY_ICON,
+      onclick: async () => {
+        const ok = await copyToClipboard(_selectionText());
+        toast(ok ? 'Copiat.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
+      }
+    }),
+    el('button', {
+      class: 'btn btn--icon', 'aria-label': 'Distribuie', html: SHARE_ICON,
+      onclick: () => _shareSelection()
+    }),
+    el('button', {
+      class: 'btn btn--icon', 'aria-label': 'Anulează selecția', html: CLOSE_ICON,
+      onclick: () => { _selected.clear(); _refreshSelectionUI(host); }
+    })
+  ]);
+}
+
+// Consecutive verse numbers collapse into a range ("8-9") the way a
+// reference is normally written; a gap starts a new one ("8-9, 12").
+function _rangeLabel(nums) {
+  const parts = [];
+  let start = nums[0], prev = nums[0];
+  for (let i = 1; i <= nums.length; i++) {
+    const n = nums[i];
+    if (n === prev + 1) { prev = n; continue; }
+    parts.push(start === prev ? String(start) : start + '-' + prev);
+    if (n !== undefined) start = prev = n;
+  }
+  return parts.join(', ');
+}
+
+function _selectionText() {
+  const book = _books[_bookIdx];
   const verses = book.chapters[_chapter - 1];
-  verses.forEach((text, i) => {
-    if (!text) return;
-    body.appendChild(el('div', { class: 'bible-verse' }, [
-      el('span', { class: 'bible-verse__num' }, [String(i + 1)]),
-      el('span', { class: 'bible-verse__text' }, [text])
-    ]));
-  });
-  host.appendChild(body);
+  const nums = [..._selected].sort((a, b) => a - b);
+  const body = nums.map(n => n + ' ' + verses[n - 1]).join('\n');
+  const ref = book.name + ' ' + _chapter + ':' + _rangeLabel(nums);
+  return body + '\n\n' + ref + ' (Cornilescu)';
+}
+
+async function _shareSelection() {
+  const text = _selectionText();
+  if (navigator.share) {
+    try { await navigator.share({ text }); return; }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const ok = await copyToClipboard(text);
+  toast(ok ? 'Distribuirea nu e disponibilă aici — am copiat textul.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
 }
 
 function _stepChapter(host, delta) {
@@ -134,6 +262,7 @@ function _stepChapter(host, delta) {
   } else {
     _chapter = next;
   }
+  _selected.clear();
   render(host);
 }
 
@@ -153,6 +282,7 @@ function _openBookPicker(host) {
           closeSheet(overlay);
           _bookIdx = i;
           _chapter = 1;
+          _selected.clear();
           _openChapterPicker(host);
         }
       }, [_books[i].name]));
@@ -176,7 +306,7 @@ function _openChapterPicker(host) {
   for (let c = 1; c <= book.chapters.length; c++) {
     grid.appendChild(el('button', {
       class: 'chap-grid__item' + (c === _chapter ? ' chap-grid__item--active' : ''),
-      onclick: () => { closeSheet(overlay); _chapter = c; render(host); }
+      onclick: () => { closeSheet(overlay); _chapter = c; _selected.clear(); render(host); }
     }, [String(c)]));
   }
   overlay.appendChild(el('div', { class: 'sheet' }, [
@@ -278,6 +408,7 @@ function _runSearch(host, results) {
         _view = 'read';
         _bookIdx = m.bookIdx;
         _chapter = m.chapter;
+        _selected.clear();
         render(host);
         const target = host.querySelector('.bible-body');
         if (target) {
