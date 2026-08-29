@@ -24,6 +24,16 @@ rules_version = '2';
 // personal song (shared == false) is readable, writable and deletable only
 // by whoever created it — not even an admin gets an override, since the
 // whole point of "not shared" is that it isn't the group's to manage.
+//
+// One gap this doesn't close: `allow list` on /songs can't check `shared`
+// (see the comment at that rule), so a raw devtools query for a group's
+// songs — not anything the app itself ever does — still gets every
+// personal song's fields back, just not access to open, edit or delete
+// one by id. Closing that fully needs the list query itself to be
+// structured so a personal song can't match it at all, which needs either
+// a one-time migration (every song predates `shared`, so a shared-only
+// query would silently drop them) or moving personal songs out of the
+// group's own groupId. Left alone for now rather than rushed.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -93,7 +103,18 @@ service cloud.firestore {
       function isShared(data) {
         return data.shared != false;
       }
-      allow read: if isSignedIn() && resource.data.groupId == myGroup()
+      // Split rather than one `allow read` covering both: Firestore proves
+      // a `list` query safe from its shape alone, before running it — it
+      // has no per-document result to check yet, only what the query's own
+      // where()s guarantee. listSongs() queries by groupId only, so a rule
+      // that also depends on `shared`/`createdBy` (fields the query doesn't
+      // constrain) can't be proven and the ENTIRE query is rejected, not
+      // just the documents that would have failed it — this is what broke
+      // every group member's song list, not just access to personal songs.
+      // `get` has an actual document in hand and isn't subject to this, so
+      // opening a song by its id still fully enforces personal ownership.
+      allow list: if isSignedIn() && resource.data.groupId == myGroup();
+      allow get: if isSignedIn() && resource.data.groupId == myGroup()
         && (isShared(resource.data) || resource.data.createdBy == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.groupId == myGroup();
       allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId')
