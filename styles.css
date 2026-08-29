@@ -621,6 +621,145 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 
+/* Biblie tab */
+/* The book name replaces the plain .topbar__title with a button — same
+   look (serif, truncates), but tappable, so the header reads exactly like
+   the other tabs' titles while opening the book picker. */
+.bible__book-btn {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bible__chapnav { flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+.bible__chapnav-btn {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.bible__chapnav-btn svg { width: 18px; height: 18px; }
+.bible__chapnum {
+  flex-shrink: 0;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bible-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 20px calc(var(--tabbar-h, 70px) + 20px);
+}
+.bible-verse {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.55;
+}
+.bible-verse__num {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: right;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.bible-verse__text { flex: 1; min-width: 0; }
+
+/* Book picker sheet */
+.book-list { display: flex; flex-direction: column; gap: 4px; }
+.book-list__group {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.book-list__group:first-child { margin-top: 0; }
+.book-list__item {
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 9px 4px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.book-list__item--active { color: var(--color-accent); font-weight: 600; }
+
+/* Chapter picker sheet */
+.sheet__title--row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.sheet__title-accent { font-family: var(--font-heading); font-weight: 600; color: var(--color-primary); }
+.chap-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.chap-grid__item {
+  padding: 10px 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.chap-grid__item--active { background: var(--color-primary); color: #fff; }
+
+/* Search, inside the tab rather than a sheet — it takes over the whole
+   panel the way Rime's search does, not a modal over the reader. */
+.bible-search {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px calc(var(--tabbar-h, 70px) + 20px);
+}
+.bible-search__count { color: var(--color-text-muted); font-size: 0.85rem; padding: 4px 0 10px; }
+.bible-search__list { display: flex; flex-direction: column; gap: 10px; }
+.bible-search__item {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.bible-search__ref { font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); }
+.bible-search__text { color: var(--color-text); line-height: 1.4; }
+.bible-search__hit {
+  background: none;
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
 /* Toast */
 .toast-root {
   position: fixed;

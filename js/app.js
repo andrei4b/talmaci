@@ -178,11 +178,9 @@ function _renderRoute(root) {
     _renderSimpleTab(content, 'Sinonime', () => {}, window.SinonimeTab.actions());
     window.SinonimeTab.render(layer);
   } else {
-    _renderSimpleTab(content, TABS.find(t => t.id === tab).label, (host) => {
-      const panel = el('div', { class: 'tab-content' });
-      panel.appendChild(_placeholderPanel(tab));
-      host.appendChild(panel);
-    });
+    // Builds its own topbar (book/chapter pickers, search) rather than
+    // going through _renderSimpleTab, which only knows a static title.
+    window.BibleTab.render(content);
   }
 
   root.appendChild(_renderTabBar(tab));
@@ -207,16 +205,6 @@ function _renderSimpleTab(content, title, fill, actions) {
     })
   ]));
   fill(content);
-}
-
-function _placeholderPanel(tabId) {
-  const copy = {
-    biblie: 'Aici vei putea vedea referințe biblice legate de text.'
-  }[tabId] || '';
-  return el('div', { class: 'empty-state' }, [
-    el('p', {}, [copy]),
-    el('p', { class: 'empty-state__hint' }, ['În curând.'])
-  ]);
 }
 
 function _renderTabBar(activeTab) {
