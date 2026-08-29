@@ -10,7 +10,7 @@
  * so glancing at the lyrics does not throw away a search.
  */
 (function () {
-const { el, toast, debounce } = window.Utils;
+const { el, toast } = window.Utils;
 
 let _rimeQuery = '';
 let _rimeSyll = 0;        // 0 = any
@@ -37,14 +37,24 @@ function _renderRimeTab(host) {
     type: 'search',
     placeholder: 'Scrie un cuvânt…',
     value: _rimeQuery,
-    oninput: debounce((e) => {
-      _rimeQuery = e.target.value;
+    enterkeyhint: 'search'
+  });
+  // A <form> rather than a keydown check — same reasoning as the Bible
+  // tab's search: it's what makes a mobile keyboard show a confirmation
+  // key at all, it's the one event that fires for both that key and a
+  // hardware Enter, and blurring afterwards is what actually closes the
+  // keyboard.
+  const form = el('form', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      _rimeQuery = input.value;
       _rimeShown = RIME_PAGE;   // new search starts from the top again
       _rimeReading = 0;         // and from the word's leading reading
       _runRimeSearch(wrap);
-    }, 250)
-  });
-  host.appendChild(el('div', { class: 'search-bar' }, [input]));
+      input.blur();
+    }
+  }, [input]);
+  host.appendChild(el('div', { class: 'search-bar' }, [form]));
   host.appendChild(wrap);
   _renderPanel(wrap);
 

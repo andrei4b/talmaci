@@ -355,7 +355,6 @@ function _renderSearch(host) {
     type: 'search',
     placeholder: 'Caută în Biblie…',
     value: _query,
-    autofocus: true,
     enterkeyhint: 'search'
   });
   // A <form> rather than a keydown check: it's what makes a mobile
@@ -395,9 +394,10 @@ function _renderSearch(host) {
   host.appendChild(results);
   _runSearch(host, results);
 
-  // Focus after mount — the attribute alone doesn't reliably focus an
-  // element that wasn't in the DOM yet when it was set.
-  input.focus();
+  // Only when there's nothing searched yet — returning to a search that
+  // already has results shouldn't yank focus (and the keyboard) away from
+  // whatever the user is doing, e.g. reading through what's already there.
+  if (!_query) input.focus();
 }
 
 function _runSearch(host, results) {
