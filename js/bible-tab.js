@@ -398,7 +398,7 @@ function _openVersePicker(host) {
         const target = host.querySelector('.bible-body');
         const rows = target ? target.querySelectorAll('.bible-verse') : [];
         const row = rows[n - 1];
-        if (row) row.scrollIntoView({ block: 'center' });
+        if (row) row.scrollIntoView({ block: 'start' });
       }
     }, [String(n)]));
   });
@@ -526,7 +526,7 @@ function _runSearch(host, results) {
         if (target) {
           const rows = target.querySelectorAll('.bible-verse');
           const row = rows[m.verse - 1];
-          if (row) row.scrollIntoView({ block: 'center' });
+          if (row) row.scrollIntoView({ block: 'start' });
         }
         // Same reasoning as the back arrow: consumes the pushed entry
         // without a second render, since _view is already 'read'.
