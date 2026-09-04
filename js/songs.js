@@ -3,6 +3,10 @@
 const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, isOriginal, isShared } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
+// A drawn plus rather than the "+" character — text glyphs sit off-center
+// in a circular button depending on the font's own metrics (see icons in
+// utils.js for the same reasoning); an SVG centers exactly regardless.
+const PLUS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 
 let _songs = [];
 let _query = '';
@@ -43,8 +47,9 @@ async function render(root) {
   root.appendChild(el('button', {
     class: 'fab',
     'aria-label': 'Adaugă o melodie',
+    html: PLUS_ICON,
     onclick: () => _openAddSong()
-  }, ['+']));
+  }));
 
   // Fire-and-forget: doesn't hold up the tab's first paint the way
   // awaiting it here would, and it only ever needs to run once.

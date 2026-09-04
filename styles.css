@@ -244,15 +244,18 @@ a { color: inherit; text-decoration: none; }
   bottom: calc(var(--tabbar-h, 70px) + 16px);
   right: max(24px, calc((100vw - 720px) / 2 + 24px));
   width: 56px; height: 56px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   border: none;
   background: var(--color-accent);
   color: #fff;
-  font-size: 1.8rem;
-  line-height: 1;
   box-shadow: var(--shadow);
   cursor: pointer;
 }
+.fab svg { width: 26px; height: 26px; }
 
 /* Sheet / modal — sized to the visual viewport (see syncViewportInsets in
    app.js), not the full layout viewport, so it shrinks above the on-screen
