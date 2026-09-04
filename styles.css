@@ -700,6 +700,10 @@ a { color: inherit; text-decoration: none; }
   touch-action: manipulation;
 }
 .bible-verse--selected { background: var(--color-panel); }
+/* The verse landed on via the verse picker or a search result — bold
+   marks the spot rather than a background, since it has to read clearly
+   even layered with .bible-verse--selected (both can apply at once). */
+.bible-verse--target .bible-verse__text { font-weight: 700; }
 
 /* The selection count replaces .topbar__title while selecting — a
    contextual action-bar label, not a page heading, so it stays in the

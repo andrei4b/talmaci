@@ -1,5 +1,5 @@
 /* bible-tab.js — the Biblie tab: read the Cornilescu translation chapter by
- * chapter, jump to a book/chapter, or search the whole text.
+ * chapter, jump to a book/chapter/verse, or search the whole text.
  *
  * Data is a single JSON file, ~4MB, so — same discipline as the rhyme
  * index — it loads on demand the first time this tab is opened, never at
@@ -44,6 +44,13 @@ let _selected = new Set();
 let _topbarSlot = null;    // the .topbar node in the DOM, swapped in place
 let _verseEls = null;      // verse number -> its row, for in-place restyling
 
+// The verse last jumped to — from the verse picker or a search result —
+// shown in bold so the spot you asked for is easy to find on the page.
+// Scoped to the chapter the same way _selected is: cleared on any
+// book/chapter change, since a bolded verse from a chapter you've left
+// wouldn't mean anything.
+let _targetVerse = null;
+
 function load() {
   if (_promise) return _promise;
   _state = 'loading';
@@ -57,7 +64,6 @@ function load() {
 const CHEVRON_LEFT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7"/></svg>`;
 const CHEVRON_RIGHT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`;
 const SEARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`;
-const HASH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L7 21M17 3l-2 18M4 8h17M3 16h17"/></svg>`;
 const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`;
 const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.7"/><circle cx="6" cy="12" r="2.7"/><circle cx="18" cy="19" r="2.7"/><path d="M8.4 10.6l7.2-4.2M8.4 13.4l7.2 4.2"/></svg>`;
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
@@ -110,7 +116,9 @@ function _renderReader(host) {
   verses.forEach((text, i) => {
     if (!text) return;
     const n = i + 1;
-    const row = el('div', { class: 'bible-verse' + (_selected.has(n) ? ' bible-verse--selected' : '') }, [
+    const row = el('div', { class: 'bible-verse'
+      + (_selected.has(n) ? ' bible-verse--selected' : '')
+      + (_targetVerse === n ? ' bible-verse--target' : '') }, [
       el('span', { class: 'bible-verse__num' }, [String(n)]),
       el('span', { class: 'bible-verse__text' }, [text])
     ]);
@@ -187,10 +195,6 @@ function _buildReaderTopbar(host) {
         onclick: () => _stepChapter(host, 1)
       })
     ]),
-    el('button', {
-      class: 'btn btn--icon', 'aria-label': 'Alege un verset', html: HASH_ICON,
-      onclick: () => _openVersePicker(host)
-    }),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Caută în Biblie', html: SEARCH_ICON,
       onclick: () => {
@@ -275,13 +279,14 @@ function _stepChapter(host, delta) {
     _chapter = next;
   }
   _selected.clear();
+  _targetVerse = null;
   render(host);
 }
 
 /* ---------- book & chapter pickers ---------- */
 
 function _openBookPicker(host) {
-  const { openSheet, closeSheet } = window.Utils;
+  const { openSheet, closeSheet, closeSheetThen } = window.Utils;
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const list = el('div', { class: 'book-list' });
 
@@ -291,11 +296,23 @@ function _openBookPicker(host) {
       list.appendChild(el('button', {
         class: 'book-list__item' + (i === _bookIdx ? ' book-list__item--active' : ''),
         onclick: () => {
-          closeSheet(overlay);
-          _bookIdx = i;
-          _chapter = 1;
-          _selected.clear();
-          _openChapterPicker(host);
+          // Waits for the close to actually finish (its own history pop)
+          // before pushing the chapter picker's — opening the next sheet
+          // immediately would race that pop and leave the history stack
+          // one entry short, so hardware back later skips a step.
+          closeSheetThen(overlay, () => {
+            _bookIdx = i;
+            _chapter = 1;
+            _selected.clear();
+            _targetVerse = null;
+            // Renders the reader underneath right away rather than
+            // waiting for the chapter (and verse) pickers to finish —
+            // backing out of either one without completing it should
+            // land on the new book's chapter 1, not a stale screen for
+            // whatever book was showing before this picker opened.
+            render(host);
+            _openChapterPicker(host);
+          });
         }
       }, [_books[i].name]));
     }
@@ -311,14 +328,24 @@ function _openBookPicker(host) {
 }
 
 function _openChapterPicker(host) {
-  const { openSheet, closeSheet } = window.Utils;
+  const { openSheet, closeSheet, closeSheetThen } = window.Utils;
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const book = _books[_bookIdx];
   const grid = el('div', { class: 'chap-grid' });
   for (let c = 1; c <= book.chapters.length; c++) {
     grid.appendChild(el('button', {
       class: 'chap-grid__item' + (c === _chapter ? ' chap-grid__item--active' : ''),
-      onclick: () => { closeSheet(overlay); _chapter = c; _selected.clear(); render(host); }
+      onclick: () => {
+        // Same reasoning as the book picker: wait for the pop before
+        // opening the verse picker, or the history stack ends up short.
+        closeSheetThen(overlay, () => {
+          _chapter = c;
+          _selected.clear();
+          _targetVerse = null;
+          render(host);
+          _openVersePicker(host);
+        });
+      }
     }, [String(c)]));
   }
   overlay.appendChild(el('div', { class: 'sheet' }, [
@@ -366,6 +393,8 @@ function _openVersePicker(host) {
       class: 'chap-grid__item' + (n === current ? ' chap-grid__item--active' : ''),
       onclick: () => {
         closeSheet(overlay);
+        _targetVerse = n;
+        render(host);
         const target = host.querySelector('.bible-body');
         const rows = target ? target.querySelectorAll('.bible-verse') : [];
         const row = rows[n - 1];
@@ -491,6 +520,7 @@ function _runSearch(host, results) {
         _bookIdx = m.bookIdx;
         _chapter = m.chapter;
         _selected.clear();
+        _targetVerse = m.verse;
         render(host);
         const target = host.querySelector('.bible-body');
         if (target) {
