@@ -57,6 +57,7 @@ function load() {
 const CHEVRON_LEFT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7"/></svg>`;
 const CHEVRON_RIGHT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>`;
 const SEARCH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`;
+const HASH_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3L7 21M17 3l-2 18M4 8h17M3 16h17"/></svg>`;
 const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`;
 const SHARE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.7"/><circle cx="6" cy="12" r="2.7"/><circle cx="18" cy="19" r="2.7"/><path d="M8.4 10.6l7.2-4.2M8.4 13.4l7.2 4.2"/></svg>`;
 const CLOSE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
@@ -186,6 +187,10 @@ function _buildReaderTopbar(host) {
         onclick: () => _stepChapter(host, 1)
       })
     ]),
+    el('button', {
+      class: 'btn btn--icon', 'aria-label': 'Alege un verset', html: HASH_ICON,
+      onclick: () => _openVersePicker(host)
+    }),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Caută în Biblie', html: SEARCH_ICON,
       onclick: () => {
@@ -320,6 +325,58 @@ function _openChapterPicker(host) {
     el('div', { class: 'sheet__title sheet__title--row' }, [
       el('span', {}, ['Alege un capitol']),
       el('span', { class: 'sheet__title-accent' }, [book.name])
+    ]),
+    grid
+  ]));
+  openSheet(overlay);
+}
+
+// The first verse whose row hasn't scrolled above the top of .bible-body —
+// "current" in the sense of what you're actually looking at, since a
+// scrolling reader has no single active verse the way a paginated one
+// would. Marked in the grid the same way the chapter picker marks the
+// chapter you're on.
+function _currentVerseNumber(host) {
+  const bodyEl = host.querySelector('.bible-body');
+  if (!bodyEl) return null;
+  const rows = [...bodyEl.querySelectorAll('.bible-verse')];
+  if (!rows.length) return null;
+  // Each row's own negative margin (the selection-highlight trick, see
+  // .bible-verse in styles.css) pulls it a few px above where it would
+  // otherwise sit, including the very first one at scrollTop 0 — without
+  // slack here that row's top comes out just under bodyTop and gets
+  // skipped, so re-opening the picker right at the top of a chapter
+  // wrongly marks verse 2 as current instead of verse 1.
+  const bodyTop = bodyEl.getBoundingClientRect().top - 10;
+  const row = rows.find(r => r.getBoundingClientRect().top >= bodyTop) || rows[rows.length - 1];
+  return parseInt(row.querySelector('.bible-verse__num').textContent, 10);
+}
+
+function _openVersePicker(host) {
+  const { openSheet, closeSheet } = window.Utils;
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const book = _books[_bookIdx];
+  const verses = book.chapters[_chapter - 1];
+  const current = _currentVerseNumber(host);
+  const grid = el('div', { class: 'chap-grid' });
+  verses.forEach((text, i) => {
+    if (!text) return;
+    const n = i + 1;
+    grid.appendChild(el('button', {
+      class: 'chap-grid__item' + (n === current ? ' chap-grid__item--active' : ''),
+      onclick: () => {
+        closeSheet(overlay);
+        const target = host.querySelector('.bible-body');
+        const rows = target ? target.querySelectorAll('.bible-verse') : [];
+        const row = rows[n - 1];
+        if (row) row.scrollIntoView({ block: 'center' });
+      }
+    }, [String(n)]));
+  });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('div', { class: 'sheet__title sheet__title--row' }, [
+      el('span', {}, ['Alege un verset']),
+      el('span', { class: 'sheet__title-accent' }, [book.name + ' ' + _chapter])
     ]),
     grid
   ]));
