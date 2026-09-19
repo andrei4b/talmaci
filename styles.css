@@ -76,6 +76,15 @@ a { color: inherit; text-decoration: none; }
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* A cap, not the height itself — #app is deliberately sized off the
+     fixed layout viewport rather than a computed length (see its own
+     comment, re: pull-to-refresh), so this only ever bites when the
+     on-screen keyboard shrinks the visual viewport below that. When it
+     does, .shell shrinks to match instead of running behind the keyboard,
+     which is what let the keyboard cover the version switcher and
+     undo/redo while typing a translation — .tab-content's own flex:1
+     absorbs the difference and keeps scrolling normally otherwise. */
+  max-height: var(--vvh, 100vh);
 }
 
 /* Topbar */
