@@ -51,6 +51,14 @@ let _verseEls = null;      // verse number -> its row, for in-place restyling
 // wouldn't mean anything.
 let _targetVerse = null;
 
+// Same idea as _searchScrollTop, for the reader: switching tabs away and
+// back rebuilds .bible-body from scratch, which would otherwise reset
+// scroll to the top every time. Saved on every scroll and restored after
+// each rebuild; a genuine book/chapter change is the one case that should
+// start at the top, so those reset it explicitly (same spots that already
+// clear _selected/_targetVerse for the same reason).
+let _readScrollTop = 0;
+
 function load() {
   if (_promise) return _promise;
   _state = 'loading';
@@ -129,7 +137,13 @@ function _renderReader(host) {
     _verseEls.set(n, row);
     body.appendChild(row);
   });
+  body.addEventListener('scroll', () => { _readScrollTop = body.scrollTop; });
   host.appendChild(body);
+  // A jump-to-verse call (verse picker, search result) scrolls explicitly
+  // right after render() returns, which overrides this — so restoring here
+  // only ever matters for a plain re-render (a tab switch back to Biblie),
+  // which is exactly the case it's for.
+  body.scrollTop = _readScrollTop;
 }
 
 /* A tap toggles selection once selecting has started; a long press starts
@@ -163,6 +177,19 @@ function _attachPress(elx, onTap, onLongPress) {
   });
   elx.addEventListener('pointercancel', () => { if (timer) clearTimeout(timer); timer = null; });
   elx.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+// Scrolling the target verse itself to the top leaves nothing above it,
+// which reads as "the start of the chapter" rather than a specific spot
+// someone was pointed to. Anchoring on the verse before it instead — where
+// there is one — puts the target second on screen, with one verse of
+// context leading into it.
+function _scrollVerseIntoView(host, n) {
+  const bodyEl = host.querySelector('.bible-body');
+  if (!bodyEl) return;
+  const rows = bodyEl.querySelectorAll('.bible-verse');
+  const anchor = rows[n - 2] || rows[n - 1];
+  if (anchor) anchor.scrollIntoView({ block: 'start' });
 }
 
 function _toggleVerse(host, n) {
@@ -218,11 +245,13 @@ function _buildSelectionTopbar(host) {
       onclick: async () => {
         const ok = await copyToClipboard(_selectionText());
         toast(ok ? 'Copiat.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
+        _selected.clear();
+        _refreshSelectionUI(host);
       }
     }),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Distribuie', html: SHARE_ICON,
-      onclick: () => _shareSelection()
+      onclick: () => _shareSelection(host)
     }),
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Anulează selecția', html: CLOSE_ICON,
@@ -251,17 +280,29 @@ function _selectionText() {
   const nums = [..._selected].sort((a, b) => a - b);
   const body = nums.map(n => n + ' ' + verses[n - 1]).join('\n');
   const ref = book.name + ' ' + _chapter + ':' + _rangeLabel(nums);
-  return body + '\n\n' + ref + ' (Cornilescu)';
+  return ref + ' (VDC)\n\n' + body;
 }
 
-async function _shareSelection() {
+async function _shareSelection(host) {
   const text = _selectionText();
   if (navigator.share) {
-    try { await navigator.share({ text }); return; }
-    catch (e) { if (e.name === 'AbortError') return; }
+    try {
+      await navigator.share({ text });
+      _selected.clear();
+      _refreshSelectionUI(host);
+      return;
+    } catch (e) {
+      // Cancelling the system share sheet isn't "pressing share" in the
+      // sense that should clear the selection — nothing was actually
+      // shared, and reselecting the same passage to try again would be
+      // annoying.
+      if (e.name === 'AbortError') return;
+    }
   }
   const ok = await copyToClipboard(text);
   toast(ok ? 'Distribuirea nu e disponibilă aici — am copiat textul.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
+  _selected.clear();
+  _refreshSelectionUI(host);
 }
 
 function _stepChapter(host, delta) {
@@ -280,6 +321,7 @@ function _stepChapter(host, delta) {
   }
   _selected.clear();
   _targetVerse = null;
+  _readScrollTop = 0;
   render(host);
 }
 
@@ -305,6 +347,7 @@ function _openBookPicker(host) {
             _chapter = 1;
             _selected.clear();
             _targetVerse = null;
+            _readScrollTop = 0;
             // Renders the reader underneath right away rather than
             // waiting for the chapter (and verse) pickers to finish —
             // backing out of either one without completing it should
@@ -342,6 +385,7 @@ function _openChapterPicker(host) {
           _chapter = c;
           _selected.clear();
           _targetVerse = null;
+          _readScrollTop = 0;
           render(host);
           _openVersePicker(host);
         });
@@ -395,10 +439,7 @@ function _openVersePicker(host) {
         closeSheet(overlay);
         _targetVerse = n;
         render(host);
-        const target = host.querySelector('.bible-body');
-        const rows = target ? target.querySelectorAll('.bible-verse') : [];
-        const row = rows[n - 1];
-        if (row) row.scrollIntoView({ block: 'start' });
+        _scrollVerseIntoView(host, n);
       }
     }, [String(n)]));
   });
@@ -522,12 +563,7 @@ function _runSearch(host, results) {
         _selected.clear();
         _targetVerse = m.verse;
         render(host);
-        const target = host.querySelector('.bible-body');
-        if (target) {
-          const rows = target.querySelectorAll('.bible-verse');
-          const row = rows[m.verse - 1];
-          if (row) row.scrollIntoView({ block: 'start' });
-        }
+        _scrollVerseIntoView(host, m.verse);
         // Same reasoning as the back arrow: consumes the pushed entry
         // without a second render, since _view is already 'read'.
         history.back();
