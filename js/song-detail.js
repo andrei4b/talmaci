@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, icons, isOriginal } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, isOriginal } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -387,7 +387,11 @@ function _openVersionList(content) {
         'aria-label': 'Redenumește versiunea',
         disabled: !editable,
         html: ROW_ICONS.edit,
-        onclick: () => { closeSheet(overlay); _openRenameVersion(content, v); }
+        // Waits for the close to actually finish (its own history pop)
+        // before opening the next sheet — doing it right away would race
+        // that pop and leave the history stack corrupted, which is what
+        // made saving a rename kick all the way back out to the song list.
+        onclick: () => closeSheetThen(overlay, () => _openRenameVersion(content, v))
       }),
       el('button', {
         class: 'version-row__icon version-row__icon--danger',
@@ -396,8 +400,7 @@ function _openVersionList(content) {
         html: ROW_ICONS.delete,
         onclick: () => {
           if (!editable || _versions.length < 2) return;
-          closeSheet(overlay);
-          _confirmDeleteVersion(content, v);
+          closeSheetThen(overlay, () => _confirmDeleteVersion(content, v));
         }
       })
     ]);
@@ -408,14 +411,14 @@ function _openVersionList(content) {
     el('div', { class: 'version-list' }, rows),
     el('button', {
       class: 'btn btn--wide',
-      onclick: () => { closeSheet(overlay); _openAddVersion(content); }
+      onclick: () => closeSheetThen(overlay, () => _openAddVersion(content))
     }, ['+ Adaugă versiune'])
   ]));
   openSheet(overlay);
 }
 
 function _confirmDeleteVersion(content, version) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) { closeSheet(overlay); _openVersionList(content); } } });
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheetThen(overlay, () => _openVersionList(content)); } });
 
   const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Ștergi versiunea?']),
@@ -423,7 +426,7 @@ function _confirmDeleteVersion(content, version) {
       `Sigur vrei să ștergi versiunea „${version.title || 'Fără titlu'}”? Textul ei se pierde definitiv.`
     ]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openVersionList(content); } }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheetThen(overlay, () => _openVersionList(content)) }, ['Anulează']),
       el('button', {
         class: 'btn btn--danger-solid',
         onclick: async () => {
@@ -434,9 +437,10 @@ function _confirmDeleteVersion(content, version) {
               _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
               _rememberVersion(_song.id, _activeVersionId);
             }
-            closeSheet(overlay);
-            _refreshTextTab(content);
-            _openVersionList(content);
+            closeSheetThen(overlay, () => {
+              _refreshTextTab(content);
+              _openVersionList(content);
+            });
           } catch (err) {
             toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
           }
@@ -495,7 +499,7 @@ function _openRenameVersion(content, version) {
     el('h2', { class: 'sheet__title' }, ['Redenumește versiunea']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openVersionList(content); } }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheetThen(overlay, () => _openVersionList(content)) }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
@@ -503,9 +507,10 @@ function _openRenameVersion(content, version) {
           try {
             await window.Db.updateVersion(_song.id, version.id, { title });
             version.title = title;
-            closeSheet(overlay);
-            _refreshTextTab(content);
-            _openVersionList(content);
+            closeSheetThen(overlay, () => {
+              _refreshTextTab(content);
+              _openVersionList(content);
+            });
           } catch (err) {
             toast('Nu am putut redenumi versiunea: ' + err.message, { kind: 'error' });
           }
@@ -539,7 +544,7 @@ function _openSongMenu(root) {
     el('button', {
       class: 'btn btn--wide',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; closeSheet(overlay); _openRenameSong(root); }
+      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openRenameSong(root)); }
     }, ['Redenumește melodia']),
     // Both of these are about a source text, which a composition does not
     // have. Left in place they would only ever fail — "Adaugă mai întâi
@@ -548,7 +553,7 @@ function _openSongMenu(root) {
     original ? null : el('button', {
       class: 'btn btn--wide',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; closeSheet(overlay); _openEditOriginal(root); }
+      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openEditOriginal(root)); }
     }, ['Editează textul original']),
     original ? null : el('button', {
       class: 'btn btn--wide',
@@ -565,7 +570,7 @@ function _openSongMenu(root) {
     el('button', {
       class: 'btn btn--wide btn--danger',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; closeSheet(overlay); _confirmDeleteSong(); }
+      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _confirmDeleteSong()); }
     }, ['Șterge melodia'])
   ].filter(Boolean)));
   openSheet(overlay);
@@ -618,8 +623,7 @@ function _confirmDeleteSong() {
         onclick: async () => {
           try {
             await window.Db.deleteSong(_song.id);
-            closeSheet(overlay);
-            location.hash = '#/';
+            closeSheetThen(overlay, () => { location.hash = '#/'; });
           } catch (err) {
             toast('Nu am putut șterge melodia: ' + err.message, { kind: 'error' });
           }
@@ -670,9 +674,10 @@ function _openEditOriginal(root) {
           try {
             await window.Db.updateSong(_song.id, { originalText: textInput.value });
             _song.originalText = textInput.value;
-            closeSheet(overlay);
-            _renderShell(root);
-            if (_song.originalText.trim()) _offerMotAMot(root);
+            closeSheetThen(overlay, () => {
+              _renderShell(root);
+              if (_song.originalText.trim()) _offerMotAMot(root);
+            });
           } catch (err) {
             toast('Nu am putut salva textul original: ' + err.message, { kind: 'error' });
           }
