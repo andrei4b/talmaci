@@ -11,8 +11,18 @@ const { $, el, toast, copyToClipboard, openSheet, closeSheet, icons } = window.U
 function syncViewportInsets() {
   const vv = window.visualViewport;
   const root = document.documentElement.style;
-  root.setProperty('--vvh', (vv ? vv.height : window.innerHeight) + 'px');
+  const vvh = vv ? vv.height : window.innerHeight;
+  root.setProperty('--vvh', vvh + 'px');
   root.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
+  // Roughly the keyboard's own height (0 when it's closed). .shell caps
+  // itself to --vvh so it stops running behind the keyboard, but anything
+  // inside it that pads its bottom edge to clear the fixed tab bar (which
+  // is itself now sitting behind the keyboard, not at the bottom of the
+  // shrunk visible area) would otherwise leave that same gap of dead space
+  // above the keyboard instead of using it. window.innerHeight rather than
+  // a vh unit for the "full" side of this subtraction, for the same
+  // reliability reason #app itself avoids vh — see its own comment.
+  root.setProperty('--keyboard-inset', Math.max(0, window.innerHeight - vvh) + 'px');
 }
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncViewportInsets);
