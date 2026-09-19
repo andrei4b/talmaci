@@ -55,7 +55,25 @@ let _redoStack = [];
 let _lastText = '';
 let _checkpointPending = false;
 
+// Scroll position of the original-text panel and the translation box.
+// _translationScrollTop resets inside _syncUndoState, right alongside the
+// undo history, since both are scoped to "which version" the same way;
+// _originalScrollTop is scoped to the song instead (the original doesn't
+// change between versions of the same song) and is reset below, only when
+// render() is actually loading a different song.
+let _originalScrollTop = 0;
+let _translationScrollTop = 0;
+
 async function render(root, songId) {
+  if (_song && _song.id === songId) {
+    // A tab switch back, or a "back" from Rime/Sinonime/Biblie — not a
+    // real navigation. Redraw from what's already loaded instead of
+    // hitting Firestore again; "Reîmprospătează" in the kebab menu is
+    // there for when a fresh copy is actually wanted.
+    _renderShell(root);
+    return;
+  }
+  _originalScrollTop = 0;
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
@@ -157,6 +175,7 @@ function _syncUndoState(active) {
   _redoStack = [];
   _lastText = active ? (active.text || '') : '';
   _checkpointPending = false;
+  _translationScrollTop = 0;
 }
 
 /* Where an undo or redo actually changed the text.
@@ -294,6 +313,7 @@ function _renderTextTab(content) {
     }
   });
   translation.value = active ? (active.text || '') : '';
+  translation.addEventListener('scroll', () => { _translationScrollTop = translation.scrollTop; });
 
   undoBtn.onclick = () => {
     if (!_undoStack.length) return;
@@ -322,10 +342,11 @@ function _renderTextTab(content) {
   // stylesheet change is needed for that: .text-tab__col is flex:1, so a
   // lone column fills the row at either breakpoint.
   const cols = [];
+  let originalEl = null;
   if (!isOriginal(_song)) {
-    cols.push(el('div', { class: 'text-tab__col' }, [
-      el('div', { class: 'text-tab__original' }, [_song.originalText || ''])
-    ]));
+    originalEl = el('div', { class: 'text-tab__original' }, [_song.originalText || '']);
+    originalEl.addEventListener('scroll', () => { _originalScrollTop = originalEl.scrollTop; });
+    cols.push(el('div', { class: 'text-tab__col' }, [originalEl]));
   }
   cols.push(el('div', { class: 'text-tab__col' }, [translation]));
   const textTab = el('div', { class: 'text-tab' }, cols);
@@ -334,25 +355,25 @@ function _renderTextTab(content) {
     textTab,
     switcher
   ]));
+
+  // Restored after mounting rather than left at the browser's default (0)
+  // — this runs on every render, including a plain tab-switch-back where
+  // nothing about the song actually changed, which is exactly when
+  // jumping back to the top would be most jarring. Reading offsetHeight
+  // first forces the layout that scrollTop's setter otherwise needs and
+  // may not have yet, right after building fresh DOM — without it the
+  // assignment can silently no-op.
+  void translation.offsetHeight;
+  translation.scrollTop = _translationScrollTop;
+  if (originalEl) {
+    void originalEl.offsetHeight;
+    originalEl.scrollTop = _originalScrollTop;
+  }
 }
 
 function _refreshTextTab(content) {
-  // The original text doesn't change when switching versions — carry its
-  // scroll position across the rebuild instead of resetting to the top.
-  const prevOriginal = content.querySelector('.text-tab__original');
-  const originalScrollTop = prevOriginal ? prevOriginal.scrollTop : 0;
   content.innerHTML = '';
   _renderTextTab(content);
-  const newOriginal = content.querySelector('.text-tab__original');
-  if (newOriginal) {
-    // Setting scrollTop right after building fresh DOM can silently no-op
-    // if the browser hasn't computed the box's scrollable height yet —
-    // reading a layout property first forces that computation to happen
-    // before we set it, without waiting an extra frame (which would show
-    // a visible flash back to the top first).
-    void newOriginal.offsetHeight;
-    newOriginal.scrollTop = originalScrollTop;
-  }
 }
 
 async function _saveVersionText(text) {
@@ -593,6 +614,7 @@ function _openRenameSong(root) {
           try {
             await window.Db.updateSong(_song.id, { title });
             _song.title = title;
+            window.Songs.noteUpdated(_song.id, { title });
             closeSheet(overlay);
             _renderShell(root);
           } catch (err) {
@@ -623,6 +645,7 @@ function _confirmDeleteSong() {
         onclick: async () => {
           try {
             await window.Db.deleteSong(_song.id);
+            window.Songs.noteDeleted(_song.id);
             closeSheetThen(overlay, () => { location.hash = '#/'; });
           } catch (err) {
             toast('Nu am putut șterge melodia: ' + err.message, { kind: 'error' });
@@ -647,6 +670,7 @@ async function _refreshSong(root) {
       return;
     }
     _song = refreshed;
+    window.Songs.noteUpdated(_song.id, refreshed);
     _versions = await window.Db.listVersions(_song.id);
     if (!_versions.find(v => v.id === _activeVersionId)) {
       _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
@@ -674,6 +698,7 @@ function _openEditOriginal(root) {
           try {
             await window.Db.updateSong(_song.id, { originalText: textInput.value });
             _song.originalText = textInput.value;
+            window.Songs.noteUpdated(_song.id, { originalText: textInput.value });
             closeSheetThen(overlay, () => {
               _renderShell(root);
               if (_song.originalText.trim()) _offerMotAMot(root);

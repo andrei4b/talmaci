@@ -9,6 +9,14 @@ const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentC
 const PLUS_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
 
 let _songs = [];
+// Fetched once and kept — a tab switch or a "back" from a song re-renders
+// this list without hitting Firestore again, matching how Rime/Biblie
+// already only load their own data once. Mutations the user makes
+// elsewhere (song-detail.js) update _songs directly through noteCreated/
+// noteUpdated/noteDeleted below, rather than this ever needing to refetch
+// to stay correct.
+let _loaded = false;
+let _listScrollTop = 0;
 let _query = '';
 // '' = everything, otherwise 'translation' or 'original'. Module state like
 // _query, deliberately not localStorage: a filter that quietly persists
@@ -32,6 +40,7 @@ async function render(root) {
   ]));
 
   _listWrap = el('div', { class: 'song-list-wrap' });
+  _listWrap.addEventListener('scroll', () => { _listScrollTop = _listWrap.scrollTop; });
   root.appendChild(el('div', { class: 'search-bar' }, [
     el('input', {
       type: 'search',
@@ -54,7 +63,16 @@ async function render(root) {
   // Fire-and-forget: doesn't hold up the tab's first paint the way
   // awaiting it here would, and it only ever needs to run once.
   if (!_groupName) _loadGroupName();
-  await _loadSongs();
+
+  if (_loaded) {
+    // A tab switch or a "back" from a song, not a first visit — redraw
+    // from the cache instead of hitting Firestore again, and land back
+    // where the list was scrolled to instead of resetting to the top.
+    _renderList(_listWrap);
+    _listWrap.scrollTop = _listScrollTop;
+  } else {
+    await _loadSongs();
+  }
 }
 
 function _renderScopeButton() {
@@ -122,15 +140,21 @@ async function _loadSongs() {
   ]));
   try {
     _songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
+    _loaded = true;
   } catch (err) {
     toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
     _songs = [];
+    // Left false on failure — a later tab switch retries the fetch instead
+    // of settling permanently on an empty list until someone thinks to
+    // use "Reîmprospătează".
   }
   _renderList(_listWrap);
 }
 
-// Re-fetches from Firestore — there are no live listeners, so this is how
-// you pick up a song someone else in the group just added or edited.
+// Re-fetches from Firestore — there are no live listeners for another
+// group member's changes, so this (and the account menu's
+// "Reîmprospătează") is the only way to pick those up now that a plain
+// tab switch no longer does.
 async function refresh() {
   await _loadSongs();
   toast('Actualizat.');
@@ -183,6 +207,19 @@ function _renderList(listWrap) {
     ]));
   });
   listWrap.appendChild(ul);
+}
+
+// Called from song-detail.js after it changes a song directly, so the
+// cached list here stays correct without needing a refetch — the whole
+// point of caching is that "back to the list" no longer hits Firestore,
+// so it has to learn about edits some other way.
+function noteUpdated(songId, patch) {
+  const song = _songs.find(s => s.id === songId);
+  if (song) Object.assign(song, patch);
+}
+
+function noteDeleted(songId) {
+  _songs = _songs.filter(s => s.id !== songId);
 }
 
 function _openAddSong() {
@@ -247,14 +284,15 @@ function _openAddSong() {
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
           const originalText = kind === 'original' ? '' : textInput.value;
           try {
-            const id = await window.Db.addSong({
-              title,
-              kind,
-              originalText,
-              shared: visibility !== 'personal',
-              groupId: window.Auth.currentGroupId(),
-              createdBy: window.Auth.currentUser().uid
-            });
+            const now = Date.now();
+            const shared = visibility !== 'personal';
+            const groupId = window.Auth.currentGroupId();
+            const createdBy = window.Auth.currentUser().uid;
+            const id = await window.Db.addSong({ title, kind, originalText, shared, groupId, createdBy });
+            // The cache won't otherwise learn about this until a manual
+            // refresh — there's no fetch to pick it up on the way back
+            // from the song this opens next.
+            _songs.push({ id, title, kind, originalText, shared, groupId, createdBy, createdAt: now, updatedAt: now });
             // Nothing to translate from in a composition, so it goes
             // straight to the editor instead of being asked about Mot-a-mot.
             if (kind !== 'original' && originalText.trim()) {
@@ -302,6 +340,6 @@ function _offerMotAMot(songId, originalText) {
   openSheet(overlay);
 }
 
-window.Songs = { render, refresh };
+window.Songs = { render, refresh, noteUpdated, noteDeleted };
 
 })();
