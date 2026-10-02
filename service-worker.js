@@ -10,8 +10,20 @@
  * install — the browser only re-checks this script for updates when its
  * own bytes change, so editing styles.css/app.js/etc. alone never
  * refreshes what's cached. Network-first fixes that: online users always
- * get the latest deploy, offline users still get the last-seen version. */
-const CACHE_NAME = 'talmaci-shell-v51';
+ * get the latest deploy, offline users still get the last-seen version.
+ *
+ * The network attempt is raced against a timeout (see NETWORK_TIMEOUT_MS
+ * below) rather than awaited outright. A phone waking from a long sleep
+ * often has a connection that stalls instead of failing outright — Wi-Fi or
+ * cellular still reconnecting — and a stalled fetch() may not reject for a
+ * long time. Without the race, every shell file (the HTML/JS needed just to
+ * start rendering) would hang right along with it, leaving the page blank
+ * until the connection either recovers or times out on its own — which is
+ * exactly the "white screen after being idle a while" symptom this fixes.
+ * Force-quitting the app only "fixed" it before by giving the network a
+ * fresh attempt once connectivity was actually back. */
+const CACHE_NAME = 'talmaci-shell-v52';
+const NETWORK_TIMEOUT_MS = 4000;
 const SHELL_FILES = [
   './',
   './index.html',
@@ -59,17 +71,25 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || _isBypassed(req.url)) return;
 
+  // cache: 'no-store' bypasses the browser's own HTTP cache, not just this
+  // service worker's cache — a plain fetch() can still be served from HTTP
+  // cache under the hood depending on GitHub Pages' response headers,
+  // silently defeating "network-first" without this.
+  //
+  // Caching the response is chained off the network fetch itself, not off
+  // whichever side of the race below wins — so a slow response that loses
+  // the race still updates the cache once it finally arrives, instead of
+  // being thrown away.
+  const networkFetch = fetch(req, { cache: 'no-store' }).then(res => {
+    if (res.ok && res.type === 'basic') {
+      caches.open(CACHE_NAME).then(cache => cache.put(req, res.clone()));
+    }
+    return res;
+  }).catch(() => null);
+
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), NETWORK_TIMEOUT_MS));
+
   event.respondWith(
-    // cache: 'no-store' bypasses the browser's own HTTP cache, not just
-    // this service worker's cache — a plain fetch() can still be served
-    // from HTTP cache under the hood depending on GitHub Pages' response
-    // headers, silently defeating "network-first" without this.
-    fetch(req, { cache: 'no-store' }).then(res => {
-      if (res.ok && res.type === 'basic') {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
-      }
-      return res;
-    }).catch(() => caches.match(req))
+    Promise.race([networkFetch, timeout]).then(res => res || caches.match(req))
   );
 });
