@@ -22,7 +22,7 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v52';
+const CACHE_NAME = 'talmaci-shell-v53';
 const NETWORK_TIMEOUT_MS = 4000;
 const SHELL_FILES = [
   './',
