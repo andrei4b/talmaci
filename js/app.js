@@ -1,6 +1,6 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
-const { $, el, toast, copyToClipboard, openSheet, closeSheet, icons } = window.Utils;
+const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, icons } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
 // accessory bar (the key/card/location icon row) ----
@@ -324,14 +324,14 @@ function openAccountMenu() {
   const items = [
     el('div', { class: 'sheet__user' }, [user.displayName || user.email]),
     el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       onclick: () => { closeSheet(overlay); window.Songs.refresh(); }
-    }, ['Reîmprospătează'])
+    }, menuLabel(icons.refresh, 'Reîmprospătează'))
   ];
 
   if (window.Auth.isAdmin()) {
     items.push(el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       onclick: async () => {
         try {
           const code = await window.Auth.createInvite();
@@ -341,18 +341,18 @@ function openAccountMenu() {
           toast(err.message, { kind: 'error' });
         }
       }
-    }, ['Generează cod de invitație']));
+    }, menuLabel(icons.userPlus, 'Generează cod de invitație')));
 
     items.push(el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       onclick: () => { closeSheet(overlay); _openManageMembers(); }
-    }, ['Gestionează membrii']));
+    }, menuLabel(icons.users, 'Gestionează membrii')));
   }
 
   items.push(el('button', {
-    class: 'btn btn--wide',
+    class: 'btn btn--wide btn--menu',
     onclick: async () => { await window.Auth.signOut(); closeSheet(overlay); }
-  }, ['Deconectează-te']));
+  }, menuLabel(icons.logout, 'Deconectează-te')));
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
   openSheet(overlay);

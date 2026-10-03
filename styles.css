@@ -149,6 +149,16 @@ a { color: inherit; text-decoration: none; }
   color: #fff;
 }
 .btn--wide { width: 100%; margin-top: 10px; }
+.btn--menu {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  text-align: left;
+}
+.menu-ico { display: flex; flex-shrink: 0; color: var(--color-text-muted); }
+.menu-ico svg { width: 20px; height: 20px; }
+.btn--danger .menu-ico { color: inherit; }
 .btn--text { background: transparent; border-color: transparent; color: var(--color-text-muted); }
 .btn--danger { color: var(--color-danger); }
 .btn--danger-solid { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }

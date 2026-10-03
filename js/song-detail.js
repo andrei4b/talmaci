@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, isOriginal } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, isOriginal } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -570,25 +570,25 @@ function _openSongMenu(root) {
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       onclick: () => { closeSheet(overlay); _refreshSong(root); }
-    }, ['Reîmprospătează']),
+    }, menuLabel(icons.refresh, 'Reîmprospătează')),
     el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openRenameSong(root)); }
-    }, ['Redenumește melodia']),
+    }, menuLabel(icons.edit, 'Redenumește melodia')),
     // Both of these are about a source text, which a composition does not
     // have. Left in place they would only ever fail — "Adaugă mai întâi
     // textul original" is a confusing thing to be told about your own
     // lyrics — so they are absent rather than disabled.
     original ? null : el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openEditOriginal(root)); }
-    }, ['Editează textul original']),
+    }, menuLabel(icons.text, 'Editează textul original')),
     original ? null : el('button', {
-      class: 'btn btn--wide',
+      class: 'btn btn--wide btn--menu',
       onclick: async () => {
         closeSheet(overlay);
         if (!_song.originalText || !_song.originalText.trim()) {
@@ -598,12 +598,12 @@ function _openSongMenu(root) {
         toast('Se generează traducerea…');
         await _generateMotAMot(root);
       }
-    }, ['Generează traducere Mot-a-mot']),
+    }, menuLabel(icons.sparkles, 'Generează traducere Mot-a-mot')),
     el('button', {
-      class: 'btn btn--wide btn--danger',
+      class: 'btn btn--wide btn--menu btn--danger',
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _confirmDeleteSong()); }
-    }, ['Șterge melodia'])
+    }, menuLabel(icons.trash, 'Șterge melodia'))
   ].filter(Boolean)));
   openSheet(overlay);
 }
