@@ -63,6 +63,16 @@ let _checkpointPending = false;
 // render() is actually loading a different song.
 let _originalScrollTop = 0;
 let _translationScrollTop = 0;
+// Scroll positions carried over a stale-background reload (see app.js);
+// consumed by the first render of that song, then dropped.
+let _resume = null;
+function _resumeFor(songId, key) {
+  return _resume && _resume.songId === songId ? (_resume[key] || 0) : 0;
+}
+function getResume() {
+  return _song ? { songId: _song.id, original: _originalScrollTop, translation: _translationScrollTop } : null;
+}
+function setResume(r) { _resume = r; }
 
 async function render(root, songId) {
   if (_song && _song.id === songId) {
@@ -73,7 +83,7 @@ async function render(root, songId) {
     _renderShell(root);
     return;
   }
-  _originalScrollTop = 0;
+  _originalScrollTop = _resumeFor(songId, 'original');
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
@@ -122,6 +132,7 @@ async function render(root, songId) {
   }
 
   _renderShell(root);
+  _resume = null;
 }
 
 function _renderShell(root) {
@@ -175,7 +186,7 @@ function _syncUndoState(active) {
   _redoStack = [];
   _lastText = active ? (active.text || '') : '';
   _checkpointPending = false;
-  _translationScrollTop = 0;
+  _translationScrollTop = _song ? _resumeFor(_song.id, 'translation') : 0;
 }
 
 /* Where an undo or redo actually changed the text.
@@ -752,6 +763,6 @@ async function _generateMotAMot(root) {
   }
 }
 
-window.SongDetail = { render };
+window.SongDetail = { render, getResume, setResume };
 
 })();

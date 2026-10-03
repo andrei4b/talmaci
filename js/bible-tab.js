@@ -617,6 +617,18 @@ function preload() {
   load().catch(() => { _promise = null; _state = 'idle'; _error = null; });
 }
 
-window.BibleTab = { render, preload };
+// Carried over a stale-background reload (see app.js). The reader's scroll
+// is restored by the normal render path once the text has loaded.
+function getResume() {
+  return { bookIdx: _bookIdx, chapter: _chapter, readScrollTop: _readScrollTop };
+}
+function setResume(r) {
+  if (!r) return;
+  _bookIdx = r.bookIdx | 0;
+  _chapter = r.chapter | 0 || 1;
+  _readScrollTop = r.readScrollTop || 0;
+}
+
+window.BibleTab = { render, preload, getResume, setResume };
 
 })();
