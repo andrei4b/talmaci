@@ -1,6 +1,6 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, isOriginal, isShared } = window.Utils;
+const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isOriginal, isShared } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 // A drawn plus rather than the "+" character — text glyphs sit off-center
@@ -231,6 +231,7 @@ function _openAddSong() {
   // focusing the title raises the keyboard over the choice on a phone.
   const titleInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Titlul melodiei' });
   const textInput = el('textarea', { class: 'field__input field__input--textarea', placeholder: 'Textul original (engleză)', rows: 6 });
+  const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off' });
 
   // A composition has no source to translate from, so the field for it is
   // hidden rather than left blank — an empty box labelled "Text original"
@@ -278,6 +279,7 @@ function _openAddSong() {
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Vizibilitate']), visRow]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     originalField,
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo (opțional)']), demoInput]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
@@ -285,17 +287,19 @@ function _openAddSong() {
         onclick: async () => {
           const title = titleInput.value.trim();
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
+          const demoUrl = normalizeUrl(demoInput.value);
+          if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
           const originalText = kind === 'original' ? '' : textInput.value;
           try {
             const now = Date.now();
             const shared = visibility !== 'personal';
             const groupId = window.Auth.currentGroupId();
             const createdBy = window.Auth.currentUser().uid;
-            const id = await window.Db.addSong({ title, kind, originalText, shared, groupId, createdBy });
+            const id = await window.Db.addSong({ title, kind, originalText, shared, demoUrl, groupId, createdBy });
             // The cache won't otherwise learn about this until a manual
             // refresh — there's no fetch to pick it up on the way back
             // from the song this opens next.
-            _songs.push({ id, title, kind, originalText, shared, groupId, createdBy, createdAt: now, updatedAt: now });
+            _songs.push({ id, title, kind, originalText, shared, demoUrl, groupId, createdBy, createdAt: now, updatedAt: now });
             // Nothing to translate from in a composition, so it goes
             // straight to the editor instead of being asked about Mot-a-mot.
             if (kind !== 'original' && originalText.trim()) {

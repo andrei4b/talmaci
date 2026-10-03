@@ -30,6 +30,10 @@
  *                               // it had to be backfilled with shared:
  *                               // true by a one-time migration rather
  *                               // than left to a client-side default.
+ *     demoUrl: string,          // optional link to a recording of the song;
+ *                               // '' or absent when there is none. Always
+ *                               // saved through Utils.normalizeUrl, so it
+ *                               // is an http(s) URL when present.
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -86,7 +90,7 @@ async function getGroup(groupId) {
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
-async function addSong({ title, originalText, kind, shared, groupId, createdBy }) {
+async function addSong({ title, originalText, kind, shared, demoUrl, groupId, createdBy }) {
   const now = Date.now();
   const ref = await fs().collection('songs').add({
     title: title || '',
@@ -95,6 +99,7 @@ async function addSong({ title, originalText, kind, shared, groupId, createdBy }
     translatedText: '',
     groupId,
     shared: shared !== false,
+    demoUrl: demoUrl || '',
     createdBy,
     createdAt: now,
     updatedAt: now

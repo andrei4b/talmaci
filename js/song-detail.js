@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, isOriginal } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -575,18 +575,26 @@ function _openSongMenu(root) {
     }, menuLabel(icons.refresh, 'Reîmprospătează')),
     el('button', {
       class: 'btn btn--wide btn--menu',
-      disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openRenameSong(root)); }
-    }, menuLabel(icons.edit, 'Redenumește melodia')),
-    // Both of these are about a source text, which a composition does not
-    // have. Left in place they would only ever fail — "Adaugă mai întâi
-    // textul original" is a confusing thing to be told about your own
-    // lyrics — so they are absent rather than disabled.
-    original ? null : el('button', {
+      onclick: () => {
+        if (!_song.demoUrl) {
+          toast('Nu e salvat niciun link. Adaugă-l din „Editează melodia”.');
+          return;
+        }
+        // Opened synchronously from the tap: a popup opened after the
+        // sheet's async history unwind would no longer count as a user
+        // gesture and could be blocked.
+        window.open(_song.demoUrl, '_blank', 'noopener');
+        closeSheet(overlay);
+      }
+    }, menuLabel(icons.headphones, 'Ascultă melodia')),
+    el('button', {
       class: 'btn btn--wide btn--menu',
       disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openEditOriginal(root)); }
-    }, menuLabel(icons.text, 'Editează textul original')),
+      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openEditSong(root)); }
+    }, menuLabel(icons.edit, 'Editează melodia')),
+    // A source text is something a composition does not have, so the
+    // generate item is absent rather than disabled — "Adaugă mai întâi
+    // textul original" is a confusing thing to be told about your own lyrics.
     original ? null : el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: async () => {
@@ -606,38 +614,6 @@ function _openSongMenu(root) {
     }, menuLabel(icons.trash, 'Șterge melodia'))
   ].filter(Boolean)));
   openSheet(overlay);
-}
-
-function _openRenameSong(root) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
-  const titleInput = el('input', { class: 'field__input', type: 'text', value: _song.title || '' });
-
-  overlay.appendChild(el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Redenumește melodia']),
-    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
-    el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
-      el('button', {
-        class: 'btn btn--primary',
-        onclick: async () => {
-          const title = titleInput.value.trim();
-          if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
-          try {
-            await window.Db.updateSong(_song.id, { title });
-            _song.title = title;
-            window.Songs.noteUpdated(_song.id, { title });
-            closeSheet(overlay);
-            _renderShell(root);
-          } catch (err) {
-            toast('Nu am putut redenumi melodia: ' + err.message, { kind: 'error' });
-          }
-        }
-      }, ['Salvează'])
-    ])
-  ]));
-  openSheet(overlay);
-  titleInput.focus();
-  titleInput.select();
 }
 
 function _confirmDeleteSong() {
@@ -693,37 +669,54 @@ async function _refreshSong(root) {
   }
 }
 
-function _openEditOriginal(root) {
+function _openEditSong(root) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
-  const textInput = el('textarea', { class: 'field__input field__input--textarea', rows: 10 });
+  const original = isOriginal(_song);
+  const titleInput = el('input', { class: 'field__input', type: 'text', value: _song.title || '' });
+  const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off', value: _song.demoUrl || '' });
+  const textInput = el('textarea', { class: 'field__input field__input--textarea', rows: 8 });
   textInput.value = _song.originalText || '';
 
-  const sheet = el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Editează textul original']),
-    el('label', { class: 'field' }, [textInput]),
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Editează melodia']),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo']), demoInput]),
+    original ? null : el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Text original']), textInput]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
         onclick: async () => {
+          const title = titleInput.value.trim();
+          if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
+          const demoUrl = normalizeUrl(demoInput.value);
+          if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
+
+          const patch = {};
+          if (title !== (_song.title || '')) patch.title = title;
+          if (demoUrl !== (_song.demoUrl || '')) patch.demoUrl = demoUrl;
+          const textChanged = !original && textInput.value !== (_song.originalText || '');
+          if (textChanged) patch.originalText = textInput.value;
+          if (!Object.keys(patch).length) { closeSheet(overlay); return; }
+
           try {
-            await window.Db.updateSong(_song.id, { originalText: textInput.value });
-            _song.originalText = textInput.value;
-            window.Songs.noteUpdated(_song.id, { originalText: textInput.value });
+            await window.Db.updateSong(_song.id, patch);
+            Object.assign(_song, patch);
+            window.Songs.noteUpdated(_song.id, patch);
             closeSheetThen(overlay, () => {
               _renderShell(root);
-              if (_song.originalText.trim()) _offerMotAMot(root);
+              // Only a changed source text is worth re-offering a
+              // translation for; a new title or link isn't.
+              if (textChanged && _song.originalText.trim()) _offerMotAMot(root);
             });
           } catch (err) {
-            toast('Nu am putut salva textul original: ' + err.message, { kind: 'error' });
+            toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
           }
         }
       }, ['Salvează'])
     ])
-  ]);
-  overlay.appendChild(sheet);
+  ].filter(Boolean)));
   openSheet(overlay);
-  textInput.focus();
 }
 
 function _offerMotAMot(root) {
