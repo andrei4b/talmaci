@@ -517,6 +517,10 @@ document.addEventListener('visibilitychange', () => {
     _hiddenAt = Date.now();
   } else if (document.visibilityState === 'visible' && _hiddenAt && Date.now() - _hiddenAt > _BACKGROUND_STALE_MS) {
     saveResumeState();
+    // The reload's navigation can sit waiting on a just-woken network while
+    // the old screen stays visible. Cover it at once so the app reads as
+    // already reloading, not as frozen for a few seconds first.
+    document.body.appendChild(el('div', { class: 'reload-veil' }, [el('div', { class: 'spinner' })]));
     window.location.reload();
   }
 });
