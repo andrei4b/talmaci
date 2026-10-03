@@ -609,6 +609,14 @@ window.addEventListener('popstate', () => {
   }
 });
 
-window.BibleTab = { render };
+// Called by the app shortly after boot so the file is already parsed by the
+// time the tab is first opened. A failure here must not stick: it resets so
+// opening the tab tries again instead of showing a stale error.
+function preload() {
+  if (_state !== 'idle') return;
+  load().catch(() => { _promise = null; _state = 'idle'; _error = null; });
+}
+
+window.BibleTab = { render, preload };
 
 })();

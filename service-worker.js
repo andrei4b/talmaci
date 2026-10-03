@@ -22,8 +22,13 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v53';
+const CACHE_NAME = 'talmaci-shell-v54';
 const NETWORK_TIMEOUT_MS = 4000;
+// The Bible text is static and ~4 MB, so unlike the rest of the shell it is
+// served cache-first: no re-download on every cold start, and no waiting on
+// a slow network. A changed file ships by bumping CACHE_NAME, which makes
+// install fetch it fresh into the new cache.
+const BIBLE_URL = './data/bible-cornilescu.json';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -42,6 +47,7 @@ const SHELL_FILES = [
   './js/bible-tab.js',
   './js/song-detail.js',
   './js/app.js',
+  BIBLE_URL,
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png'
@@ -70,6 +76,14 @@ function _isBypassed(url) {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || _isBypassed(req.url)) return;
+
+  if (new URL(req.url).pathname.endsWith('/data/bible-cornilescu.json')) {
+    event.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE_NAME).then(c => c.put(req, copy)); }
+      return res;
+    })));
+    return;
+  }
 
   // cache: 'no-store' bypasses the browser's own HTTP cache, not just this
   // service worker's cache — a plain fetch() can still be served from HTTP
