@@ -30,6 +30,9 @@ let _scope = 'group';
 let _groupName = '';
 let _scopeBtnEl = null;
 let _listWrap = null;
+// Bumped by reset(). A fetch that was already in flight for the previous
+// account must not write its result into the next account's list.
+let _gen = 0;
 
 async function render(root) {
   root.innerHTML = '';
@@ -84,12 +87,16 @@ function _renderScopeButton() {
 }
 
 async function _loadGroupName() {
+  const gen = _gen;
+  let name;
   try {
     const group = await window.Db.getGroup(window.Auth.currentGroupId());
-    _groupName = (group && group.name) || 'Grup';
+    name = (group && group.name) || 'Grup';
   } catch (_) {
-    _groupName = 'Grup';
+    name = 'Grup';
   }
+  if (gen !== _gen) return;
+  _groupName = name;
   // Only worth repainting if the button is still showing the group option
   // (and still mounted at all — a tab switch in the meantime leaves
   // _scopeBtnEl pointing at a detached node, and replaceWith on that is
@@ -138,10 +145,14 @@ async function _loadSongs() {
     el('div', { class: 'spinner' }),
     'Se încarcă…'
   ]));
+  const gen = _gen;
   try {
-    _songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
+    const songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
+    if (gen !== _gen) return;
+    _songs = songs;
     _loaded = true;
   } catch (err) {
+    if (gen !== _gen) return;
     toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
     _songs = [];
     // Left false on failure — a later tab switch retries the fetch instead
@@ -344,6 +355,22 @@ function _offerMotAMot(songId, originalText) {
   openSheet(overlay);
 }
 
-window.Songs = { render, refresh, noteUpdated, noteDeleted };
+// Everything above is per-account, and the page is no longer reloaded
+// between accounts, so signing in as someone else has to start from nothing
+// instead of inheriting the previous account's list, scope and group name.
+function reset() {
+  _gen++;
+  _songs = [];
+  _loaded = false;
+  _listScrollTop = 0;
+  _query = '';
+  _kindFilter = '';
+  _scope = 'group';
+  _groupName = '';
+  _scopeBtnEl = null;
+  _listWrap = null;
+}
+
+window.Songs = { render, refresh, noteUpdated, noteDeleted, reset };
 
 })();

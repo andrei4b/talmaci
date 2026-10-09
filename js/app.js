@@ -33,6 +33,16 @@ syncViewportInsets();
 async function boot() {
   _renderBootLoading();
   await window.Auth.ready();
+  // Registered before the render listener so a new account's screen is
+  // never drawn from the previous account's cached data.
+  const firstUser = window.Auth.currentUser();
+  let lastUid = firstUser ? firstUser.uid : null;
+  window.Auth.onChange((user) => {
+    const uid = user ? user.uid : null;
+    if (uid === lastUid) return;
+    lastUid = uid;
+    _resetUserData();
+  });
   window.Auth.onChange(_renderCurrentScreen);
   window.addEventListener('hashchange', _renderCurrentScreen);
   _renderCurrentScreen();
@@ -41,6 +51,14 @@ async function boot() {
   const warm = () => window.BibleTab.preload();
   if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 5000 });
   else setTimeout(warm, 2000);
+}
+
+function _resetUserData() {
+  window.Songs.reset();
+  window.SongDetail.reset();
+  // A song URL belongs to the previous account; don't carry it into the next.
+  _textRoute = '#/';
+  if ((location.hash || '').startsWith('#/song/')) history.replaceState(null, '', '#/');
 }
 
 function _renderBootLoading() {

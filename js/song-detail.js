@@ -745,6 +745,20 @@ async function _generateMotAMot(root) {
   }
 }
 
-window.SongDetail = { render };
+// Drops the open song so the next account never sees it (see Songs.reset).
+function reset() {
+  _song = null;
+  _versions = [];
+  _activeVersionId = null;
+  _undoStateVersionId = undefined;
+  _undoStack = [];
+  _redoStack = [];
+  _lastText = '';
+  _checkpointPending = false;
+  _originalScrollTop = 0;
+  _translationScrollTop = 0;
+}
+
+window.SongDetail = { render, reset };
 
 })();
