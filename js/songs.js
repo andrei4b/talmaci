@@ -149,9 +149,6 @@ async function _loadSongs() {
     // use "Reîmprospătează".
   }
   _renderList(_listWrap);
-  // A no-op on a normal first visit (_listScrollTop is 0); after a resume
-  // reload it puts the list back where it was.
-  _listWrap.scrollTop = _listScrollTop;
 }
 
 // Re-fetches from Firestore — there are no live listeners for another
@@ -347,15 +344,6 @@ function _offerMotAMot(songId, originalText) {
   openSheet(overlay);
 }
 
-// Carried over a stale-background reload (see app.js). The scroll is applied
-// once, after the first real load of the list, then dropped.
-function getResume() { return { scope: _scope, scrollTop: _listScrollTop }; }
-function setResume(r) {
-  if (!r) return;
-  if (r.scope === 'personal' || r.scope === 'group') _scope = r.scope;
-  _listScrollTop = r.scrollTop || 0;
-}
-
-window.Songs = { render, refresh, noteUpdated, noteDeleted, getResume, setResume };
+window.Songs = { render, refresh, noteUpdated, noteDeleted };
 
 })();

@@ -22,7 +22,7 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v63';
+const CACHE_NAME = 'talmaci-shell-v64';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text is static and ~4 MB, so unlike the rest of the shell it is
 // served cache-first: no re-download on every cold start, and no waiting on

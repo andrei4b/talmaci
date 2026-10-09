@@ -32,7 +32,6 @@ syncViewportInsets();
 
 async function boot() {
   _renderBootLoading();
-  restoreResumeState();
   await window.Auth.ready();
   window.Auth.onChange(_renderCurrentScreen);
   window.addEventListener('hashchange', _renderCurrentScreen);
@@ -468,62 +467,6 @@ async function _setMemberRole(btn, member, nextRole, overlay) {
     btn.disabled = false;
   }
 }
-
-// ---- Recover from a long time backgrounded ----
-// Mobile browsers can suspend a backgrounded tab's network connections
-// (including Firestore's persistent one) or freeze the page outright, and
-// resuming doesn't always recover cleanly — the known symptom is a blank
-// white screen that never progresses past it, previously fixable only by
-// fully closing and reopening the app. A full reload after a long-enough
-// gap sidesteps whatever specifically went stale, since that's exactly what
-// closing and reopening already does — cheap to do since the service
-// worker only caches the app shell, never Firestore/Auth traffic, so the
-// reload still hits the network for actual data, not a stale response.
-// The URL hash already brings the tab and the open song back after a reload;
-// what it can't carry is where things were scrolled to and the Bible's
-// position, which live in module state. Right before reloading we stash
-// those in sessionStorage (per-tab, gone when the app is closed) and boot()
-// hands them back to the modules before anything renders.
-const RESUME_KEY = 'resumeState';
-
-function saveResumeState() {
-  try {
-    sessionStorage.setItem(RESUME_KEY, JSON.stringify({
-      savedAt: Date.now(),
-      songs: window.Songs.getResume(),
-      song: window.SongDetail.getResume(),
-      bible: window.BibleTab.getResume()
-    }));
-  } catch (_) {}
-}
-
-function restoreResumeState() {
-  let state = null;
-  try {
-    state = JSON.parse(sessionStorage.getItem(RESUME_KEY) || 'null');
-    sessionStorage.removeItem(RESUME_KEY);
-  } catch (_) {}
-  // A leftover from an earlier session shouldn't hijack a normal cold start.
-  if (!state || Date.now() - state.savedAt > 2 * 60 * 1000) return;
-  window.Songs.setResume(state.songs);
-  window.SongDetail.setResume(state.song);
-  window.BibleTab.setResume(state.bible);
-}
-
-let _hiddenAt = null;
-const _BACKGROUND_STALE_MS = 10 * 60 * 1000; // 10 minutes
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    _hiddenAt = Date.now();
-  } else if (document.visibilityState === 'visible' && _hiddenAt && Date.now() - _hiddenAt > _BACKGROUND_STALE_MS) {
-    saveResumeState();
-    // The reload's navigation can sit waiting on a just-woken network while
-    // the old screen stays visible. Cover it at once so the app reads as
-    // already reloading, not as frozen for a few seconds first.
-    document.body.appendChild(el('div', { class: 'reload-veil' }, [el('div', { class: 'spinner' })]));
-    window.location.reload();
-  }
-});
 
 window.App = { boot, openAccountMenu, goUpToList };
 boot();
