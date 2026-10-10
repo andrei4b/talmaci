@@ -237,28 +237,19 @@ function _openAddSong() {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   // Not autofocused. The first thing to decide here is the type, and
   // focusing the title raises the keyboard over the choice on a phone.
+  // No field for the original text: a translation's source is written in
+  // its own panel on the Text tab, where the song opens straight after.
   const titleInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Titlul melodiei' });
-  const textInput = el('textarea', { class: 'field__input field__input--textarea', placeholder: 'Textul original (engleză)', rows: 6 });
   const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off' });
 
-  // A composition has no source to translate from, so the field for it is
-  // hidden rather than left blank — an empty box labelled "Text original"
-  // invites people to paste their own lyrics into the wrong side.
   let kind = 'translation';
-  const originalField = el('label', { class: 'field' }, [
-    el('span', { class: 'field__label' }, ['Text original']), textInput
-  ]);
   const kindRow = el('div', { class: 'kind-filter' });
   const paintKind = () => {
     kindRow.innerHTML = '';
     [['translation', 'Traducere'], ['original', 'Compoziție']].forEach(([value, label]) => {
       kindRow.appendChild(el('button', {
         class: 'seg' + (kind === value ? ' seg--active' : ''),
-        onclick: () => {
-          kind = value;
-          paintKind();
-          originalField.hidden = (kind === 'original');
-        }
+        onclick: () => { kind = value; paintKind(); }
       }, [label]));
     });
   };
@@ -286,7 +277,6 @@ function _openAddSong() {
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Tip']), kindRow]),
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Vizibilitate']), visRow]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
-    originalField,
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo (opțional)']), demoInput]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
@@ -297,7 +287,7 @@ function _openAddSong() {
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
           const demoUrl = normalizeUrl(demoInput.value);
           if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
-          const originalText = kind === 'original' ? '' : textInput.value;
+          const originalText = '';
           try {
             const now = Date.now();
             const shared = visibility !== 'personal';
@@ -308,14 +298,7 @@ function _openAddSong() {
             // refresh — there's no fetch to pick it up on the way back
             // from the song this opens next.
             _songs.push({ id, title, kind, originalText, shared, demoUrl, groupId, createdBy, createdAt: now, updatedAt: now });
-            // Nothing to translate from in a composition, so it goes
-            // straight to the editor instead of being asked about Mot-a-mot.
-            if (kind !== 'original' && originalText.trim()) {
-              closeSheet(overlay);
-              _offerMotAMot(id, originalText);
-            } else {
-              closeSheetThen(overlay, () => { location.hash = `#/song/${id}`; });
-            }
+            closeSheetThen(overlay, () => { location.hash = `#/song/${id}`; });
           } catch (err) {
             toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
           }
@@ -324,34 +307,6 @@ function _openAddSong() {
     ])
   ]);
   overlay.appendChild(sheet);
-  openSheet(overlay);
-}
-
-function _offerMotAMot(songId, originalText) {
-  // Same ordering rule as above: the hash has to be set after the sheet's
-  // history entry has finished unwinding, not before.
-  const closeAndGo = () => closeSheetThen(overlay, () => { location.hash = `#/song/${songId}`; });
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeAndGo(); } });
-  const generateBtn = el('button', { class: 'btn btn--primary' }, ['Da, generează']);
-  generateBtn.addEventListener('click', async () => {
-    generateBtn.disabled = true;
-    generateBtn.textContent = 'Se generează…';
-    try {
-      await window.Translator.generateMotAMotVersion(songId, originalText, [], window.Auth.currentUser().uid, window.Auth.isAdmin());
-    } catch (err) {
-      toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
-    }
-    closeAndGo();
-  });
-
-  overlay.appendChild(el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
-    el('p', { class: 'sheet__text' }, ['Vrei o traducere generată automat cu Google Translate, ca punct de plecare?']),
-    el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: closeAndGo }, ['Nu, mulțumesc']),
-      generateBtn
-    ])
-  ]));
   openSheet(overlay);
 }
 

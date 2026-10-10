@@ -89,6 +89,13 @@ let _versesScrollTop = 0;
 const VIEW_KEY = 'talmaci:textView';
 let _view = (() => { try { return localStorage.getItem(VIEW_KEY) || 'whole'; } catch (_) { return 'whole'; } })();
 
+// Whether this song is shown verse by verse. Only a translation that has
+// an original yet can be: a new song has nothing to pair, so it opens in
+// the whole view, where its original is written, whatever was last used.
+function _showingVerses() {
+  return _view === 'verses' && !isOriginal(_song) && !!(_song.originalText || '').trim();
+}
+
 async function render(root, songId) {
   if (_song && _song.id === songId) {
     // A tab switch back, or a "back" from Rime/Sinonime/Biblie — not a
@@ -163,13 +170,17 @@ function _renderShell(root) {
     el('h1', { class: 'topbar__title' }, [_song.title || 'Fără titlu']),
     // Only a translation has an original to pair its verses with.
     isOriginal(_song) ? null : el('button', {
-      class: 'btn btn--icon' + (_view === 'verses' ? ' btn--icon-on' : ''),
+      class: 'btn btn--icon' + (_showingVerses() ? ' btn--icon-on' : ''),
       'aria-label': 'Pe strofe',
-      'aria-pressed': _view === 'verses' ? 'true' : 'false',
-      title: _view === 'verses' ? 'Textul întreg' : 'Pe strofe',
+      'aria-pressed': _showingVerses() ? 'true' : 'false',
+      title: _showingVerses() ? 'Textul întreg' : 'Pe strofe',
       html: VERSES_ICON,
       onclick: () => {
-        _view = _view === 'verses' ? 'whole' : 'verses';
+        if (!(_song.originalText || '').trim()) {
+          toast('Scrie mai întâi textul original.');
+          return;
+        }
+        _view = _showingVerses() ? 'whole' : 'verses';
         try { localStorage.setItem(VIEW_KEY, _view); } catch (_) { /* just not remembered */ }
         _renderShell(root);
       }
@@ -685,7 +696,7 @@ function _renderTextTab(content) {
     return v.slice(0, t.start) + v.slice(end);
   }
 
-  const view = (_view === 'verses' && !isOriginal(_song)) ? _renderVersesView : _renderWholeView;
+  const view = _showingVerses() ? _renderVersesView : _renderWholeView;
   const body = view({
     active, canEdit,
     version: versionDoc, original: originalDoc, focusDoc,
@@ -835,22 +846,43 @@ function _renderVersesView(ctx) {
   const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, spans: [], boxes: [] });
   const orig = side(ctx.original, ctx.original.canEdit, true);
   const tr = side(ctx.version, !!ctx.active && ctx.canEdit, false);
+  orig.other = tr;
+  tr.other = orig;
   let lastBox = null;
 
   const list = el('div', { class: 'verses' });
   const wrap = el('div', { class: 'verses-wrap' }, [list]);
   wrap.addEventListener('scroll', () => { _versesScrollTop = wrap.scrollTop; });
 
+  /* A stand-in for a verse not written yet, so that one typed further down
+   * keeps its place: verses are told apart by position, and a verse typed
+   * into the third card with nothing above it would otherwise be the
+   * first. It is the other side's section mark, named in this side's
+   * language, or "[…]" when that verse is not marked — a line of its own,
+   * so the verse stays a verse, and plainly something to replace. */
+  function stub(s, k) {
+    const o = s.other;
+    const verse = k < o.spans.length ? o.doc.text.slice(o.spans[k].start, o.spans[k].end) : '';
+    const sec = window.Sections.parse(verse.split('\n')[0]);
+    const name = !sec ? '…' : s.inOriginal ? window.Sections.english(sec) : window.Sections.romanian(sec);
+    return '[' + name + ']';
+  }
+
   // Writes box i of a side back into its text. A box past the last verse
-  // starts a new one at the end, after a blank line.
+  // starts a new one at the end, after a blank line, with stand-ins for
+  // any verses between — shown in their own boxes straight away.
   function write(s, i, value) {
     let text = s.doc.text;
     if (i >= s.spans.length) {
       text = text.replace(/\s+$/, '');
-      if (text) text += '\n\n';
-      s.spans.push({ start: text.length, end: text.length });
-      // The next empty box can be written in now that this one exists.
-      if (s.boxes[i + 1]) s.boxes[i + 1].disabled = !s.editable;
+      for (let k = s.spans.length; k <= i; k++) {
+        if (text) text += '\n\n';
+        const fill = k < i ? stub(s, k) : '';
+        s.spans.push({ start: text.length, end: text.length + fill.length });
+        text += fill;
+        const box = s.boxes[k];
+        if (fill && box) { box.value = fill; _fitHeight(box); box.repaint(); }
+      }
     }
     const sp = s.spans[i];
     const delta = value.length - (sp.end - sp.start);
@@ -862,21 +894,21 @@ function _renderVersesView(ctx) {
 
   /* The box for verse i of a side, with everything an editor box has:
    * formatted section marks, the "[" strip, undo through the side's own
-   * history. Only the first box past the end can be written in: a verse
-   * typed further down would land as the next verse anyway. A side that
-   * may not be edited is read-only rather than disabled, so it is not
-   * dimmed. */
+   * history. Any box can be written in, even far past the side's last
+   * verse — see write. A side that may not be edited is read-only where it
+   * has verses, rather than disabled, so it is not dimmed. */
   function verseBox(s, i, value, placeholder, mounted) {
     const ta = el('textarea', {
       class: 'field__input verse__box',
       rows: 1,
       placeholder,
       readonly: !s.editable && i < s.spans.length,
-      disabled: i >= s.spans.length && (!s.editable || i > s.spans.length)
+      disabled: !s.editable && i >= s.spans.length
     });
     ta.value = value;
     const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
     let repaint = () => {};
+    ta.repaint = () => repaint();
 
     const strip = () => {
       if (!s.editable) return;
@@ -952,10 +984,10 @@ function _renderVersesView(ctx) {
         const ph = t != null ? 'Fără pereche în original' : 'Strofa următoare din original…';
         pair.appendChild(verseBox(orig, i, '', ph, mounted));
       }
-      // A translation box that cannot be written in yet is only worth
-      // showing under an original verse it will one day pair with.
+      // Under every original verse, and one more for a verse of its own.
       if (i <= tn || o != null) {
-        pair.appendChild(verseBox(tr, i, t || '', i === tn ? 'Strofa următoare…' : '', mounted));
+        const ph = t != null ? '' : o != null ? 'Traducerea…' : 'Strofa următoare…';
+        pair.appendChild(verseBox(tr, i, t || '', ph, mounted));
       }
 
       const ok = o != null && t != null ? _verseKind(o) : null;

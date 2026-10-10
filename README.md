@@ -72,8 +72,7 @@ provider enabled) and **Firestore** turned on.
 
 ## Google Translate "Mot-a-mot" translations (optional)
 
-A song's kebab menu (and a prompt right after you save a song, or edit its
-original text) can generate a literal machine translation into a version
+A song's kebab menu can generate a literal machine translation into a version
 named **"Mot-a-mot"** — a starting point to work from, not a substitute for
 the real translation. This calls the Google Cloud Translation API through a
 Cloud Function (`functions/index.js`), never directly from the browser.
@@ -106,8 +105,7 @@ app works without it.
    cd functions && npm install && cd ..
    firebase deploy --only functions
    ```
-6. That's it — the "Mot-a-mot" prompts and the kebab menu button will start
-   working. No client-side config needed; `js/translate.js` calls the
+6. That's it — the kebab menu's "Mot-a-mot" button will start working. No client-side config needed; `js/translate.js` calls the
    deployed function by name.
 
 If a translation ever fails (API not enabled yet, IAM role missing, quota

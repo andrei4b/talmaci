@@ -12,18 +12,19 @@
  * brackets added once, by hand. */
 (function () {
 
-// English and Romanian spellings of each kind, and the Romanian name it is
-// shown and inserted under. Order matters: pre-/post-chorus before chorus.
+// English and Romanian spellings of each kind, and the names it is shown
+// and inserted under in each language. Order matters: pre-/post-chorus
+// before chorus.
 const KINDS = [
-  { ro: 'Pre-refren',  re: /^(pre[- ]?chorus|pre[- ]?refren)$/ },
-  { ro: 'Post-refren', re: /^(post[- ]?chorus|post[- ]?refren)$/ },
-  { ro: 'Refren',      re: /^(chorus|refrain|refren)$/ },
-  { ro: 'Strofa',      re: /^(verse|stanza|strof[aă])$/ },
-  { ro: 'Bridge',      re: /^(bridge|pod|punte)$/ },
-  { ro: 'Intro',       re: /^(intro)$/ },
-  { ro: 'Interludiu',  re: /^(interlude|instrumental|interludiu)$/ },
-  { ro: 'Final',       re: /^(outro|ending|end|coda|final)$/ },
-  { ro: 'Tag',         re: /^(tag)$/ }
+  { ro: 'Pre-refren',  en: 'Pre-Chorus',  re: /^(pre[- ]?chorus|pre[- ]?refren)$/ },
+  { ro: 'Post-refren', en: 'Post-Chorus', re: /^(post[- ]?chorus|post[- ]?refren)$/ },
+  { ro: 'Refren',      en: 'Chorus',      re: /^(chorus|refrain|refren)$/ },
+  { ro: 'Strofa',      en: 'Verse',       re: /^(verse|stanza|strof[aă])$/ },
+  { ro: 'Bridge',      en: 'Bridge',      re: /^(bridge|pod|punte)$/ },
+  { ro: 'Intro',       en: 'Intro',       re: /^(intro)$/ },
+  { ro: 'Interludiu',  en: 'Interlude',   re: /^(interlude|instrumental|interludiu)$/ },
+  { ro: 'Final',       en: 'Outro',       re: /^(outro|ending|end|coda|final)$/ },
+  { ro: 'Tag',         en: 'Tag',         re: /^(tag)$/ }
 ];
 
 /* The section a line marks, or null when it is an ordinary line.
@@ -52,6 +53,13 @@ function romanian(sec) {
   return sec.number ? sec.kind + ' ' + sec.number : sec.kind;
 }
 
+// The same in English, for the original: "Chorus", "Verse 2".
+function english(sec) {
+  const k = sec.kind && KINDS.find(x => x.ro === sec.kind);
+  if (!k) return sec.text;
+  return sec.number ? k.en + ' ' + sec.number : k.en;
+}
+
 /* Every section mark in a text, in order, with the line it is on. */
 function list(text) {
   const out = [];
@@ -68,6 +76,6 @@ function strip(text) {
   return String(text || '').split('\n').filter(l => !isMarker(l)).join('\n').trim();
 }
 
-window.Sections = { parse, isMarker, romanian, list, strip };
+window.Sections = { parse, isMarker, romanian, english, list, strip };
 
 })();
