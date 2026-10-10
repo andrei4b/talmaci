@@ -72,6 +72,20 @@ WORD_EXCEPTIONS['ravioli'] = 'ra-vi-o-li';
 // ending gives nothing away: "video" ends the same and is vi-de-o.
 WORD_EXCEPTIONS['vreo'] = 'vreo';
 
+// "a disuada" is di-su-a-da: its "ua" is hiatus, unlike "cua-drant" or the
+// loan "ma-ri-jua-na". Only this one form is in the vocabulary.
+WORD_EXCEPTIONS['disuadare'] = 'di-su-a-da-re';
+
+// The "-sprezecea" ordinals end in one syllable, "-ze-cea", like every other
+// ordinal in the family ("do-uă-ze-cea", "șap-te-ze-cea"). dexonline's data
+// gives these six "ze-ce-a", so each needs its own entry.
+WORD_EXCEPTIONS['nouăsprezecea'] = 'no-uăs-pre-ze-cea';
+WORD_EXCEPTIONS['optsprezecea'] = 'opt-spre-ze-cea';
+WORD_EXCEPTIONS['paisprezecea'] = 'pais-pre-ze-cea';
+WORD_EXCEPTIONS['treisprezecea'] = 'treis-pre-ze-cea';
+WORD_EXCEPTIONS['șaisprezecea'] = 'șais-pre-ze-cea';
+WORD_EXCEPTIONS['șaptesprezecea'] = 'șap-tes-pre-ze-cea';
+
 // dexonline records only "abs-tract" for this one, the division by
 // structure cutting at the Latin prefix "abs-". Everywhere else it agrees
 // with pronunciation — "ob-ste-tric", "ob-stru-a", "sub-strat",
@@ -569,6 +583,25 @@ function applyExceptions(word, cuts, stressOffset, head) {
     else if (word[j] === 'â' && word[j + 1] === 'i' && j + 2 < n && isVowelCh(word[j + 2])) at = j + 1;
     else if (word[j] === 'ă' && word[j + 1] === 'e') at = j + 1;
     if (at > 0 && cuts.indexOf(at) < 0) cuts = cuts.concat([at]).sort((x, y) => x - y);
+  }
+
+  // Hand-checked corrections, each one a small class of words:
+  //   "-iiți" is the verb ending after a stem in "i": "pus-ti-iți", "sfi-iți".
+  //   "iide" is a Latin family suffix, each "i" its own syllable:
+  //   "car-di-i-de", "ble-ni-i-de".
+  //   "duo" is hiatus: "gas-tro-du-o-de-nal", like "du-o-de-nal".
+  //   A final "ia" after a consonant is "i-a", not a diphthong: "a-ris-to-lo-
+  //   chi-a", "Ba-sa-ra-bi-a". Almost all such words already divide this way;
+  //   the patterns only missed the rarer ones, mostly names and loans.
+  if (word.endsWith('iiți') && cuts.indexOf(n - 3) < 0) cuts = cuts.concat([n - 3]).sort((x, y) => x - y);
+  for (let at = word.indexOf('iide'); at >= 0; at = word.indexOf('iide', at + 1)) {
+    if (cuts.indexOf(at + 1) < 0) cuts = cuts.concat([at + 1]).sort((x, y) => x - y);
+  }
+  for (let at = word.indexOf('duo'); at >= 0; at = word.indexOf('duo', at + 1)) {
+    if (cuts.indexOf(at + 2) < 0) cuts = cuts.concat([at + 2]).sort((x, y) => x - y);
+  }
+  if (n >= 5 && word.endsWith('ia') && !isVowelCh(word[n - 3]) && cuts.indexOf(n - 1) < 0) {
+    cuts = cuts.concat([n - 1]).sort((x, y) => x - y);
   }
 
   // The article and the genitive of an "-ie" noun keep its "i" as a syllable
