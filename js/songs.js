@@ -213,7 +213,7 @@ function _renderList(listWrap) {
         class: 'song-list__link'
       }, [
         el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
-        el('span', { class: 'song-list__snippet' }, [(song.originalText || '').slice(0, 80)])
+        el('span', { class: 'song-list__snippet' }, [window.Sections.strip(song.originalText).slice(0, 80)])
       ])
     ]));
   });

@@ -492,6 +492,101 @@ a { color: inherit; text-decoration: none; }
 .version-switcher__nav svg { width: 18px; height: 18px; }
 .version-switcher__nav:disabled { opacity: 0.35; cursor: default; }
 
+/* A section mark in the source text ("Chorus", "Verse 2"): set apart
+   from the lyrics so the song's shape reads at a glance. */
+.section-label {
+  color: var(--color-accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* The section strip: stands in for the version row while a "[" is being
+   typed at the start of a line. Same height and place as that row, so the
+   text above does not jump; scrolls sideways rather than wrapping. */
+.section-strip {
+  flex-shrink: 0;
+  margin-top: 8px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.section-strip .seg { flex-shrink: 0; }
+
+/* The editor: a textarea over a mirror of its own text, which is what
+   lets section marks show formatted while being typed — see
+   _attachMirror. The box's white moves from the textarea to the wrapper,
+   so the mirror behind it shows through; the textarea keeps its border,
+   focus ring, caret and selection and paints its letters transparent.
+   Font and spacing are copied onto the mirror from the textarea at run
+   time, so they are not restated here. */
+.editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+}
+.editor__mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  border-style: solid;
+  border-color: transparent;
+  color: var(--color-text);
+  pointer-events: none;
+}
+.editor textarea {
+  position: relative;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--color-text);
+}
+.editor textarea::placeholder {
+  color: var(--color-text-muted);
+  -webkit-text-fill-color: var(--color-text-muted);
+}
+/* A version you cannot edit: its own letters are transparent like any
+   other, so the dimming a disabled textarea gives its text goes here. */
+.editor:has(textarea:disabled) .editor__mirror { opacity: 0.6; }
+
+/* A topbar icon that toggles, while it is on: the verse view's button. */
+.btn--icon-on { color: var(--color-accent); border-color: var(--color-accent); }
+
+/* The verse view: each verse of the original over its verse of the
+   translation, side by side from tablet width up. The page scrolls, not
+   the boxes — each grows to fit its verse. */
+.verses-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+.verses { display: flex; flex-direction: column; gap: 22px; padding-bottom: 8px; }
+.verse { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.verse__original {
+  white-space: pre-wrap;
+  padding: 10px 14px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius-sm);
+}
+.verse__original--none { color: var(--color-text-muted); font-size: 0.8rem; font-style: italic; }
+.verse__editor { flex: none; }
+.verse__box { resize: none; overflow: hidden; min-height: 44px; }
+/* Empty boxes past the next verse wait their turn: see _renderVersesView. */
+.verse__editor:has(textarea:disabled) { opacity: 0.5; }
+.verses__note { margin: 0; font-size: 0.8rem; color: var(--color-text-muted); }
+.verses__note--pair { color: var(--color-accent); }
+@media (min-width: 640px) {
+  .verse { grid-template-columns: 1fr 1fr; column-gap: 20px; }
+  .verse__original, .verse__original--none { grid-column: 1; }
+  .verse__editor { grid-column: 2; }
+  .verses__note--pair { grid-column: 1 / -1; }
+}
+
 /* Version list sheet rows */
 .version-list { display: flex; flex-direction: column; gap: 8px; }
 .version-row { display: flex; align-items: center; gap: 8px; }

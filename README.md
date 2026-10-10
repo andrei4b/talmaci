@@ -12,7 +12,15 @@ Four tabs sit under every screen — **Text**, **Rime**, **Sinonime**,
 anything.
 
 **Text**, **Rime** and **Sinonime** work. Text edits a song's lyrics across
-multiple named versions, so several people can draft in parallel. Rime
+multiple named versions, so several people can draft in parallel. Sections
+(verse, chorus, bridge…) are marked in the text itself by a line such as
+`[Refren]` — the form lyrics pasted from the web already use. Typing `[`
+at the start of a line offers the section names, the original's next one
+first, and the source panel sets the marks apart; see `js/sections.js`.
+A translation can also be shown **pe strofe** (the button beside the
+song's menu): each verse of the original above its verse of the
+translation, paired by position, with a note where the two sides'
+counts or section marks disagree. Rime
 looks a word up in a 210k-word index built from dexonline and returns its
 perfect rhymes, with the stressed syllable marked; its index is built
 offline, see `tools/rhyme/README.md`. Sinonime shows dexonline's *Dicționar
