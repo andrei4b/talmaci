@@ -86,6 +86,23 @@ WORD_EXCEPTIONS['treisprezecea'] = 'treis-pre-ze-cea';
 WORD_EXCEPTIONS['șaisprezecea'] = 'șais-pre-ze-cea';
 WORD_EXCEPTIONS['șaptesprezecea'] = 'șap-tes-pre-ze-cea';
 
+// "gaiță" is ga-i-ță, the "i" a syllable of its own, as dexonline divides it.
+// The whole family, since the other forms reach the index through the same
+// headword and would otherwise keep "gai-ță".
+WORD_EXCEPTIONS['gaiță'] = 'ga-i-ță';
+WORD_EXCEPTIONS['gaița'] = 'ga-i-ța';
+WORD_EXCEPTIONS['gaițe'] = 'ga-i-țe';
+WORD_EXCEPTIONS['gaiței'] = 'ga-i-ței';
+WORD_EXCEPTIONS['gaițele'] = 'ga-i-țe-le';
+
+// A second division at the SAME stress, for a spelling that two meanings
+// divide differently. "miază" is mi-a-ză (the leading one) and mia-ză, as in
+// "miază-noapte". The index stores these as extra readings, so the Rime tab's
+// picker offers both; they share a stressed letter, so they rhyme the same
+// and add nothing to the rhyme lists.
+const ALTERNATE_DIVISIONS = Object.create(null);
+ALTERNATE_DIVISIONS['miază'] = ['mia-ză'];
+
 // dexonline records only "abs-tract" for this one, the division by
 // structure cutting at the Latin prefix "abs-". Everywhere else it agrees
 // with pronunciation — "ob-ste-tric", "ob-stru-a", "sub-strat",
@@ -1143,8 +1160,13 @@ function manualCuts(word) {
   return manual ? cutsFromSplit(manual) : null;
 }
 
+/* Cut offsets of each alternate division of `word` (see above), or []. */
+function alternateCuts(word) {
+  return (ALTERNATE_DIVISIONS[word] || []).map(cutsFromSplit);
+}
+
 module.exports = { loadPatterns, cutPoints, syllables, enforceOneNucleus,
-                   finishImported, manualCuts };
+                   finishImported, manualCuts, alternateCuts };
 
 // CLI: node hyphenate.js <hyph_ro_RO.dic> word [word...]
 if (require.main === module) {

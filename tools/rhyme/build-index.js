@@ -835,6 +835,18 @@ for (const [w, vm] of variantsOf) {
                  cutsFor(w, off));
   }
 }
+// Alternate divisions at the primary reading's own stress (see
+// ALTERNATE_DIVISIONS in hyphenate.js). Not in the rhyme postings: the key
+// is the same, so only the picker needs to know about them.
+for (const w of words) {
+  const alts = H.alternateCuts(w);
+  const rc = rec.get(w);
+  if (!alts.length || !rc || rc.spos < 0 || rc.spos > 34) continue;
+  for (const cs of alts) {
+    varsOut.push(id.get(w).toString(36) + '~' + (rc.spos + 1).toString(36) + '~' +
+                 cs.filter(c => c > 0 && c < 36).map(c => c.toString(36)).join(''));
+  }
+}
 console.error(`  secondary stress readings: ${varsOut.length} on ${
   new Set(varsOut.map(v => v.split('~')[0])).size} words`);
 
