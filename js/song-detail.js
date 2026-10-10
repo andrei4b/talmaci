@@ -27,6 +27,7 @@ const LOOKUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 // The sections offered when marking one, in the order a song usually runs.
 // Strofa is left out: it is offered numbered, as the next one due.
 const SECTION_CHOICES = ['Pre-refren', 'Refren', 'Bridge', 'Intro', 'Interludiu', 'Final'];
+const SECTION_CHOICES_EN = ['Pre-Chorus', 'Chorus', 'Bridge', 'Intro', 'Interlude', 'Outro'];
 
 const UNDO_REDO_ICONS = {
   undo: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>`,
@@ -59,11 +60,17 @@ function _recallVersion(songId) {
 // version is active, reset when the active version actually changes (see
 // _syncUndoState), but preserved across incidental re-renders of the same
 // version (e.g. after renaming it).
+//
+// The original text, editable in place too, keeps a history of its own,
+// scoped to the song: undo steps back through whichever of the two was
+// edited last, never one on behalf of the other.
+function _newHistory(text) {
+  return { undo: [], redo: [], last: text || '', pending: false };
+}
 let _undoStateVersionId;
-let _undoStack = [];
-let _redoStack = [];
-let _lastText = '';
-let _checkpointPending = false;
+let _versionHistory = _newHistory('');
+let _originalHistory = null;
+let _originalHistorySongId = null;
 
 // Scroll position of the original-text panel and the translation box.
 // _translationScrollTop resets inside _syncUndoState, right alongside the
@@ -202,10 +209,7 @@ function _canEditVersion(version) {
 function _syncUndoState(active) {
   if (_undoStateVersionId === _activeVersionId) return;
   _undoStateVersionId = _activeVersionId;
-  _undoStack = [];
-  _redoStack = [];
-  _lastText = active ? (active.text || '') : '';
-  _checkpointPending = false;
+  _versionHistory = _newHistory(active ? active.text : '');
   _translationScrollTop = 0;
   _versesScrollTop = 0;
 }
@@ -445,17 +449,25 @@ function _typedSection(ta) {
 /* The sections offered for a line, narrowed to what has been typed after
  * the "[". When the source text is marked, the section it has next —
  * counting the marks above this line — comes first, which keeps the
- * translation's structure in step with the original's. */
-function _sectionChoices(text, lineStart, typed) {
+ * translation's structure in step with the original's. The original
+ * itself is in English, so it is offered the English names, and nothing
+ * to keep in step with. */
+function _sectionChoices(text, lineStart, typed, inOriginal) {
   const above = window.Sections.list(text.slice(0, lineStart));
-  const strofa = 'Strofa ' + (above.filter(s => s.kind === 'Strofa').length + 1);
-  const fromOriginal = isOriginal(_song) ? [] : window.Sections.list(_song.originalText);
-  const next = fromOriginal[above.length];
-  const suggested = next ? window.Sections.romanian(next) : null;
+  const verseNo = above.filter(s => s.kind === 'Strofa').length + 1;
+  let suggested = null, choices;
+  if (inOriginal) {
+    choices = ['Verse ' + verseNo, ...SECTION_CHOICES_EN];
+  } else {
+    const fromOriginal = isOriginal(_song) ? [] : window.Sections.list(_song.originalText);
+    const next = fromOriginal[above.length];
+    suggested = next ? window.Sections.romanian(next) : null;
+    choices = ['Strofa ' + verseNo, ...SECTION_CHOICES];
+  }
 
   const fold = (x) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const want = fold(typed.trim());
-  return [...new Set([suggested, strofa, ...SECTION_CHOICES].filter(Boolean))]
+  return [...new Set([suggested, ...choices].filter(Boolean))]
     .filter(l => fold(l).startsWith(want))
     .map(l => ({ label: l, suggested: l === suggested }));
 }
@@ -491,6 +503,60 @@ function _fitHeight(ta) {
   ta.style.height = ta.scrollHeight + 'px';
 }
 
+/* One text being edited on the Text tab — the version or the original —
+ * with its own undo history and its own autosave.
+ *
+ * A typed edit takes one undo checkpoint per pause in typing (matching the
+ * save debounce), not one per keystroke — otherwise undo would only ever
+ * step back a single character at a time. An edit made in one go — a
+ * picked section — is saved at once as a single step; a checkpoint still
+ * pending from typing its "[" already holds the text from before it.
+ *
+ * The debounced save saves whatever the text is when the pause ends, not
+ * what it was at the keystroke that scheduled it: an edit committed at
+ * once must not be overtaken by a stale pending save. */
+function _editedText({ text, history, canEdit, write, save }) {
+  const debouncedSave = debounce(() => save(doc.text), 600);
+  const doc = {
+    text, history, canEdit,
+    onChange: () => {},
+    showHistory: () => {},          // the view redraws what undo landed on
+    typed(next) {
+      if (!history.pending) {
+        history.undo.push(history.last);
+        history.redo = [];
+        history.pending = true;
+      }
+      doc.text = next;
+      write(next);
+      debouncedSave();
+      doc.onChange();
+    },
+    replaced(next) {
+      if (!history.pending) history.undo.push(doc.text);
+      history.redo = [];
+      doc.settle(next);
+    },
+    settle(next) {
+      doc.text = next;
+      write(next);
+      history.last = next;
+      history.pending = false;
+      save(next);
+      doc.onChange();
+    },
+    // Undo moves from `from` to `to`; redo the other way round.
+    step(from, to) {
+      if (!from.length) return;
+      to.push(doc.text);
+      const t = from.pop();
+      doc.settle(t);
+      doc.showHistory(t);
+    }
+  };
+  return doc;
+}
+
 function _renderTextTab(content) {
   const active = _activeVersion();
   const canEdit = _canEditVersion(active);
@@ -504,14 +570,14 @@ function _renderTextTab(content) {
     class: 'version-switcher__nav',
     'aria-label': 'Anulează',
     html: UNDO_REDO_ICONS.undo,
-    disabled: !canEdit || !_undoStack.length,
+    disabled: true,
     onmousedown: keepFocus
   });
   const redoBtn = el('button', {
     class: 'version-switcher__nav',
     'aria-label': 'Refă',
     html: UNDO_REDO_ICONS.redo,
-    disabled: !canEdit || !_redoStack.length,
+    disabled: true,
     onmousedown: keepFocus
   });
 
@@ -540,69 +606,47 @@ function _renderTextTab(content) {
     redoBtn
   ]);
 
-  /* ---- the text, whichever view is editing it ----
-   * Both views edit this one string. It is written onto the version as it
-   * changes, not only once a save comes back, so a re-render in between —
-   * a switch of view, a trip to Rime — starts from what was typed rather
-   * than from the last save. */
-  let text = active ? (active.text || '') : '';
-  // Saves whatever the text is when the pause ends, not what it was at the
-  // keystroke that scheduled it: an edit committed at once (a picked
-  // section, an undo) must not be overtaken by a stale pending save.
-  const debouncedSave = debounce(() => _saveVersionText(text), 600);
+  /* ---- the texts being edited ----
+   * Two of them: the version, which both views edit, and the original,
+   * edited in place in the whole view. Each is written onto its record as
+   * it changes, not only once a save comes back, so a re-render in
+   * between — a switch of view, a trip to Rime — starts from what was
+   * typed rather than from the last save.
+   *
+   * Undo and redo act on whichever was focused last, the version unless
+   * the original has been. */
+  if (!_originalHistory || _originalHistorySongId !== _song.id) {
+    _originalHistory = _newHistory(_song.originalText);
+    _originalHistorySongId = _song.id;
+  }
+  const versionDoc = _editedText({
+    text: active ? (active.text || '') : '',
+    history: _versionHistory,
+    canEdit: !!active && canEdit,
+    write: (t) => { if (active) active.text = t; },
+    save: _saveVersionText
+  });
+  const originalDoc = _editedText({
+    text: _song.originalText || '',
+    history: _originalHistory,
+    canEdit: _canEditSong(),
+    write: (t) => { _song.originalText = t; },
+    save: _saveOriginalText
+  });
+  let current = versionDoc;
   const syncButtons = () => {
-    undoBtn.disabled = !canEdit || !_undoStack.length;
-    redoBtn.disabled = !canEdit || !_redoStack.length;
+    undoBtn.disabled = !current.canEdit || !current.history.undo.length;
+    redoBtn.disabled = !current.canEdit || !current.history.redo.length;
   };
-  // A typed edit: one undo checkpoint per pause in typing (matching the
-  // save debounce), not one per keystroke — otherwise undo would only
-  // ever step back a single character at a time.
-  function typed(next) {
-    if (!_checkpointPending) {
-      _undoStack.push(_lastText);
-      _redoStack = [];
-      _checkpointPending = true;
-    }
-    text = next;
-    if (active) active.text = next;
-    debouncedSave();
-    syncButtons();
-  }
-  // An edit made in one go — a picked section — saved at once as a single
-  // undo step. A checkpoint still pending from typing its "[" already
-  // holds the text from before it, so that one is kept.
-  function replaced(next) {
-    if (!_checkpointPending) _undoStack.push(text);
-    _redoStack = [];
-    settle(next);
-  }
-  function settle(next) {
-    text = next;
-    if (active) active.text = next;
-    _lastText = next;
-    _checkpointPending = false;
-    _saveVersionText(next);
-    syncButtons();
-  }
+  versionDoc.onChange = originalDoc.onChange = syncButtons;
+  const focusDoc = (doc) => { if (current !== doc) { current = doc; syncButtons(); } };
+  syncButtons();
 
-  // Whichever view is showing fills these in.
-  let showHistory = () => {};       // undo/redo landed on another text
+  // Whichever view is showing fills this in.
   let lookupTarget = () => null;    // the box the lookup reads its word from
 
-  undoBtn.onclick = () => {
-    if (!_undoStack.length) return;
-    _redoStack.push(text);
-    const prev = _undoStack.pop();
-    settle(prev);
-    showHistory(prev);
-  };
-  redoBtn.onclick = () => {
-    if (!_redoStack.length) return;
-    _undoStack.push(text);
-    const next = _redoStack.pop();
-    settle(next);
-    showHistory(next);
-  };
+  undoBtn.onclick = () => current.step(current.history.undo, current.history.redo);
+  redoBtn.onclick = () => current.step(current.history.redo, current.history.undo);
   lookupBtn.onclick = () => {
     const ta = lookupTarget();
     if (ta) _openLookup(ta);
@@ -613,14 +657,14 @@ function _renderTextTab(content) {
    * Typing "[" at the start of a line offers the section names in place of
    * the row under the text, filtered as more is typed. Nothing for it sits
    * on screen otherwise. Its chips keep focus, like undo/redo, so the
-   * keyboard stays up through the pick. `before` is how much of the whole
-   * text comes ahead of the box — all of it but the box in the verse view —
-   * which is what the original's next section is counted against. */
+   * keyboard stays up through the pick. `before` is the part of the whole
+   * text ahead of the box — none of it but in the verse view — which is
+   * what the original's next section is counted against. */
   const strip = el('div', { class: 'section-strip', hidden: true });
-  function updateStrip(ta, before, onPick) {
+  function updateStrip(ta, before, onPick, inOriginal) {
     const t = _typedSection(ta);
     const choices = t
-      ? _sectionChoices(text.slice(0, before) + ta.value, before + t.start, t.typed)
+      ? _sectionChoices(before + ta.value, before.length + t.start, t.typed, inOriginal)
       : [];
     strip.hidden = !choices.length;
     switcher.hidden = !!choices.length;
@@ -644,9 +688,12 @@ function _renderTextTab(content) {
   const view = (_view === 'verses' && !isOriginal(_song)) ? _renderVersesView : _renderWholeView;
   const body = view({
     active, canEdit,
-    getText: () => text, typed, replaced,
+    version: versionDoc, original: originalDoc, focusDoc,
+    getText: () => versionDoc.text,
+    typed: (t) => versionDoc.typed(t),
+    replaced: (t) => versionDoc.replaced(t),
     updateStrip, hideStrip, withoutTyped,
-    setShowHistory: (fn) => { showHistory = fn; },
+    setShowHistory: (fn) => { versionDoc.showHistory = fn; },
     setLookupTarget: (fn) => { lookupTarget = fn; }
   });
 
@@ -681,7 +728,7 @@ function _renderWholeView(ctx) {
   // Redraws the formatted section marks; set once the editor is mounted.
   let repaint = () => {};
 
-  const strip = () => ctx.updateStrip(translation, 0, (t, label) => {
+  const strip = () => ctx.updateStrip(translation, '', (t, label) => {
     const r = _withSection(ctx.withoutTyped(translation, t), t.start, label);
     translation.value = r.text;
     ctx.replaced(r.text);
@@ -694,6 +741,7 @@ function _renderWholeView(ctx) {
   translation.addEventListener('keyup', strip);
   translation.addEventListener('mouseup', strip);
   translation.addEventListener('blur', ctx.hideStrip);
+  translation.addEventListener('focus', () => ctx.focusDoc(ctx.version));
 
   ctx.setLookupTarget(() => translation);
   ctx.setShowHistory((t) => { _applyHistoryText(translation, t); repaint(); });
@@ -702,11 +750,43 @@ function _renderWholeView(ctx) {
   // stylesheet change is needed for that: .text-tab__col is flex:1, so a
   // lone column fills the row at either breakpoint.
   const cols = [];
-  let originalEl = null;
+  let originalEl = null, originalMirror = null, repaintOriginal = () => {};
   if (!original) {
-    originalEl = el('div', { class: 'text-tab__original' }, _renderMarkedText(_song.originalText, -1, -1));
+    // The original, edited in place — the same editor as the translation,
+    // in the reference panel's colours. Read-only rather than disabled for
+    // someone who may not change the song: still selectable and copyable,
+    // and not dimmed, since it is what everyone translates from.
+    const doc = ctx.original;
+    originalEl = el('textarea', {
+      class: 'field__input text-tab__translation text-tab__source',
+      placeholder: doc.canEdit ? 'Textul original…' : '',
+      readonly: !doc.canEdit,
+      oninput: () => { doc.typed(originalEl.value); originalStrip(); }
+    });
+    originalEl.value = doc.text;
     originalEl.addEventListener('scroll', () => { _originalScrollTop = originalEl.scrollTop; });
-    cols.push(el('div', { class: 'text-tab__col' }, [originalEl]));
+    originalEl.addEventListener('focus', () => ctx.focusDoc(doc));
+    const originalStrip = () => {
+      if (!doc.canEdit) return;
+      ctx.updateStrip(originalEl, '', (t, label) => {
+        const r = _withSection(ctx.withoutTyped(originalEl, t), t.start, label);
+        originalEl.value = r.text;
+        doc.replaced(r.text);
+        _scrollCaretIntoView(originalEl, r.caret);
+        originalEl.setSelectionRange(r.caret, r.caret);
+        repaintOriginal();
+        originalStrip();
+      }, true);
+    };
+    originalEl.addEventListener('keyup', originalStrip);
+    originalEl.addEventListener('mouseup', originalStrip);
+    originalEl.addEventListener('blur', ctx.hideStrip);
+    doc.showHistory = (t) => { _applyHistoryText(originalEl, t); repaintOriginal(); };
+
+    originalMirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
+    cols.push(el('div', { class: 'text-tab__col' }, [
+      el('div', { class: 'editor editor--source' }, [originalMirror, originalEl])
+    ]));
   }
   const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
   cols.push(el('div', { class: 'text-tab__col' }, [
@@ -730,6 +810,7 @@ function _renderWholeView(ctx) {
       if (originalEl) {
         void originalEl.offsetHeight;
         originalEl.scrollTop = _originalScrollTop;
+        repaintOriginal = _attachMirror(originalEl, originalMirror);
       }
     }
   };
@@ -738,8 +819,8 @@ function _renderWholeView(ctx) {
 /* Each verse of the original above its verse of the translation.
  *
  * Verses are runs of lines between blank lines, on both sides, and are
- * paired by position: the first with the first, and so on. Each verse of
- * the translation is its own box, but the text stays one string — an edit
+ * paired by position: the first with the first, and so on. Every verse,
+ * on either side, is its own box, but each side stays one string — an edit
  * goes back into it in place, so the blank lines between verses, and the
  * other view, are left exactly as they were.
  *
@@ -748,88 +829,59 @@ function _renderWholeView(ctx) {
  * That is shown rather than guessed at: a count of both sides when they
  * differ, and a note on any pair whose section marks disagree. */
 function _renderVersesView(ctx) {
-  const { canEdit } = ctx;
-  const editable = !!ctx.active && canEdit;
-  const originals = _verses(_song.originalText).map(v => _song.originalText.slice(v.start, v.end));
-  // Live positions of the translation's verses in the text, shifted as
-  // edits change their lengths. Rebuilt only on a full redraw.
-  let spans = _verses(ctx.getText());
+  // One side of the pairs: the original or the translation. `spans` are the
+  // live positions of its verses in its text, shifted as edits change
+  // their lengths; rebuilt only on a full redraw.
+  const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, spans: [], boxes: [] });
+  const orig = side(ctx.original, ctx.original.canEdit, true);
+  const tr = side(ctx.version, !!ctx.active && ctx.canEdit, false);
   let lastBox = null;
-  const boxes = [];
 
   const list = el('div', { class: 'verses' });
   const wrap = el('div', { class: 'verses-wrap' }, [list]);
   wrap.addEventListener('scroll', () => { _versesScrollTop = wrap.scrollTop; });
 
-  // Writes box i back into the text. A box past the last verse starts a
-  // new one at the end, after a blank line.
-  function write(i, value) {
-    let text = ctx.getText();
-    if (i >= spans.length) {
+  // Writes box i of a side back into its text. A box past the last verse
+  // starts a new one at the end, after a blank line.
+  function write(s, i, value) {
+    let text = s.doc.text;
+    if (i >= s.spans.length) {
       text = text.replace(/\s+$/, '');
       if (text) text += '\n\n';
-      spans.push({ start: text.length, end: text.length });
+      s.spans.push({ start: text.length, end: text.length });
       // The next empty box can be written in now that this one exists.
-      if (boxes[i + 1]) boxes[i + 1].disabled = !editable;
+      if (s.boxes[i + 1]) s.boxes[i + 1].disabled = !s.editable;
     }
-    const s = spans[i];
-    const delta = value.length - (s.end - s.start);
-    text = text.slice(0, s.start) + value + text.slice(s.end);
-    s.end += delta;
-    for (let j = i + 1; j < spans.length; j++) { spans[j].start += delta; spans[j].end += delta; }
+    const sp = s.spans[i];
+    const delta = value.length - (sp.end - sp.start);
+    text = text.slice(0, sp.start) + value + text.slice(sp.end);
+    sp.end += delta;
+    for (let j = i + 1; j < s.spans.length; j++) { s.spans[j].start += delta; s.spans[j].end += delta; }
     return text;
   }
 
-  function draw() {
-    const text = ctx.getText();
-    spans = _verses(text);
-    boxes.length = 0;
-    list.innerHTML = '';
-    const mounted = [];
-    const n = Math.max(originals.length, spans.length + (editable ? 1 : 0));
+  /* The box for verse i of a side, with everything an editor box has:
+   * formatted section marks, the "[" strip, undo through the side's own
+   * history. Only the first box past the end can be written in: a verse
+   * typed further down would land as the next verse anyway. A side that
+   * may not be edited is read-only rather than disabled, so it is not
+   * dimmed. */
+  function verseBox(s, i, value, placeholder, mounted) {
+    const ta = el('textarea', {
+      class: 'field__input verse__box',
+      rows: 1,
+      placeholder,
+      readonly: !s.editable && i < s.spans.length,
+      disabled: i >= s.spans.length && (!s.editable || i > s.spans.length)
+    });
+    ta.value = value;
+    const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
+    let repaint = () => {};
 
-    if (spans.length && originals.length !== spans.length) {
-      list.appendChild(el('p', { class: 'verses__note' }, [
-        `Originalul are ${originals.length} ${originals.length === 1 ? 'strofă' : 'strofe'}, ` +
-        `traducerea ${spans.length}. De la prima diferență, perechile pot fi decalate — ` +
-        'verifică rândurile goale dintre strofe.'
-      ]));
-    }
-
-    for (let i = 0; i < n; i++) {
-      const orig = originals[i];
-      const own = i < spans.length ? text.slice(spans[i].start, spans[i].end) : '';
-      const pair = el('div', { class: 'verse' });
-
-      // The empty box after the last verse needs no note when the original
-      // has run out too: it is simply room for one more.
-      if (orig != null) {
-        pair.appendChild(el('div', { class: 'verse__original' }, _renderMarkedText(orig, -1, -1)));
-      } else if (i < spans.length) {
-        pair.appendChild(el('div', { class: 'verse__original verse__original--none' }, ['Fără pereche în original']));
-      }
-
-      const ok = orig != null && i < spans.length ? _verseKind(orig) : null;
-      const tk = i < spans.length ? _verseKind(own) : null;
-
-      // Only the first box past the end can be written in: a verse typed
-      // further down would land as the next verse anyway.
-      const ta = el('textarea', {
-        class: 'field__input verse__box',
-        rows: 1,
-        placeholder: i === spans.length ? 'Strofa următoare…' : '',
-        disabled: !editable || i > spans.length
-      });
-      ta.value = own;
-      const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
-      pair.appendChild(el('div', { class: 'editor verse__editor' }, [mirror, ta]));
-      if (ok && tk && ok !== tk) {
-        pair.appendChild(el('p', { class: 'verses__note verses__note--pair' }, [
-          `Aici originalul are ${ok}, traducerea ${tk}.`
-        ]));
-      }
-
-      const strip = () => ctx.updateStrip(ta, i < spans.length ? spans[i].start : ctx.getText().length, (t, label) => {
+    const strip = () => {
+      if (!s.editable) return;
+      const before = s.doc.text.slice(0, i < s.spans.length ? s.spans[i].start : undefined);
+      ctx.updateStrip(ta, before, (t, label) => {
         // Inside a verse the mark only takes its own line: the blank line
         // that _withSection adds would split the verse in two.
         const v = ctx.withoutTyped(ta, t);
@@ -837,26 +889,83 @@ function _renderVersesView(ctx) {
         const mark = '[' + label + ']';
         ta.value = v.slice(0, t.start) + mark + (rest.startsWith('\n') ? rest : '\n' + rest);
         const caret = t.start + mark.length + 1;
-        ctx.replaced(write(i, ta.value));
+        s.doc.replaced(write(s, i, ta.value));
         ta.setSelectionRange(caret, caret);
         _fitHeight(ta);
         repaint();
         strip();
-      });
-      let repaint = () => {};
-      ta.addEventListener('input', () => {
-        ctx.typed(write(i, ta.value));
-        _fitHeight(ta);
-        strip();
-      });
-      ta.addEventListener('focus', () => { lastBox = ta; });
-      ta.addEventListener('keyup', strip);
-      ta.addEventListener('mouseup', strip);
-      ta.addEventListener('blur', ctx.hideStrip);
+      }, s.inOriginal);
+    };
+    ta.addEventListener('input', () => {
+      s.doc.typed(write(s, i, ta.value));
+      _fitHeight(ta);
+      strip();
+    });
+    ta.addEventListener('focus', () => {
+      // The lookup is for Romanian words, so only a translation box is one
+      // it reads from.
+      if (!s.inOriginal) lastBox = ta;
+      ctx.focusDoc(s.doc);
+    });
+    ta.addEventListener('keyup', strip);
+    ta.addEventListener('mouseup', strip);
+    ta.addEventListener('blur', ctx.hideStrip);
 
-      boxes.push(ta);
+    s.boxes[i] = ta;
+    mounted.push(() => { _fitHeight(ta); repaint = _attachMirror(ta, mirror); });
+    return el('div', {
+      class: 'editor verse__editor' + (s.inOriginal ? ' editor--source verse__editor--source' : '')
+    }, [mirror, ta]);
+  }
+
+  function draw() {
+    const ot = orig.doc.text, tt = tr.doc.text;
+    orig.spans = _verses(ot);
+    tr.spans = _verses(tt);
+    orig.boxes = [];
+    tr.boxes = [];
+    list.innerHTML = '';
+    const mounted = [];
+    const on = orig.spans.length, tn = tr.spans.length;
+    // Room for one more verse at the end of whichever side can take it.
+    const n = Math.max(on + (orig.editable ? 1 : 0), tn + (tr.editable ? 1 : 0), on, tn);
+
+    if (tn && on !== tn) {
+      list.appendChild(el('p', { class: 'verses__note' }, [
+        `Originalul are ${on} ${on === 1 ? 'strofă' : 'strofe'}, ` +
+        `traducerea ${tn}. De la prima diferență, perechile pot fi decalate — ` +
+        'verifică rândurile goale dintre strofe.'
+      ]));
+    }
+
+    for (let i = 0; i < n; i++) {
+      const o = i < on ? ot.slice(orig.spans[i].start, orig.spans[i].end) : null;
+      const t = i < tn ? tt.slice(tr.spans[i].start, tr.spans[i].end) : null;
+      const pair = el('div', { class: 'verse' });
+
+      // Past the original's last verse, its box says why the translation's
+      // verse has nothing above it — or, under the last empty translation
+      // box, offers room for one more. Neither, and the row has none.
+      if (o != null) {
+        pair.appendChild(verseBox(orig, i, o, '', mounted));
+      } else if (t != null || (orig.editable && i === on)) {
+        const ph = t != null ? 'Fără pereche în original' : 'Strofa următoare din original…';
+        pair.appendChild(verseBox(orig, i, '', ph, mounted));
+      }
+      // A translation box that cannot be written in yet is only worth
+      // showing under an original verse it will one day pair with.
+      if (i <= tn || o != null) {
+        pair.appendChild(verseBox(tr, i, t || '', i === tn ? 'Strofa următoare…' : '', mounted));
+      }
+
+      const ok = o != null && t != null ? _verseKind(o) : null;
+      const tk = t != null ? _verseKind(t) : null;
+      if (ok && tk && ok !== tk) {
+        pair.appendChild(el('p', { class: 'verses__note verses__note--pair' }, [
+          `Aici originalul are ${ok}, traducerea ${tk}.`
+        ]));
+      }
       list.appendChild(pair);
-      mounted.push(() => { _fitHeight(ta); repaint = _attachMirror(ta, mirror); });
     }
     return mounted;
   }
@@ -864,13 +973,15 @@ function _renderVersesView(ctx) {
   ctx.setLookupTarget(() => lastBox && lastBox.isConnected ? lastBox : null);
   // Undo can change any verse, add one or remove one, so it redraws them
   // all rather than working out which box it touched.
-  ctx.setShowHistory(() => {
+  const redraw = () => {
     const keep = wrap.scrollTop;
     draw().forEach(f => f());
     wrap.scrollTop = keep;
-  });
+  };
+  ctx.setShowHistory(redraw);
+  ctx.original.showHistory = redraw;
 
-  let pending = draw();
+  const pending = draw();
   return {
     el: wrap,
     mounted() {
@@ -892,10 +1003,22 @@ async function _saveVersionText(text) {
     await window.Db.updateVersion(_song.id, _activeVersionId, { text });
     // The version's text is kept current as it is typed (see the Text
     // tab), so it is not set back here to whatever this save carried.
-    _lastText = text;
-    _checkpointPending = false;
+    _versionHistory.last = text;
+    _versionHistory.pending = false;
   } catch (err) {
     toast('Nu am putut salva textul: ' + err.message, { kind: 'error' });
+  }
+}
+
+// The original text, edited in place on the Text tab. The song list keeps
+// its own copy for the snippet under each title, so it is told as well.
+async function _saveOriginalText(text) {
+  try {
+    await window.Db.updateSong(_song.id, { originalText: text });
+    window.Songs.noteUpdated(_song.id, { originalText: text });
+    if (_originalHistory) { _originalHistory.last = text; _originalHistory.pending = false; }
+  } catch (err) {
+    toast('Nu am putut salva originalul: ' + err.message, { kind: 'error' });
   }
 }
 
@@ -1168,19 +1291,17 @@ async function _refreshSong(root) {
   }
 }
 
+// The song's own details. Its original text is not among them: that is
+// edited in place on the Text tab, beside the translation.
 function _openEditSong(root) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
-  const original = isOriginal(_song);
   const titleInput = el('input', { class: 'field__input', type: 'text', value: _song.title || '' });
   const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off', value: _song.demoUrl || '' });
-  const textInput = el('textarea', { class: 'field__input field__input--textarea', rows: 8 });
-  textInput.value = _song.originalText || '';
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Editează melodia']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo']), demoInput]),
-    original ? null : el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Text original']), textInput]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
@@ -1194,53 +1315,25 @@ function _openEditSong(root) {
           const patch = {};
           if (title !== (_song.title || '')) patch.title = title;
           if (demoUrl !== (_song.demoUrl || '')) patch.demoUrl = demoUrl;
-          const textChanged = !original && textInput.value !== (_song.originalText || '');
-          if (textChanged) patch.originalText = textInput.value;
           if (!Object.keys(patch).length) { closeSheet(overlay); return; }
 
           try {
             await window.Db.updateSong(_song.id, patch);
             Object.assign(_song, patch);
             window.Songs.noteUpdated(_song.id, patch);
-            closeSheetThen(overlay, () => {
-              _renderShell(root);
-              // Only a changed source text is worth re-offering a
-              // translation for; a new title or link isn't.
-              if (textChanged && _song.originalText.trim()) _offerMotAMot(root);
-            });
+            closeSheetThen(overlay, () => _renderShell(root));
           } catch (err) {
             toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
           }
         }
       }, ['Salvează'])
     ])
-  ].filter(Boolean)));
-  openSheet(overlay);
-}
-
-function _offerMotAMot(root) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
-  const generateBtn = el('button', { class: 'btn btn--primary' }, ['Da, generează']);
-  generateBtn.addEventListener('click', async () => {
-    generateBtn.disabled = true;
-    generateBtn.textContent = 'Se generează…';
-    await _generateMotAMot(root);
-    closeSheet(overlay);
-  });
-
-  overlay.appendChild(el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Traducere Mot-a-mot?']),
-    el('p', { class: 'sheet__text' }, ['Textul original s-a schimbat. Vrei să (re)generezi versiunea „Mot-a-mot” cu Google Translate?']),
-    el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Nu, mulțumesc']),
-      generateBtn
-    ])
   ]));
   openSheet(overlay);
 }
 
 // Calls Google Translate and creates/updates the "Mot-a-mot" version, from
-// the offer sheets above and from the kebab menu's manual button.
+// the kebab menu's button.
 async function _generateMotAMot(root) {
   try {
     const v = await window.Translator.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid, window.Auth.isAdmin());
@@ -1261,10 +1354,9 @@ function reset() {
   _versions = [];
   _activeVersionId = null;
   _undoStateVersionId = undefined;
-  _undoStack = [];
-  _redoStack = [];
-  _lastText = '';
-  _checkpointPending = false;
+  _versionHistory = _newHistory('');
+  _originalHistory = null;
+  _originalHistorySongId = null;
   _originalScrollTop = 0;
   _translationScrollTop = 0;
   _versesScrollTop = 0;

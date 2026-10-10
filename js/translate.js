@@ -11,8 +11,7 @@ async function translate(text) {
 // Generates (or, if one already exists AND belongs to this user — or this
 // user is an admin — refreshes) the song's "Mot-a-mot" version from its
 // current original text. Shared by songs.js (offered right after creating
-// a song) and song-detail.js (offered after editing the original text, and
-// via the kebab menu's manual button).
+// a song) and song-detail.js (the kebab menu's button).
 //
 // Versions can only be edited by whoever created them (or an admin), so if
 // an existing "Mot-a-mot" belongs to someone else, this creates a new one
