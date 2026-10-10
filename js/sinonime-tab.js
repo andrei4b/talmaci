@@ -18,6 +18,7 @@
 const { el } = window.Utils;
 
 const SOURCE_URL = 'https://dexonline.ro/source/sinonime';
+const WORD_URL = 'https://dexonline.ro/definitie-sinonime/';
 
 // A house rather than a refresh arrow: the button goes to one particular
 // page, it does not reload whatever you are looking at.
@@ -29,10 +30,10 @@ let _frame = null;
  * frame already in the page pushes onto the joint session history, which
  * would put dexonline in front of the hardware back button — and getting
  * that button to go from a song up to the song list took some care. */
-function _newFrame() {
+function _newFrame(src) {
   return el('iframe', {
     class: 'syn__frame',
-    src: SOURCE_URL,
+    src: src || SOURCE_URL,
     title: 'dexonline — Dicționar de sinonime',
     referrerpolicy: 'no-referrer-when-downgrade'
   });
@@ -42,7 +43,17 @@ function _newFrame() {
 // Cross-origin, so its history cannot be read or rewound from here; a new
 // frame is the only way back, and it is the behaviour wanted anyway.
 function reset() {
-  const next = _newFrame();
+  _replaceFrame(_newFrame());
+}
+
+// A word's entry in this same dictionary, for the editor's lookup button.
+// dexonline takes an inflected form here and finds its headword, so the
+// word can go in exactly as it stands in the lyrics.
+function show(word) {
+  _replaceFrame(_newFrame(WORD_URL + encodeURIComponent(word.toLowerCase())));
+}
+
+function _replaceFrame(next) {
   if (_frame && _frame.parentNode) _frame.replaceWith(next);
   _frame = next;
 }
@@ -68,6 +79,6 @@ function render(host) {
   return _frame;
 }
 
-window.SinonimeTab = { render, actions, reset };
+window.SinonimeTab = { render, actions, reset, show };
 
 })();

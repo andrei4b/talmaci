@@ -89,8 +89,8 @@ function _renderCurrentScreen() {
  * dumping you at the top of the list. */
 const TAB_ICONS = {
   text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
-  rime: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>`,
-  sinonime: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v14M3 13l4 4 4-4"/><path d="M17 21V7M13 11l4-4 4 4"/></svg>`,
+  rime: icons.rime,
+  sinonime: icons.sinonime,
   biblie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H12v18H4.5A2.5 2.5 0 0 0 2 22z"/><path d="M22 4.5A2.5 2.5 0 0 0 19.5 2H12v18h7.5a2.5 2.5 0 0 1 2.5 2z"/></svg>`
 };
 
@@ -127,6 +127,13 @@ function _switchTab(route) {
   if ((location.hash || '#/') === route) return;
   history.replaceState(history.state, '', route);
   _renderCurrentScreen();
+}
+
+/* Another tab, by id, the way its button in the bar would open it. Used by
+ * the editor's lookup buttons, which hand Rime or Sinonime a word first. */
+function openTab(id) {
+  const tab = TABS.find(t => t.id === id);
+  if (tab) _switchTab(tab.id === 'text' ? _textRoute : tab.route);
 }
 
 /* "Up" from a song is the song list. history.back() is the right way there
@@ -486,7 +493,7 @@ async function _setMemberRole(btn, member, nextRole, overlay) {
   }
 }
 
-window.App = { boot, openAccountMenu, goUpToList };
+window.App = { boot, openAccountMenu, goUpToList, openTab };
 boot();
 
 })();

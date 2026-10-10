@@ -249,6 +249,16 @@ async function _runRimeSearch(wrap) {
   }
 }
 
-window.RimeTab = { render: _renderRimeTab };
+/* Starts a search for a word picked elsewhere — the editor's lookup button.
+ * Only the state is set here; the tab runs the search when it renders, the
+ * same as it does for a query typed before switching away. The syllable
+ * filter is left as it was: it is the writer's setting, not the word's. */
+function search(word) {
+  _rimeQuery = word;
+  _rimeShown = RIME_PAGE;
+  _rimeReading = 0;
+}
+
+window.RimeTab = { render: _renderRimeTab, search };
 
 })();

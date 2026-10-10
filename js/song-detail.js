@@ -244,6 +244,40 @@ function _applyHistoryText(ta, text) {
   try { ta.setSelectionRange(caret, caret); } catch (e) { /* not focusable yet */ }
 }
 
+/* The word to look up from the editor: the one under the caret, or, when
+ * something is selected, the last word of the selection — the end of a
+ * line is where the rhyme lives. Letters only, so a hyphenated clitic
+ * splits off ("cântă-mi" gives "cântă" with the caret on it) and
+ * punctuation touching the word is left out. Null when the caret sits
+ * between words. */
+function _wordAtCaret(ta) {
+  const text = ta.value;
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  if (start !== end) {
+    const words = text.slice(start, end).match(/\p{L}+/gu);
+    if (words) return words[words.length - 1];
+  }
+  const isLetter = (ch) => !!ch && /\p{L}/u.test(ch);
+  let a = end, b = end;
+  while (isLetter(text[a - 1])) a--;
+  while (isLetter(text[b])) b++;
+  return a < b ? text.slice(a, b) : null;
+}
+
+/* Rime or Sinonime for the word at the caret, without retyping it. The
+ * other tab keeps the word and Text keeps its place, so the tab bar is the
+ * way back. */
+function _lookUpWord(ta, tab) {
+  const word = _wordAtCaret(ta);
+  if (!word) {
+    toast('Pune cursorul pe un cuvânt.');
+    return;
+  }
+  if (tab === 'rime') window.RimeTab.search(word);
+  else window.SinonimeTab.show(word);
+  window.App.openTab(tab);
+}
+
 function _renderTextTab(content) {
   const active = _activeVersion();
   const canEdit = _canEditVersion(active);
@@ -268,6 +302,25 @@ function _renderTextTab(content) {
     onmousedown: keepFocus
   });
 
+  // Same focus handling as undo/redo, and for a second reason too: the
+  // selection has to still be in the textarea when the click reads it.
+  const rimeBtn = el('button', {
+    class: 'version-switcher__nav',
+    'aria-label': 'Rime pentru cuvânt',
+    title: 'Rime pentru cuvânt',
+    html: icons.rime,
+    disabled: !active || !canEdit,
+    onmousedown: keepFocus
+  });
+  const synBtn = el('button', {
+    class: 'version-switcher__nav',
+    'aria-label': 'Sinonime pentru cuvânt',
+    title: 'Sinonime pentru cuvânt',
+    html: icons.sinonime,
+    disabled: !active || !canEdit,
+    onmousedown: keepFocus
+  });
+
   const switcher = el('div', { class: 'version-switcher' }, [
     // Enabled even with nothing to switch between. New songs are created
     // with a version, but a song from before that is not, and this button
@@ -277,6 +330,8 @@ function _renderTextTab(content) {
       class: 'version-switcher__current',
       onclick: () => _openVersionList(content)
     }, [active ? (active.title || 'Fără titlu') : 'Adaugă o versiune']),
+    rimeBtn,
+    synBtn,
     undoBtn,
     redoBtn
   ]);
@@ -314,6 +369,9 @@ function _renderTextTab(content) {
   });
   translation.value = active ? (active.text || '') : '';
   translation.addEventListener('scroll', () => { _translationScrollTop = translation.scrollTop; });
+
+  rimeBtn.onclick = () => _lookUpWord(translation, 'rime');
+  synBtn.onclick = () => _lookUpWord(translation, 'sinonime');
 
   undoBtn.onclick = () => {
     if (!_undoStack.length) return;
