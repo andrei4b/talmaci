@@ -122,7 +122,8 @@ entries.
 ## Current output
 
 ~1.5M word forms, 93.6% with attested stress, ~5.3 MB gzipped over the wire.
-Loaded lazily the first time the Rime tab is used, never at app boot.
+Preloaded in the background once the app is idle after boot, and served
+cache-first by the service worker.
 
 ## Names
 

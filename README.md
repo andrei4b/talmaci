@@ -192,8 +192,9 @@ noise as suggestions.
 - **Silabe** — restrict results to a syllable count, for fitting a fixed
   metrical slot.
 
-The index (~5.3 MB) loads the first time you open the tab, never at app
-boot, and is cached afterwards. See `tools/rhyme/README.md` to rebuild it
+The index (~5.3 MB) loads in the background once the app is idle after
+boot, like the Bible, so a search does not wait on it; the service worker
+keeps it cached, so it downloads again only when a new version ships. See `tools/rhyme/README.md` to rebuild it
 and `data/RHYME-INDEX-LICENSE.md` for sources and attribution.
 
 ## What's next

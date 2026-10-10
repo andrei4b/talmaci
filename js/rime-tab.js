@@ -117,8 +117,9 @@ async function _runRimeSearch(wrap) {
     return;
   }
 
-  // The index is several megabytes, so it loads on demand the first time
-  // you actually search — never at app boot.
+  // The index is several megabytes. It is normally preloaded in the
+  // background after boot, so this only shows when a search comes before
+  // that finishes — the percentage then picks up wherever it has got to.
   if (window.Rhyme.state() !== 'ready') {
     body.innerHTML = '';
     const pct = el('div', { class: 'empty-state__hint' }, ['0%']);

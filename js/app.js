@@ -46,9 +46,10 @@ async function boot() {
   window.Auth.onChange(_renderCurrentScreen);
   window.addEventListener('hashchange', _renderCurrentScreen);
   _renderCurrentScreen();
-  // The Bible is ~4 MB; fetch and parse it while the user is busy elsewhere
-  // so opening the tab never waits. Idle-time so it can't delay first paint.
-  const warm = () => window.BibleTab.preload();
+  // The Bible (~4 MB) and the rhyme index (~5.7 MB): fetch and parse them
+  // while the user is busy elsewhere so opening either tab never waits.
+  // Idle-time so it can't delay first paint.
+  const warm = () => { window.BibleTab.preload(); window.Rhyme.preload(); };
   if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 5000 });
   else setTimeout(warm, 2000);
 }

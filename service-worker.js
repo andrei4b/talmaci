@@ -22,13 +22,15 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v66';
+const CACHE_NAME = 'talmaci-shell-v67';
 const NETWORK_TIMEOUT_MS = 1500;
-// The Bible text is static and ~4 MB, so unlike the rest of the shell it is
-// served cache-first: no re-download on every cold start, and no waiting on
-// a slow network. A changed file ships by bumping CACHE_NAME, which makes
-// install fetch it fresh into the new cache.
+// The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
+// the rest of the shell they are served cache-first: no re-download on every
+// cold start, and no waiting on a slow network. A changed file ships by
+// bumping CACHE_NAME, which makes install fetch it fresh into the new cache.
 const BIBLE_URL = './data/bible-cornilescu.json';
+const RHYME_URL = './data/rhyme-index.json';
+const CACHE_FIRST = ['/data/bible-cornilescu.json', '/data/rhyme-index.json'];
 const SHELL_FILES = [
   './',
   './index.html',
@@ -48,6 +50,7 @@ const SHELL_FILES = [
   './js/song-detail.js',
   './js/app.js',
   BIBLE_URL,
+  RHYME_URL,
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png'
@@ -77,7 +80,8 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || _isBypassed(req.url)) return;
 
-  if (new URL(req.url).pathname.endsWith('/data/bible-cornilescu.json')) {
+  const path = new URL(req.url).pathname;
+  if (CACHE_FIRST.some(p => path.endsWith(p))) {
     event.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE_NAME).then(c => c.put(req, copy)); }
       return res;

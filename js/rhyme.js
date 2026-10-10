@@ -1,7 +1,9 @@
 /* rhyme.js — loads the rhyme index and answers rhyme queries.
  *
- * The index is ~5MB gzipped, so it is fetched lazily the first time the
- * Rime tab is opened, never at app boot, and kept in memory afterwards.
+ * The index is ~5MB, so it is fetched in the background once the app is
+ * idle after boot (see preload), the same way the Bible is, and kept in
+ * memory afterwards. Opening the Rime tab then finds it ready instead of
+ * waiting on the download.
  *
  * Memory note: the index holds ~1.5M words. Splitting that into a JS array
  * of 1.5M strings costs well over 100MB once per-string overhead is counted,
@@ -14,6 +16,10 @@
 const INDEX_URL = './data/rhyme-index.json';
 
 let _state = 'idle';        // idle | loading | ready | error
+// Whoever is showing progress right now. Kept apart from the load itself
+// because the load usually starts in the background with nobody watching,
+// and the Rime tab may join it half way and still want the percentage.
+let _onProgress = null;
 let _error = null;
 let _promise = null;
 
@@ -131,6 +137,7 @@ function decodeDeltas(s) {
 
 async function load(onProgress) {
   if (_state === 'ready') return true;
+  if (onProgress) _onProgress = onProgress;
   if (_promise) return _promise;
 
   _state = 'loading';
@@ -143,7 +150,7 @@ async function load(onProgress) {
       // a silent multi-megabyte wait reads as a frozen tab.
       const total = +(res.headers.get('Content-Length') || 0);
       let text;
-      if (res.body && res.body.getReader && onProgress) {
+      if (res.body && res.body.getReader) {
         const reader = res.body.getReader();
         const chunks = [];
         let received = 0;
@@ -152,7 +159,7 @@ async function load(onProgress) {
           if (done) break;
           chunks.push(value);
           received += value.length;
-          onProgress(total ? received / total : 0);
+          if (_onProgress) _onProgress(total ? received / total : 0);
         }
         let merged = new Uint8Array(received), pos = 0;
         for (const c of chunks) { merged.set(c, pos); pos += c.length; }
@@ -199,11 +206,13 @@ async function load(onProgress) {
       for (const d of data.rank.split(',')) { p += +d; _rank.set(p, r++); }
 
       _state = 'ready';
+      _onProgress = null;
       return true;
     } catch (err) {
       _state = 'error';
       _error = err.message || String(err);
       _promise = null;
+      _onProgress = null;
       throw err;
     }
   })();
@@ -406,8 +415,18 @@ function lookup(word, opts) {
   };
 }
 
+/* Starts the load with nobody waiting on it, at idle time after boot. A
+ * failure is not reported here — there is no one to tell — and leaves the
+ * state reset, so opening the tab simply tries again and shows its error
+ * if that fails too. */
+function preload() {
+  if (_state !== 'idle') return;
+  load().catch(() => { _state = 'idle'; _error = null; });
+}
+
 window.Rhyme = {
   load: load,
+  preload: preload,
   state: state,
   errorMessage: errorMessage,
   analyzeWord: analyzeWord,
