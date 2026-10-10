@@ -141,7 +141,13 @@ function splitStressedFinalI(word, cuts, stressOffset) {
 
   // The "u" of "qu" spells no vowel of its own — "te-qui-la", "quick" — so
   // it cannot be the louder neighbour, nor can the run start at it.
-  const realVowel = (k) => isVowelCh(word[k]) && !(word[k] === 'u' && word[k - 1] === 'q');
+  // Nor does the "i" of "ci"/"gi" before a "u" — it only softens the
+  // consonant, so "legiuire" is "le-giu-i-re", not "le-gi-u-i-re". The same
+  // test is used further down, where the cut between that "i" and the "u"
+  // is removed again.
+  const softener = (k) => word[k] === 'i' && word[k + 1] === 'u' &&
+    (word[k - 1] === 'c' || word[k - 1] === 'g') && word[k - 2] !== 'h';
+  const realVowel = (k) => isVowelCh(word[k]) && !(word[k] === 'u' && word[k - 1] === 'q') && !softener(k);
   if (!realVowel(stressOffset) || !realVowel(stressOffset - 1)) return cuts;
 
   // Within a run of vowels the most sonorous is the nucleus and the rest
