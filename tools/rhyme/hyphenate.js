@@ -553,6 +553,41 @@ function applyExceptions(word, cuts, stressOffset, head) {
     if (!isPrefixHiatus) cuts = cuts.filter(c => c !== i + 1);
   }
 
+  // Three vowel runs that Romanian always divides the same way, where the
+  // patterns divide them only most of the time:
+  //   "î" after a vowel starts a syllable. It cannot share one with a
+  //   preceding vowel, and it only sits there across a prefix boundary:
+  //   "se-mi-în-chis", "au-to-în-căr-ca-re", "ne-mai-în-tâl-nit".
+  //   "âi" before a vowel is "â-i": the "i" is a glide opening the next
+  //   syllable. "brâ-ie", "pâ-râ-iaș", "mân-gâ-iau", "căl-câ-iul".
+  //   "ăe" is a hiatus: "bă-eți", "co-dă-ești".
+  // Measured against the vocabulary: each already divides this way in the
+  // large majority of the words that contain it.
+  for (let j = 1; j + 1 < n; j++) {
+    let at = -1;
+    if (word[j] === 'î' && isVowelCh(word[j - 1])) at = j;
+    else if (word[j] === 'â' && word[j + 1] === 'i' && j + 2 < n && isVowelCh(word[j + 2])) at = j + 1;
+    else if (word[j] === 'ă' && word[j + 1] === 'e') at = j + 1;
+    if (at > 0 && cuts.indexOf(at) < 0) cuts = cuts.concat([at]).sort((x, y) => x - y);
+  }
+
+  // The article and the genitive of an "-ie" noun keep its "i" as a syllable
+  // of its own: "fo-bi-e" gives "fo-bi-a" and "fo-bi-ei", "te-ra-pi-e" gives
+  // "te-ra-pi-a" and "te-ra-pi-ei". The patterns know "terapia" and
+  // "familiei" word by word and run the vowels together for every other noun
+  // of the kind ("fo-bia", "a-nar-hia", "te-ra-piei"). Keyed on the headword
+  // rather than the spelling, because "-ia"/"-iei" at the end of a word is
+  // also a verb form or a diphthong in plenty of words that are not nouns in
+  // "-ie".
+  if (head && head !== word && head.length >= 4 && head.endsWith('ie')) {
+    const stem = head.slice(0, -2);
+    const tail = word.slice(stem.length);
+    if (word.startsWith(stem) && (tail === 'ia' || tail === 'iei') &&
+        !isVowelCh(stem[stem.length - 1]) && cuts.indexOf(stem.length + 1) < 0) {
+      cuts = cuts.concat([stem.length + 1]).sort((x, y) => x - y);
+    }
+  }
+
   // The learned suffix "-iune" is hiatus: "ac-ți-u-ne", "mi-si-u-ne",
   // "vi-zi-u-ne", "u-ni-u-ne", "ches-ti-u-ne". The patterns run the two
   // vowels together instead ("ac-țiu-ne"), losing a syllable.
