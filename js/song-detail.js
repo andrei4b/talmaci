@@ -326,7 +326,7 @@ function _openLookup(ta) {
   const go = (tab) => closeSheetThen(overlay, () => {
     if (tab === 'rime') window.RimeTab.search(word);
     else window.SinonimeTab.show(word);
-    window.App.openTab(tab, { fromSong: true });
+    window.App.openTab(tab);
   });
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('rime') },
