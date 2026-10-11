@@ -462,6 +462,30 @@ a { color: inherit; text-decoration: none; }
   .text-tab { flex-direction: row; gap: 20px; }
 }
 
+/* Every version side by side, on a big screen (see _showingAllVersions):
+   the app gives up its phone width for as long as they are on screen, and
+   the columns scroll sideways once there are more than fit. */
+#app:has(.text-tab--all),
+body:has(.text-tab--all) .tab-bar { max-width: none; }
+.text-tab--all { overflow-x: auto; }
+.text-tab--all .text-tab__col { min-width: 280px; }
+.text-tab__head {
+  flex-shrink: 0;
+  margin-bottom: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+button.text-tab__head { cursor: pointer; }
+.text-tab__head--active { color: var(--color-accent); }
+
 /* Version switcher — a row under the translation box: the version button
    (opens the version list sheet — rename/delete/switch live there),
    shrunk to make room for undo/redo on the right. */

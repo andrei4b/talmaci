@@ -72,6 +72,10 @@ let _undoStateVersionId;
 let _versionHistory = _newHistory('');
 let _originalHistory = null;
 let _originalHistorySongId = null;
+// With every version on screen at once (see _showingAllVersions), each
+// keeps its own history; these are the ones not active right now. Dropped
+// whenever _syncUndoState starts the active version's history afresh.
+let _otherHistories = new Map();
 
 // Scroll position of the original-text panel and the translation box.
 // _translationScrollTop resets inside _syncUndoState, right alongside the
@@ -82,6 +86,9 @@ let _originalHistorySongId = null;
 let _originalScrollTop = 0;
 let _translationScrollTop = 0;
 let _versesScrollTop = 0;
+// Scroll positions of the version columns, by version id, for the same
+// reason, when every version is on screen; scoped to the song.
+let _columnScrollTops = new Map();
 
 // Which view the Text tab shows a translation in: 'whole' — the original
 // beside the translation, each in one piece — or 'verses', each verse of
@@ -97,6 +104,20 @@ function _showingVerses() {
   return _view === 'verses' && !isOriginal(_song) && !!(_song.originalText || '').trim();
 }
 
+/* On a big screen the whole view shows every version side by side, each
+ * its own column after the original, rather than one at a time. The
+ * active version is then simply the one last written in: the switcher
+ * names it, and undo and the lookup act on it. Resizing across the
+ * breakpoint redraws the song page it is on. */
+const WIDE = window.matchMedia('(min-width: 1024px)');
+let _shellRoot = null;
+function _showingAllVersions() {
+  return WIDE.matches && !_showingVerses() && _versions.length > 1;
+}
+WIDE.addEventListener('change', () => {
+  if (_song && _shellRoot && _shellRoot.isConnected) _renderShell(_shellRoot);
+});
+
 async function render(root, songId) {
   if (_song && _song.id === songId) {
     // A tab switch back, or a "back" from Rime/Sinonime/Biblie — not a
@@ -107,6 +128,7 @@ async function render(root, songId) {
     return;
   }
   _originalScrollTop = 0;
+  _columnScrollTops = new Map();
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
@@ -158,6 +180,7 @@ async function render(root, songId) {
 }
 
 function _renderShell(root) {
+  _shellRoot = root;
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
@@ -222,8 +245,41 @@ function _syncUndoState(active) {
   if (_undoStateVersionId === _activeVersionId) return;
   _undoStateVersionId = _activeVersionId;
   _versionHistory = _newHistory(active ? active.text : '');
+  _otherHistories = new Map();
   _translationScrollTop = 0;
   _versesScrollTop = 0;
+}
+
+// The history of any version, the active one's being _versionHistory.
+function _historyFor(version) {
+  if (version.id === _undoStateVersionId) return _versionHistory;
+  if (!_otherHistories.has(version.id)) _otherHistories.set(version.id, _newHistory(version.text));
+  return _otherHistories.get(version.id);
+}
+
+// Makes a version active by writing in its column, with every version on
+// screen: its history moves in as the active one, keeping both histories,
+// where a switch from the version list starts afresh.
+function _makeActive(version) {
+  if (version.id === _activeVersionId) return;
+  const history = _historyFor(version);
+  if (_undoStateVersionId) _otherHistories.set(_undoStateVersionId, _versionHistory);
+  _otherHistories.delete(version.id);
+  _versionHistory = history;
+  _activeVersionId = _undoStateVersionId = version.id;
+  _rememberVersion(_song.id, version.id);
+}
+
+// The editor for one version's text. Its saves are bound to that version,
+// not to whichever is active when the typing pause ends.
+function _versionDoc(version, history) {
+  return _editedText({
+    text: version ? (version.text || '') : '',
+    history,
+    canEdit: _canEditVersion(version),
+    write: (t) => { if (version) version.text = t; },
+    save: (t) => _saveVersionText(version && version.id, history, t)
+  });
 }
 
 /* Where an undo or redo actually changed the text.
@@ -604,15 +660,16 @@ function _renderTextTab(content) {
     onmousedown: keepFocus
   });
 
+  // Enabled even with nothing to switch between. New songs are created
+  // with a version, but a song from before that is not, and this button
+  // is the only door to "Adaugă versiune" — disabling it was what sealed
+  // those songs off with no way to start writing in them.
+  const currentBtn = el('button', {
+    class: 'version-switcher__current',
+    onclick: () => _openVersionList(content)
+  }, [active ? (active.title || 'Fără titlu') : 'Adaugă o versiune']);
   const switcher = el('div', { class: 'version-switcher' }, [
-    // Enabled even with nothing to switch between. New songs are created
-    // with a version, but a song from before that is not, and this button
-    // is the only door to "Adaugă versiune" — disabling it was what sealed
-    // those songs off with no way to start writing in them.
-    el('button', {
-      class: 'version-switcher__current',
-      onclick: () => _openVersionList(content)
-    }, [active ? (active.title || 'Fără titlu') : 'Adaugă o versiune']),
+    currentBtn,
     lookupBtn,
     undoBtn,
     redoBtn
@@ -631,13 +688,7 @@ function _renderTextTab(content) {
     _originalHistory = _newHistory(_song.originalText);
     _originalHistorySongId = _song.id;
   }
-  const versionDoc = _editedText({
-    text: active ? (active.text || '') : '',
-    history: _versionHistory,
-    canEdit: !!active && canEdit,
-    write: (t) => { if (active) active.text = t; },
-    save: _saveVersionText
-  });
+  const versionDoc = _versionDoc(active, _versionHistory);
   const originalDoc = _editedText({
     text: _song.originalText || '',
     history: _originalHistory,
@@ -697,13 +748,19 @@ function _renderTextTab(content) {
     return v.slice(0, t.start) + v.slice(end);
   }
 
+  // Writing in a version's column, with every version on screen, makes it
+  // the active one.
+  const activate = (version, doc) => {
+    _makeActive(version);
+    currentBtn.textContent = version.title || 'Fără titlu';
+    lookupBtn.disabled = !doc.canEdit;
+    focusDoc(doc);
+  };
+
   const view = _showingVerses() ? _renderVersesView : _renderWholeView;
   const body = view({
     active, canEdit,
-    version: versionDoc, original: originalDoc, focusDoc,
-    getText: () => versionDoc.text,
-    typed: (t) => versionDoc.typed(t),
-    replaced: (t) => versionDoc.replaced(t),
+    version: versionDoc, original: originalDoc, focusDoc, activate,
     updateStrip, hideStrip, withoutTyped,
     setShowHistory: (fn) => { versionDoc.showHistory = fn; },
     setLookupTarget: (fn) => { lookupTarget = fn; }
@@ -713,7 +770,8 @@ function _renderTextTab(content) {
   body.mounted();
 }
 
-/* The whole text in one box, beside the whole original. */
+/* The whole text in one box, beside the whole original — or, on a big
+ * screen, every version in a box of its own, side by side after it. */
 function _renderWholeView(ctx) {
   const { active, canEdit } = ctx;
 
@@ -721,42 +779,64 @@ function _renderWholeView(ctx) {
   // ask for one. Everything else the two share, but the words in front of
   // an empty field are the one place the difference is obvious.
   const original = isOriginal(_song);
-  let placeholder = original ? 'Creează o versiune ca să începi.'
-                             : 'Creează o versiune pentru a începe traducerea.';
-  if (active) {
-    placeholder = !canEdit ? 'Doar creatorul sau un admin poate edita această versiune.'
-                : (original ? 'Versurile tale…' : 'Traducerea în română…') +
-                  '\n\nScrie [ la început de rând pentru o secțiune: Strofa, Refren…';
+  const placeholderFor = (version, editable) => {
+    if (!version) return original ? 'Creează o versiune ca să începi.'
+                                   : 'Creează o versiune pentru a începe traducerea.';
+    if (!editable) return 'Doar creatorul sau un admin poate edita această versiune.';
+    return (original ? 'Versurile tale…' : 'Traducerea în română…') +
+           '\n\nScrie [ la început de rând pentru o secțiune: Strofa, Refren…';
+  };
+
+  // Run once the view is on the page, in order: restoring scroll positions
+  // and attaching mirrors both need the layout.
+  const mounted = [];
+
+  /* The box for one version's text. `onFocus` runs as it gains focus;
+   * `scroll` keeps where it was scrolled to across redraws. */
+  function versionBox(version, doc, onFocus, scroll) {
+    const translation = el('textarea', {
+      class: 'field__input text-tab__translation',
+      placeholder: placeholderFor(version, doc.canEdit),
+      disabled: !doc.canEdit,
+      oninput: () => { doc.typed(translation.value); strip(); }
+    });
+    translation.value = doc.text;
+    translation.addEventListener('scroll', () => scroll.set(translation.scrollTop));
+    // Redraws the formatted section marks; set once the editor is mounted.
+    let repaint = () => {};
+
+    const strip = () => ctx.updateStrip(translation, '', (t, label) => {
+      const r = _withSection(ctx.withoutTyped(translation, t), t.start, label);
+      translation.value = r.text;
+      doc.replaced(r.text);
+      _scrollCaretIntoView(translation, r.caret);
+      translation.setSelectionRange(r.caret, r.caret);
+      repaint();
+      strip();
+    });
+    // The caret can leave the line without any typing: arrow keys, a tap.
+    translation.addEventListener('keyup', strip);
+    translation.addEventListener('mouseup', strip);
+    translation.addEventListener('blur', ctx.hideStrip);
+    translation.addEventListener('focus', onFocus);
+    doc.showHistory = (t) => { _applyHistoryText(translation, t); repaint(); };
+
+    const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
+    // Restored after mounting rather than left at the browser's default (0)
+    // — this runs on every render, including a plain tab-switch-back where
+    // nothing about the song actually changed, which is exactly when
+    // jumping back to the top would be most jarring. Reading offsetHeight
+    // first forces the layout that scrollTop's setter otherwise needs and
+    // may not have yet, right after building fresh DOM — without it the
+    // assignment can silently no-op.
+    mounted.push(() => {
+      void translation.offsetHeight;
+      translation.scrollTop = scroll.get();
+      // Only once mounted: it copies the textarea's computed layout.
+      repaint = _attachMirror(translation, mirror);
+    });
+    return { ta: translation, editor: el('div', { class: 'editor' }, [mirror, translation]) };
   }
-
-  const translation = el('textarea', {
-    class: 'field__input text-tab__translation',
-    placeholder,
-    disabled: !active || !canEdit,
-    oninput: () => { ctx.typed(translation.value); strip(); }
-  });
-  translation.value = ctx.getText();
-  translation.addEventListener('scroll', () => { _translationScrollTop = translation.scrollTop; });
-  // Redraws the formatted section marks; set once the editor is mounted.
-  let repaint = () => {};
-
-  const strip = () => ctx.updateStrip(translation, '', (t, label) => {
-    const r = _withSection(ctx.withoutTyped(translation, t), t.start, label);
-    translation.value = r.text;
-    ctx.replaced(r.text);
-    _scrollCaretIntoView(translation, r.caret);
-    translation.setSelectionRange(r.caret, r.caret);
-    repaint();
-    strip();
-  });
-  // The caret can leave the line without any typing: arrow keys, a tap.
-  translation.addEventListener('keyup', strip);
-  translation.addEventListener('mouseup', strip);
-  translation.addEventListener('blur', ctx.hideStrip);
-  translation.addEventListener('focus', () => ctx.focusDoc(ctx.version));
-
-  ctx.setLookupTarget(() => translation);
-  ctx.setShowHistory((t) => { _applyHistoryText(translation, t); repaint(); });
 
   // A composition has no source, so it gets one box instead of two. No
   // stylesheet change is needed for that: .text-tab__col is flex:1, so a
@@ -797,34 +877,52 @@ function _renderWholeView(ctx) {
 
     originalMirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
     cols.push(el('div', { class: 'text-tab__col' }, [
+      _showingAllVersions() ? el('div', { class: 'text-tab__head' }, ['Original']) : null,
       el('div', { class: 'editor editor--source' }, [originalMirror, originalEl])
     ]));
+    mounted.push(() => {
+      void originalEl.offsetHeight;
+      originalEl.scrollTop = _originalScrollTop;
+      repaintOriginal = _attachMirror(originalEl, originalMirror);
+    });
   }
-  const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
-  cols.push(el('div', { class: 'text-tab__col' }, [
-    el('div', { class: 'editor' }, [mirror, translation])
-  ]));
+
+  if (_showingAllVersions()) {
+    // Every version, in the order they were made, named above its box. The
+    // lookup reads from whichever was written in last.
+    let lastBox = null;
+    _versions.forEach(v => {
+      const doc = v.id === _activeVersionId ? ctx.version : _versionDoc(v, _historyFor(v));
+      const head = el('button', {
+        class: 'text-tab__head' + (v.id === _activeVersionId ? ' text-tab__head--active' : ''),
+        onclick: () => box.ta.focus()
+      }, [v.title || 'Fără titlu']);
+      const box = versionBox(v, doc, () => {
+        lastBox = box.ta;
+        ctx.activate(v, doc);
+        document.querySelectorAll('.text-tab__head--active')
+          .forEach(h => h.classList.remove('text-tab__head--active'));
+        head.classList.add('text-tab__head--active');
+      }, {
+        get: () => _columnScrollTops.get(v.id) || 0,
+        set: (top) => _columnScrollTops.set(v.id, top)
+      });
+      if (v.id === _activeVersionId) lastBox = box.ta;
+      cols.push(el('div', { class: 'text-tab__col' }, [head, box.editor]));
+    });
+    ctx.setLookupTarget(() => lastBox);
+  } else {
+    const box = versionBox(active, ctx.version, () => ctx.focusDoc(ctx.version), {
+      get: () => _translationScrollTop,
+      set: (top) => { _translationScrollTop = top; }
+    });
+    ctx.setLookupTarget(() => box.ta);
+    cols.push(el('div', { class: 'text-tab__col' }, [box.editor]));
+  }
 
   return {
-    el: el('div', { class: 'text-tab' }, cols),
-    // Restored after mounting rather than left at the browser's default (0)
-    // — this runs on every render, including a plain tab-switch-back where
-    // nothing about the song actually changed, which is exactly when
-    // jumping back to the top would be most jarring. Reading offsetHeight
-    // first forces the layout that scrollTop's setter otherwise needs and
-    // may not have yet, right after building fresh DOM — without it the
-    // assignment can silently no-op.
-    mounted() {
-      void translation.offsetHeight;
-      translation.scrollTop = _translationScrollTop;
-      // Only once mounted: it copies the textarea's computed layout.
-      repaint = _attachMirror(translation, mirror);
-      if (originalEl) {
-        void originalEl.offsetHeight;
-        originalEl.scrollTop = _originalScrollTop;
-        repaintOriginal = _attachMirror(originalEl, originalMirror);
-      }
-    }
+    el: el('div', { class: 'text-tab' + (_showingAllVersions() ? ' text-tab--all' : '') }, cols),
+    mounted() { mounted.forEach(fn => fn()); }
   };
 }
 
@@ -1030,14 +1128,14 @@ function _refreshTextTab(content) {
   _renderTextTab(content);
 }
 
-async function _saveVersionText(text) {
-  if (!_activeVersionId) return;
+async function _saveVersionText(versionId, history, text) {
+  if (!versionId) return;
   try {
-    await window.Db.updateVersion(_song.id, _activeVersionId, { text });
+    await window.Db.updateVersion(_song.id, versionId, { text });
     // The version's text is kept current as it is typed (see the Text
     // tab), so it is not set back here to whatever this save carried.
-    _versionHistory.last = text;
-    _versionHistory.pending = false;
+    history.last = text;
+    history.pending = false;
   } catch (err) {
     toast('Nu am putut salva textul: ' + err.message, { kind: 'error' });
   }
@@ -1477,7 +1575,9 @@ function reset() {
   _versionHistory = _newHistory('');
   _originalHistory = null;
   _originalHistorySongId = null;
+  _otherHistories = new Map();
   _originalScrollTop = 0;
+  _columnScrollTops = new Map();
   _translationScrollTop = 0;
   _versesScrollTop = 0;
 }
