@@ -15,13 +15,19 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Loaded without blocking first paint (media="print" until it arrives):
+     a render-blocking cross-origin stylesheet on a stalled connection holds
+     the whole page blank white, and the fallback fonts are fine meanwhile. -->
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
 
-<div id="app"></div>
+<!-- Static spinner until the scripts below have loaded and boot() takes
+     over, so a slow start never looks like a dead blank page. Same markup
+     as _renderBootLoading() in app.js. -->
+<div id="app"><div class="loading-state"><div class="spinner"></div></div></div>
 <div id="toast-root" class="toast-root" aria-live="polite"></div>
 
 <script src="https://www.gstatic.com/firebasejs/11.1.0/firebase-app-compat.js"></script>

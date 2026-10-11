@@ -1,7 +1,8 @@
 /* service-worker.js — app-shell offline caching.
  * Never caches Firebase/Google API traffic (auth, Firestore) — only the
- * static shell, so the app installs fast and opens offline, while data
- * always comes from the network.
+ * static shell (plus the Firebase SDK and Google Fonts it loads), so the
+ * app installs fast and opens offline, while data always comes from the
+ * network.
  *
  * Network-first, not cache-first: the fetch handler always tries the
  * network and only falls back to the cache when offline. A cache-first
@@ -22,7 +23,7 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v89';
+const CACHE_NAME = 'talmaci-shell-v90';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -57,10 +58,28 @@ const SHELL_FILES = [
   './icons/icon-maskable-512.png'
 ];
 
+// The Firebase SDK is cross-origin and needed to render anything at all
+// (its <script> tags block parsing), so it's precached up front too, rather
+// than only once it's first fetched. cache.addAll() rejects opaque (no-cors)
+// responses, so these are fetched and stored by hand — and best-effort, so a
+// gstatic hiccup never fails the whole install. Keep in sync with the
+// <script> tags in index.html.
+const CDN_FILES = [
+  'https://www.gstatic.com/firebasejs/11.1.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/11.1.0/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore-compat.js',
+  'https://www.gstatic.com/firebasejs/11.1.0/firebase-functions-compat.js'
+];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(SHELL_FILES))
+      .then(cache => Promise.all([
+        cache.addAll(SHELL_FILES),
+        ...CDN_FILES.map(url =>
+          fetch(new Request(url, { mode: 'no-cors' })).then(res => cache.put(url, res)).catch(() => {})
+        )
+      ]))
       .then(() => self.skipWaiting())
   );
 });
@@ -73,13 +92,47 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Static, versioned cross-origin assets: the Firebase SDK and Google Fonts
+// (stylesheet + font files). Checked before _isBypassed, which would
+// otherwise send them straight to the network like the API traffic.
+function _isCdnAsset(url) {
+  return url.startsWith('https://www.gstatic.com/firebasejs/') ||
+    /^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(url);
+}
+
 function _isBypassed(url) {
   return /googleapis\.com|gstatic\.com|firebaseio\.com|firebaseapp\.com/.test(url);
 }
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET' || _isBypassed(req.url)) return;
+  if (req.method !== 'GET') return;
+
+  // Cache-first for the CDN assets — immutable once fetched, so there's no
+  // freshness to chase. They used to be bypassed entirely, which left them
+  // as the one part of a cold start with no cache and no timeout: the SDK
+  // scripts block parsing and the fonts stylesheet blocked first paint, so
+  // a stalled connection held the page blank white on them alone. The
+  // scripts are plain <script> tags (no crossorigin attribute), so their
+  // responses are opaque (status 0) and must be cached anyway. A cache miss
+  // is raced against the same timeout as the shell, for the same reason.
+  if (_isCdnAsset(req.url)) {
+    event.respondWith(caches.match(req).then(hit => {
+      if (hit) return hit;
+      const networkFetch = fetch(req).then(res => {
+        if (res.ok || res.type === 'opaque') {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(req, copy));
+        }
+        return res;
+      }).catch(() => null);
+      const timeout = new Promise(resolve => setTimeout(() => resolve(null), NETWORK_TIMEOUT_MS));
+      return Promise.race([networkFetch, timeout]).then(res => res || Response.error());
+    }));
+    return;
+  }
+
+  if (_isBypassed(req.url)) return;
 
   const path = new URL(req.url).pathname;
   if (CACHE_FIRST.some(p => path.endsWith(p))) {
