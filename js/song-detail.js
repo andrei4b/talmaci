@@ -1277,10 +1277,11 @@ function _openSongMenu(root) {
   openSheet(overlay);
 }
 
-/* Where the song stands, and who is working on it. Each tap saves at once,
- * shown straight away and put back if the save fails — a status is a
- * small thing to set, and a Salvează button would be one more step. The
- * song list's copy is kept in step, so going back shows it too. */
+/* Where the song stands, and who is working on it. Like the edit sheet,
+ * nothing is saved until Salvează: the taps only change what the sheet
+ * shows, and Anulează leaves the song as it was. Only what actually
+ * changed is written, and the song list's copy is kept in step, so going
+ * back shows it too. */
 function _openStatusSheet() {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const me = window.Auth.currentUser().uid;
@@ -1289,49 +1290,46 @@ function _openStatusSheet() {
   const workBtn = el('button', { class: 'btn btn--wide' });
   let names = null;   // uid -> short name, once the members are in
 
-  const note = (patch) => { Object.assign(_song, patch); window.Songs.noteUpdated(_song.id, patch); };
+  // The choices in the sheet, starting from the song as it is.
+  const wasWorking = songWorkers(_song).includes(me);
+  let status = songStatus(_song);
+  let working = wasWorking;
 
   function paint() {
-    const current = songStatus(_song);
     statusRow.innerHTML = '';
     SONG_STATUSES.forEach(s => statusRow.appendChild(el('button', {
-      class: 'seg' + (s.id === current ? ' seg--active' : ''),
-      onclick: () => setStatus(s.id)
+      class: 'seg' + (s.id === status ? ' seg--active' : ''),
+      onclick: () => { status = s.id; paint(); }
     }, [s.label])));
 
-    const workers = songWorkers(_song);
-    workersText.textContent = !workers.length ? 'Nimeni deocamdată.'
-      : workers.map(uid => uid === me ? 'tu' : (names && names.get(uid)) || '…').join(', ');
-    const mine = workers.includes(me);
-    workBtn.textContent = mine ? 'Nu mai lucrez la ea' : 'Lucrez la ea';
-    workBtn.classList.toggle('btn--primary', !mine);
+    const others = songWorkers(_song).filter(uid => uid !== me);
+    const shown = working ? [me, ...others] : others;
+    workersText.textContent = !shown.length ? 'Nimeni deocamdată.'
+      : shown.map(uid => uid === me ? 'tu' : (names && names.get(uid)) || '…').join(', ');
+    workBtn.textContent = working ? 'Nu mai lucrez la ea' : 'Lucrez la ea';
   }
+  workBtn.addEventListener('click', () => { working = !working; paint(); });
 
-  async function setStatus(id) {
-    const before = _song.status;
-    if (songStatus(_song) === id) return;
-    note({ status: id });
-    paint();
+  const saveBtn = el('button', { class: 'btn btn--primary' }, ['Salvează']);
+  saveBtn.addEventListener('click', async () => {
+    const statusChanged = status !== songStatus(_song);
+    const workingChanged = working !== wasWorking;
+    if (!statusChanged && !workingChanged) { closeSheet(overlay); return; }
+    saveBtn.disabled = true;
     try {
-      await window.Db.setSongStatus(_song.id, id);
+      if (statusChanged) {
+        await window.Db.setSongStatus(_song.id, status);
+        _note({ status });
+      }
+      if (workingChanged) {
+        await window.Db.setWorking(_song.id, me, working);
+        const others = songWorkers(_song).filter(uid => uid !== me);
+        _note({ workers: working ? [...others, me] : others });
+      }
+      closeSheet(overlay);
     } catch (err) {
-      note({ status: before });
-      paint();
-      toast('Nu am putut schimba starea: ' + err.message, { kind: 'error' });
-    }
-  }
-
-  workBtn.addEventListener('click', async () => {
-    const before = songWorkers(_song);
-    const working = !before.includes(me);
-    note({ workers: working ? [...before, me] : before.filter(uid => uid !== me) });
-    paint();
-    try {
-      await window.Db.setWorking(_song.id, me, working);
-    } catch (err) {
-      note({ workers: before });
-      paint();
-      toast('Nu am putut salva: ' + err.message, { kind: 'error' });
+      saveBtn.disabled = false;
+      toast('Nu am putut salva starea: ' + err.message, { kind: 'error' });
     }
   });
 
@@ -1339,7 +1337,11 @@ function _openStatusSheet() {
     el('h2', { class: 'sheet__title' }, ['Stare']),
     statusRow,
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Lucrează la ea']), workersText]),
-    workBtn
+    workBtn,
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
+      saveBtn
+    ])
   ]));
   paint();
   openSheet(overlay);
@@ -1348,6 +1350,12 @@ function _openStatusSheet() {
     names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
     if (overlay.isConnected) paint();
   });
+}
+
+// A change to the song made here, told to the song list's cached copy too.
+function _note(patch) {
+  Object.assign(_song, patch);
+  window.Songs.noteUpdated(_song.id, patch);
 }
 
 function _confirmDeleteSong() {
