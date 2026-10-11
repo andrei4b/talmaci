@@ -1,0 +1,226 @@
+/* activity.js — the group's activity log: who changed what, and when.
+ *
+ * Every change to a shared song is written here as one entry, from the
+ * places in the UI that make it, and admins read the list back on the
+ * "Jurnal de activitate" screen (#/jurnal, reached from the account menu).
+ *
+ * Entries live under the group, groups/{groupId}/activity/{entryId}:
+ *   {
+ *     action: string,       // one of the keys of DESCRIBE below
+ *     by: uid,
+ *     byName: string,       // the author's name when it was written, for
+ *                           // a member who has since left the group
+ *     songId: string,
+ *     songTitle: string,    // the title at the time, so an entry for a
+ *                           // since-deleted or renamed song still reads
+ *     versionTitle?: string,
+ *     status?: string,      // for 'status'
+ *     working?: boolean,    // for 'working'
+ *     fields?: string[],    // for 'song_edited': which details changed
+ *     at: number (ms)
+ *   }
+ * A subcollection of the group rather than a top-level collection so the
+ * newest-first query needs only the single-field index Firestore builds by
+ * itself, not a composite one to be created by hand.
+ *
+ * A personal song is never logged: it is not the group's, and not even an
+ * admin may see it (see firestore.rules).
+ *
+ * Writing the log is fire-and-forget. A change that saved but failed to be
+ * logged is still saved, and the person making it is not told — the log is
+ * for looking back, not something their work should wait on.
+ *
+ * Text is saved as it is typed, every few seconds, so one sitting of
+ * editing would otherwise be dozens of entries. A text edit to the same
+ * thing by the same person within COALESCE_MS of their last one moves that
+ * entry's time forward instead of adding another. Kept in memory only, so
+ * a reload starts a new entry, which is fine. */
+(function () {
+const { el, toast, icons, isShared, statusLabel } = window.Utils;
+
+const COALESCE_MS = 15 * 60 * 1000;
+// How often a coalesced entry's time is moved forward at most — saves come
+// every few seconds, and each bump is a write.
+const BUMP_MS = 60 * 1000;
+const PAGE_SIZE = 50;
+
+function _ref(groupId) {
+  return firebase.firestore().collection('groups').doc(groupId).collection('activity');
+}
+
+// key -> { id, at, bumpedAt } for text edits that may be coalesced.
+const _recent = new Map();
+
+/* Record a change to `song`. `extra` carries the action's own fields
+ * (versionTitle, status, ...). `coalesceKey`, given only for text edits,
+ * names what was edited so repeated saves fold into one entry. */
+function log(song, action, extra, coalesceKey) {
+  if (!song || !isShared(song)) return;
+  const user = window.Auth.currentUser();
+  const groupId = window.Auth.currentGroupId();
+  if (!user || !groupId) return;
+  const now = Date.now();
+
+  if (coalesceKey) {
+    const key = [user.uid, song.id, action, coalesceKey].join('|');
+    const prev = _recent.get(key);
+    if (prev && now - prev.at < COALESCE_MS) {
+      prev.at = now;
+      if (prev.id && now - prev.bumpedAt >= BUMP_MS) {
+        prev.bumpedAt = now;
+        _ref(groupId).doc(prev.id).update({ at: now }).catch(() => {});
+      }
+      return;
+    }
+    const entry = { id: null, at: now, bumpedAt: now };
+    _recent.set(key, entry);
+    _write(groupId, user, song, action, extra, now).then(id => { entry.id = id; });
+    return;
+  }
+  _write(groupId, user, song, action, extra, now);
+}
+
+function _write(groupId, user, song, action, extra, at) {
+  return _ref(groupId).add({
+    action,
+    by: user.uid,
+    byName: user.displayName || (user.email || '').split('@')[0] || '',
+    songId: song.id,
+    songTitle: song.title || '',
+    ...(extra || {}),
+    at
+  }).then(ref => ref.id).catch(() => null);
+}
+
+async function _list(groupId, after) {
+  let q = _ref(groupId).orderBy('at', 'desc');
+  if (after) q = q.startAfter(after);
+  const snap = await q.limit(PAGE_SIZE).get();
+  return {
+    entries: snap.docs.map(d => ({ id: d.id, ...d.data() })),
+    last: snap.docs.length === PAGE_SIZE ? snap.docs[snap.docs.length - 1] : null
+  };
+}
+
+// ---- the screen ----
+
+const FIELD_LABELS = { title: 'titlul', demoUrl: 'linkul demo' };
+
+// What an entry says after the person's name.
+const DESCRIBE = {
+  song_created: () => 'a creat melodia',
+  song_deleted: () => 'a șters melodia',
+  song_edited: (e) => 'a modificat ' + ((e.fields || []).map(f => FIELD_LABELS[f] || f).join(' și ') || 'detaliile') + ' la',
+  original_text: () => 'a editat originalul la',
+  version_text: (e) => `a editat „${e.versionTitle || 'o versiune'}” la`,
+  version_added: (e) => `a adăugat „${e.versionTitle || 'o versiune'}” la`,
+  version_renamed: (e) => `a redenumit o versiune în „${e.versionTitle || ''}” la`,
+  version_deleted: (e) => `a șters „${e.versionTitle || 'o versiune'}” de la`,
+  status: (e) => `a marcat ca „${statusLabel(e.status)}”`,
+  working: (e) => e.working ? 'lucrează acum la' : 'nu mai lucrează la'
+};
+
+const MONTHS = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
+
+/* Minutes or hours ago while that is still the easier thing to read, the
+ * day and hour after that. */
+function formatWhen(at, now) {
+  const diff = Math.max(0, now - at);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'chiar acum';
+  if (min < 60) return `acum ${min} min`;
+  const d = new Date(at);
+  const hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  if (diff < 6 * 3600000) return `acum ${Math.floor(min / 60)} h`;
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const dayStart = new Date(at); dayStart.setHours(0, 0, 0, 0);
+  const days = Math.round((today - dayStart) / 86400000);
+  if (days === 0) return `azi, ${hm}`;
+  if (days === 1) return `ieri, ${hm}`;
+  const year = d.getFullYear() !== today.getFullYear() ? ' ' + d.getFullYear() : '';
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}${year}, ${hm}`;
+}
+
+let _gen = 0;
+
+async function render(root) {
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'topbar' }, [
+    el('button', { class: 'btn btn--icon', 'aria-label': 'Înapoi', html: icons.back, onclick: () => window.App.goUpToList() }),
+    el('h1', { class: 'topbar__title' }, ['Jurnal de activitate'])
+  ]));
+  const wrap = el('div', { class: 'song-list-wrap' });
+  root.appendChild(wrap);
+
+  if (!window.Auth.isAdmin()) {
+    wrap.appendChild(el('div', { class: 'empty-state' }, ['Doar adminii pot vedea jurnalul.']));
+    return;
+  }
+
+  wrap.appendChild(el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' }), 'Se încarcă…']));
+  const gen = ++_gen;
+  const groupId = window.Auth.currentGroupId();
+  let page, members;
+  try {
+    [page, members] = await Promise.all([_list(groupId, null), window.Auth.groupMembers()]);
+  } catch (err) {
+    if (gen !== _gen) return;
+    wrap.innerHTML = '';
+    wrap.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut încărca jurnalul: ' + err.message]));
+    return;
+  }
+  if (gen !== _gen) return;
+
+  const names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+  const me = window.Auth.currentUser().uid;
+  wrap.innerHTML = '';
+  if (!page.entries.length) {
+    wrap.appendChild(el('div', { class: 'empty-state' }, ['Nicio modificare înregistrată încă.']));
+    return;
+  }
+  const ul = el('ul', { class: 'activity-list' });
+  wrap.appendChild(ul);
+  const addEntries = (entries) => {
+    const now = Date.now();
+    entries.forEach(e => ul.appendChild(_renderEntry(e, names, me, now)));
+  };
+  addEntries(page.entries);
+
+  let last = page.last;
+  if (last) {
+    const more = el('button', { class: 'btn btn--wide activity-more' }, ['Mai vechi']);
+    more.addEventListener('click', async () => {
+      more.disabled = true;
+      try {
+        const next = await _list(groupId, last);
+        addEntries(next.entries);
+        last = next.last;
+        if (!last) more.remove();
+      } catch (err) {
+        toast('Nu am putut încărca: ' + err.message, { kind: 'error' });
+      }
+      more.disabled = false;
+    });
+    wrap.appendChild(more);
+  }
+}
+
+function _renderEntry(e, names, me, now) {
+  const who = e.by === me ? 'Tu' : (names.get(e.by) || e.byName || 'Cineva');
+  const describe = DESCRIBE[e.action] || (() => 'a modificat');
+  const title = e.songTitle || 'Fără titlu';
+  // A deleted song has nowhere to go; everything else opens it.
+  const songEl = e.action === 'song_deleted'
+    ? el('span', { class: 'activity__song' }, [title])
+    : el('a', { class: 'activity__song', href: `#/song/${encodeURIComponent(e.songId)}` }, [title]);
+  return el('li', { class: 'activity' }, [
+    el('div', { class: 'activity__text' }, [
+      el('strong', {}, [who]), ' ' + describe(e) + ' ', songEl
+    ]),
+    el('time', { class: 'activity__when', datetime: new Date(e.at).toISOString(), title: new Date(e.at).toLocaleString('ro-RO') }, [formatWhen(e.at, now)])
+  ]);
+}
+
+window.Activity = { log, render, formatWhen };
+
+})();

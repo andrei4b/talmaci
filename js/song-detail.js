@@ -1132,6 +1132,8 @@ async function _saveVersionText(versionId, history, text) {
   if (!versionId) return;
   try {
     await window.Db.updateVersion(_song.id, versionId, { text });
+    const version = _versions.find(v => v.id === versionId);
+    window.Activity.log(_song, 'version_text', { versionTitle: version ? version.title : '' }, versionId);
     // The version's text is kept current as it is typed (see the Text
     // tab), so it is not set back here to whatever this save carried.
     history.last = text;
@@ -1147,6 +1149,7 @@ async function _saveOriginalText(text) {
   try {
     await window.Db.updateSong(_song.id, { originalText: text });
     window.Songs.noteUpdated(_song.id, { originalText: text });
+    window.Activity.log(_song, 'original_text', null, 'original');
     if (_originalHistory) { _originalHistory.last = text; _originalHistory.pending = false; }
   } catch (err) {
     toast('Nu am putut salva originalul: ' + err.message, { kind: 'error' });
@@ -1217,6 +1220,7 @@ function _confirmDeleteVersion(content, version) {
         onclick: async () => {
           try {
             await window.Db.deleteVersion(_song.id, version.id);
+            window.Activity.log(_song, 'version_deleted', { versionTitle: version.title || '' });
             _versions = _versions.filter(v => v.id !== version.id);
             if (_activeVersionId === version.id) {
               _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
@@ -1259,6 +1263,7 @@ function _openAddVersion(content) {
             });
             const now = Date.now();
             _versions.push({ id, title, text: '', createdAt: now, updatedAt: now });
+            window.Activity.log(_song, 'version_added', { versionTitle: title });
             _activeVersionId = id;
             _rememberVersion(_song.id, id);
             closeSheet(overlay);
@@ -1291,6 +1296,7 @@ function _openRenameVersion(content, version) {
           const title = titleInput.value.trim() || version.title;
           try {
             await window.Db.updateVersion(_song.id, version.id, { title });
+            if (title !== version.title) window.Activity.log(_song, 'version_renamed', { versionTitle: title });
             version.title = title;
             closeSheetThen(overlay, () => {
               _refreshTextTab(content);
@@ -1418,11 +1424,13 @@ function _openStatusSheet() {
       if (statusChanged) {
         await window.Db.setSongStatus(_song.id, status);
         _note({ status });
+        window.Activity.log(_song, 'status', { status });
       }
       if (workingChanged) {
         await window.Db.setWorking(_song.id, me, working);
         const others = songWorkers(_song).filter(uid => uid !== me);
         _note({ workers: working ? [...others, me] : others });
+        window.Activity.log(_song, 'working', { working });
       }
       closeSheet(overlay);
     } catch (err) {
@@ -1472,6 +1480,7 @@ function _confirmDeleteSong() {
         onclick: async () => {
           try {
             await window.Db.deleteSong(_song.id);
+            window.Activity.log(_song, 'song_deleted');
             window.Songs.noteDeleted(_song.id);
             closeSheetThen(overlay, () => { location.hash = '#/'; });
           } catch (err) {
@@ -1538,6 +1547,7 @@ function _openEditSong(root) {
           try {
             await window.Db.updateSong(_song.id, patch);
             Object.assign(_song, patch);
+            window.Activity.log(_song, 'song_edited', { fields: Object.keys(patch) });
             window.Songs.noteUpdated(_song.id, patch);
             closeSheetThen(overlay, () => _renderShell(root));
           } catch (err) {

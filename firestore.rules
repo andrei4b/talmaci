@@ -10,6 +10,7 @@ rules_version = '2';
 // Data model:
 //   /users/{uid}      { email, displayName, role: 'admin'|'user', groupId, createdAt }
 //   /groups/{groupId} { name, createdBy, createdAt }
+//   /groups/{groupId}/activity/{entryId} { action, by, byName, songId, songTitle, ..., at }
 //   /invites/{code}   { groupId, createdBy, createdAt }
 //   /songs/{songId}   { title, originalText, translatedText, groupId, shared, status, workers, demoUrl, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
@@ -100,6 +101,25 @@ service cloud.firestore {
       // are the only way anyone else ever joins.
       allow create: if false;
       allow update, delete: if false;
+
+      // The activity log (see js/activity.js). Only admins read it. Any
+      // member writes their own entries, never someone else's, and may
+      // afterwards only move their own entry's time forward — that is how
+      // a run of autosaves folds into one entry. Nothing is ever deleted.
+      // The newest-first list query is provable as is: groupId is part of
+      // the path, not a field that would have to be filtered on.
+      match /activity/{entryId} {
+        allow read: if isSignedIn() && groupId == myGroup() && isAdmin();
+        allow create: if isSignedIn() && groupId == myGroup()
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.action is string
+          && request.resource.data.at is number;
+        allow update: if isSignedIn() && groupId == myGroup()
+          && resource.data.by == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['at'])
+          && request.resource.data.at is number;
+        allow delete: if false;
+      }
     }
 
     match /invites/{code} {

@@ -1,6 +1,6 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
-const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, icons } = window.Utils;
+const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
 // accessory bar (the key/card/location icon row) ----
@@ -59,7 +59,8 @@ function _resetUserData() {
   window.SongDetail.reset();
   // A song URL belongs to the previous account; don't carry it into the next.
   _textRoute = '#/';
-  if ((location.hash || '').startsWith('#/song/')) history.replaceState(null, '', '#/');
+  const h = location.hash || '';
+  if (h.startsWith('#/song/') || h === '#/jurnal') history.replaceState(null, '', '#/');
 }
 
 function _renderBootLoading() {
@@ -210,7 +211,7 @@ function _renderRoute(root) {
   // rather than here and this is the first chance to mark it. A tab switch
   // later replaces the URL but carries the flag along, which is what keeps
   // back working after a detour through Rime.
-  if (hash.startsWith('#/song/') && !history.state) {
+  if ((hash.startsWith('#/song/') || hash === '#/jurnal') && !history.state) {
     history.replaceState({ talmaciFromList: _prevRoute === '#/' }, '');
   }
 
@@ -227,6 +228,7 @@ function _renderRoute(root) {
   if (tab === 'text') {
     const songMatch = hash.match(/^#\/song\/(.+)$/);
     if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]));
+    else if (hash === '#/jurnal') window.Activity.render(content);
     else window.Songs.render(content);
   } else if (tab === 'rime') {
     _renderSimpleTab(content, 'Rime', (host) => window.RimeTab.render(host));
@@ -390,6 +392,11 @@ function openAccountMenu() {
       class: 'btn btn--wide btn--menu',
       onclick: () => { closeSheet(overlay); _openManageMembers(); }
     }, menuLabel(icons.users, 'Gestionează membrii')));
+
+    items.push(el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => closeSheetThen(overlay, () => { location.hash = '#/jurnal'; })
+    }, menuLabel(icons.history, 'Jurnal de activitate')));
   }
 
   items.push(el('button', {

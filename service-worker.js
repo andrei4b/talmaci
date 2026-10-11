@@ -23,7 +23,7 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v91';
+const CACHE_NAME = 'talmaci-shell-v92';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -45,6 +45,7 @@ const SHELL_FILES = [
   './js/translate.js',
   './js/ro-phonetics.js',
   './js/rhyme.js',
+  './js/activity.js',
   './js/songs.js',
   './js/rime-tab.js',
   './js/sinonime-tab.js',

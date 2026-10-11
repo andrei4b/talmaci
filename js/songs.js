@@ -325,6 +325,7 @@ function _openAddSong() {
             // refresh — there's no fetch to pick it up on the way back
             // from the song this opens next.
             _songs.push({ id, title, kind, originalText, shared, demoUrl, workers, groupId, createdBy, createdAt: now, updatedAt: now });
+            window.Activity.log({ id, title, shared }, 'song_created');
             closeSheetThen(overlay, () => { location.hash = `#/song/${id}`; });
           } catch (err) {
             toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
