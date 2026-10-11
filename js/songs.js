@@ -281,10 +281,27 @@ function _openAddSong() {
   };
   paintVis();
 
+  // Whether you are working on it — who adds a song is usually who starts
+  // it, so yes unless said otherwise. The same list the song's Stare sheet
+  // keeps, so it shows under the title from the start.
+  let working = true;
+  const workRow = el('div', { class: 'pill-row' });
+  const paintWork = () => {
+    workRow.innerHTML = '';
+    [[true, 'Da'], [false, 'Nu']].forEach(([value, label]) => {
+      workRow.appendChild(el('button', {
+        class: 'seg' + (working === value ? ' seg--active' : ''),
+        onclick: () => { working = value; paintWork(); }
+      }, [label]));
+    });
+  };
+  paintWork();
+
   const sheet = el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Melodie nouă']),
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Tip']), kindRow]),
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Vizibilitate']), visRow]),
+    el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Lucrezi la ea?']), workRow]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo (opțional)']), demoInput]),
     el('div', { class: 'sheet__actions' }, [
@@ -302,11 +319,12 @@ function _openAddSong() {
             const shared = visibility !== 'personal';
             const groupId = window.Auth.currentGroupId();
             const createdBy = window.Auth.currentUser().uid;
-            const id = await window.Db.addSong({ title, kind, originalText, shared, demoUrl, groupId, createdBy });
+            const workers = working ? [createdBy] : [];
+            const id = await window.Db.addSong({ title, kind, originalText, shared, demoUrl, workers, groupId, createdBy });
             // The cache won't otherwise learn about this until a manual
             // refresh — there's no fetch to pick it up on the way back
             // from the song this opens next.
-            _songs.push({ id, title, kind, originalText, shared, demoUrl, groupId, createdBy, createdAt: now, updatedAt: now });
+            _songs.push({ id, title, kind, originalText, shared, demoUrl, workers, groupId, createdBy, createdAt: now, updatedAt: now });
             closeSheetThen(overlay, () => { location.hash = `#/song/${id}`; });
           } catch (err) {
             toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });

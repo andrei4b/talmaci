@@ -98,7 +98,7 @@ async function getGroup(groupId) {
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
-async function addSong({ title, originalText, kind, shared, demoUrl, groupId, createdBy }) {
+async function addSong({ title, originalText, kind, shared, demoUrl, workers, groupId, createdBy }) {
   const now = Date.now();
   const ref = await fs().collection('songs').add({
     title: title || '',
@@ -108,6 +108,7 @@ async function addSong({ title, originalText, kind, shared, demoUrl, groupId, cr
     groupId,
     shared: shared !== false,
     demoUrl: demoUrl || '',
+    workers: Array.isArray(workers) ? workers : [],
     createdBy,
     createdAt: now,
     updatedAt: now
