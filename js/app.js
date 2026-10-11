@@ -119,6 +119,7 @@ let _currentRoute = null;
  * With replacement the stack only ever holds real steps — the list, then
  * the song you opened — so back means the same thing whichever tab you
  * happen to be looking at. This is how tab bars behave in native apps.
+ * The one step a tab can be is a word looked up from a song — see openTab.
  *
  * replaceState fires neither hashchange nor popstate, so the render has to
  * be called directly; and the existing state object is carried over,
@@ -126,15 +127,33 @@ let _currentRoute = null;
  * the URL does not change that. */
 function _switchTab(route) {
   if ((location.hash || '#/') === route) return;
+  // Back to the song a lookup came from (see openTab) is a step back, not
+  // a new place: going there by replacing would leave the song in the
+  // history twice, and back from it would land on the song again.
+  if (history.state && history.state.talmaciLookupFrom === route) {
+    history.back();
+    return;
+  }
   history.replaceState(history.state, '', route);
   _renderCurrentScreen();
 }
 
 /* Another tab, by id, the way its button in the bar would open it. Used by
  * the editor's lookup buttons, which hand Rime or Sinonime a word first. */
-function openTab(id) {
+function openTab(id, opts) {
   const tab = TABS.find(t => t.id === id);
-  if (tab) _switchTab(tab.id === 'text' ? _textRoute : tab.route);
+  if (!tab) return;
+  const route = tab.id === 'text' ? _textRoute : tab.route;
+  // A word looked up from a song is a step taken from it, not a change of
+  // place like a tap on the bar, so it pushes an entry instead of
+  // replacing one: back then returns to the song rather than to the list.
+  // The entry remembers the song, for _switchTab above.
+  if (opts && opts.fromSong && (location.hash || '#/') !== route) {
+    history.pushState({ talmaciLookupFrom: location.hash }, '', route);
+    _renderCurrentScreen();
+    return;
+  }
+  _switchTab(route);
 }
 
 /* "Up" from a song is the song list. history.back() is the right way there
