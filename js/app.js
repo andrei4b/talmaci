@@ -188,10 +188,12 @@ function goUpToList() {
 let _persist = null;
 
 function _persistLayer(root) {
-  if (!_persist) {
-    _persist = el('div', { class: 'persist', hidden: true });
-    root.appendChild(_persist);
-  }
+  if (!_persist) _persist = el('div', { class: 'persist', hidden: true });
+  // The sign-in and join screens clear #app wholesale, which takes the
+  // layer with it. Firebase can briefly report a signed-out user when a
+  // token refresh fails after idle, so this does happen mid-session — and
+  // without re-attaching here, Sinonime stayed an empty page from then on.
+  if (_persist.parentNode !== root) root.appendChild(_persist);
   return _persist;
 }
 
