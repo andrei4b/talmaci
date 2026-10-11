@@ -455,10 +455,15 @@ function _openVersePicker(host) {
 
 /* ---------- search ---------- */
 
-const FOLD = { 'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ț': 't' };
+/* The form text is searched in: lower case, diacritics kept — "mana" and
+ * "mână" are different words, and a search for one should not turn up the
+ * other. Only the two ways of writing ș and ț are made one: the text uses
+ * the comma letters, but some keyboards still type the older cedilla ones
+ * (ş, ţ), which look the same and would otherwise match nothing. */
+const FOLD = { 'ş': 'ș', 'ţ': 'ț' };
 function fold(s) {
   let out = '';
-  for (const ch of s.toLowerCase()) out += FOLD[ch] || ch;
+  for (const ch of s.normalize('NFC').toLowerCase()) out += FOLD[ch] || ch;
   return out;
 }
 
