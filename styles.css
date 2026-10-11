@@ -183,9 +183,10 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface);
 }
 
-/* Type filter — a row of pills between the search field and the list, and
-   the same control in the new-song sheet. */
-.kind-filter {
+/* A row of pills to choose one of: the status filter between the search
+   field and the song list, and the choices in the new-song and status
+   sheets. */
+.pill-row {
   flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
@@ -193,7 +194,7 @@ a { color: inherit; text-decoration: none; }
   padding: 0 20px 12px;
 }
 /* Inside a sheet the surrounding .field already supplies the spacing. */
-.sheet .kind-filter { padding: 0; }
+.sheet .pill-row { padding: 0; }
 
 /* Song list */
 .song-list-wrap {

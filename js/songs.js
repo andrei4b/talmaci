@@ -1,7 +1,7 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isOriginal, isShared,
-        songStatus, statusLabel, songWorkers } = window.Utils;
+const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isShared,
+        SONG_STATUSES, songStatus, statusLabel, songWorkers } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 // A drawn plus rather than the "+" character — text glyphs sit off-center
@@ -19,12 +19,13 @@ let _songs = [];
 let _loaded = false;
 let _listScrollTop = 0;
 let _query = '';
-// '' = everything, otherwise 'translation' or 'original'. Module state like
-// _query, deliberately not localStorage: a filter that quietly persists
-// across sessions is a good way to wonder where half your songs went.
-let _kindFilter = '';
+// '' = every song, otherwise one status id — see Utils.SONG_STATUSES.
+// Module state like _query, deliberately not localStorage: a filter that
+// quietly persists across sessions is a good way to wonder where half your
+// songs went.
+let _statusFilter = '';
 // Which list is showing: the group's shared songs, or this user's own
-// personal ones. Same module-state reasoning as _kindFilter above.
+// personal ones. Same module-state reasoning as _statusFilter above.
 let _scope = 'group';
 // Fetched once per session and cached — every visit after the first shows
 // the real name immediately instead of a placeholder.
@@ -57,7 +58,7 @@ async function render(root) {
       oninput: debounce((e) => { _query = e.target.value; _renderList(_listWrap); }, 150)
     })
   ]));
-  root.appendChild(_renderKindFilter());
+  root.appendChild(_renderStatusFilter());
   root.appendChild(_listWrap);
 
   root.appendChild(el('button', {
@@ -125,15 +126,17 @@ function _openScopeSheet() {
   openSheet(overlay);
 }
 
-function _renderKindFilter() {
-  const row = el('div', { class: 'kind-filter' });
-  [['', 'Toate'], ['translation', 'Traduceri'], ['original', 'Compoziții']].forEach(([value, label]) => {
+// Narrows the list to songs at one stage — what still needs review, what
+// is done.
+function _renderStatusFilter() {
+  const row = el('div', { class: 'pill-row' });
+  [['', 'Toate'], ...SONG_STATUSES.map(st => [st.id, st.label])].forEach(([value, label]) => {
     row.appendChild(el('button', {
-      class: 'seg' + (_kindFilter === value ? ' seg--active' : ''),
+      class: 'seg' + (_statusFilter === value ? ' seg--active' : ''),
       onclick: () => {
-        _kindFilter = value;
+        _statusFilter = value;
         // Redraw the row in place so the pills update, then the list.
-        const fresh = _renderKindFilter();
+        const fresh = _renderStatusFilter();
         row.replaceWith(fresh);
         _renderList(_listWrap);
       }
@@ -189,9 +192,7 @@ function _renderList(listWrap) {
   const q = _query.trim().toLowerCase();
   const filtered = scoped.filter(s => {
     if (q && !(s.title || '').toLowerCase().includes(q)) return false;
-    if (_kindFilter === 'original') return isOriginal(s);
-    if (_kindFilter === 'translation') return !isOriginal(s);
-    return true;
+    return !_statusFilter || songStatus(s) === _statusFilter;
   });
 
   if (!filtered.length) {
@@ -201,8 +202,9 @@ function _renderList(listWrap) {
         ? 'Nu ai nicio melodie personală. Apasă „+” pentru a începe.'
         : 'Nu a fost adăugată încă nicio melodie în grup. Apasă „+” pentru a începe.';
     } else {
-      msg = _kindFilter === 'original' ? 'Nicio compoziție.'
-          : _kindFilter === 'translation' ? 'Nicio traducere.'
+      msg = _statusFilter === 'draft' ? 'Nicio melodie în ciornă.'
+          : _statusFilter === 'review' ? 'Nicio melodie în revizie.'
+          : _statusFilter === 'final' ? 'Nicio melodie finală.'
           : 'Nicio melodie găsită.';
     }
     listWrap.appendChild(el('div', { class: 'empty-state' }, [msg]));
@@ -279,7 +281,7 @@ function _openAddSong() {
   const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off' });
 
   let kind = 'translation';
-  const kindRow = el('div', { class: 'kind-filter' });
+  const kindRow = el('div', { class: 'pill-row' });
   const paintKind = () => {
     kindRow.innerHTML = '';
     [['translation', 'Traducere'], ['original', 'Compoziție']].forEach(([value, label]) => {
@@ -296,7 +298,7 @@ function _openAddSong() {
   // personal one — but it's a real choice, not inferred silently: it's
   // shown and can be flipped right here either way.
   let visibility = _scope === 'personal' ? 'personal' : 'group';
-  const visRow = el('div', { class: 'kind-filter' });
+  const visRow = el('div', { class: 'pill-row' });
   const paintVis = () => {
     visRow.innerHTML = '';
     [['group', _groupName || 'Grup'], ['personal', 'Personal']].forEach(([value, label]) => {
@@ -355,7 +357,7 @@ function reset() {
   _loaded = false;
   _listScrollTop = 0;
   _query = '';
-  _kindFilter = '';
+  _statusFilter = '';
   _scope = 'group';
   _groupName = '';
   _scopeBtnEl = null;

@@ -1285,7 +1285,7 @@ function _openSongMenu(root) {
 function _openStatusSheet() {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const me = window.Auth.currentUser().uid;
-  const statusRow = el('div', { class: 'kind-filter' });
+  const statusRow = el('div', { class: 'pill-row' });
   const workersText = el('p', { class: 'sheet__text' });
   const workBtn = el('button', { class: 'btn btn--wide' });
   let names = null;   // uid -> short name, once the members are in
