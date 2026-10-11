@@ -200,8 +200,9 @@ a { color: inherit; text-decoration: none; }
   overflow-y: auto;
   /* Clear the tab bar, which is fixed and overlaps this. --tabbar-h is its
      measured height, published by app.js; the literal is the fallback for
-     the first paint before that runs. */
-  padding: 0 20px calc(var(--tabbar-h, 70px) + 20px);
+     the first paint before that runs. With the keyboard up the bar is
+     behind it, so the room is handed back — see .tab-content. */
+  padding: 0 20px max(20px, calc(var(--tabbar-h, 70px) + 20px - var(--keyboard-inset, 0px)));
 }
 .song-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .song-list__item { }
@@ -703,7 +704,10 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 0 20px calc(var(--tabbar-h, 70px) + 10px);
+  /* Clears the fixed tab bar, except with the keyboard up, when the bar
+     is behind it — reserving its room then is a blank strip over the
+     results. See .tab-content. */
+  padding: 0 20px max(10px, calc(var(--tabbar-h, 70px) + 10px - var(--keyboard-inset, 0px)));
 }
 .rime__filters {
   flex-shrink: 0;
@@ -825,7 +829,7 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 4px 20px calc(var(--tabbar-h, 70px) + 20px);
+  padding: 4px 20px max(20px, calc(var(--tabbar-h, 70px) + 20px - var(--keyboard-inset, 0px)));
 }
 .bible-verse {
   display: flex;
@@ -914,12 +918,13 @@ a { color: inherit; text-decoration: none; }
 .chap-grid__item--active { background: var(--color-primary); color: #fff; }
 
 /* Search, inside the tab rather than a sheet — it takes over the whole
-   panel the way Rime's search does, not a modal over the reader. */
+   panel the way Rime's search does, not a modal over the reader. Clears
+   the tab bar like the rest, except behind the keyboard: see .tab-content. */
 .bible-search {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 20px calc(var(--tabbar-h, 70px) + 20px);
+  padding: 0 20px max(20px, calc(var(--tabbar-h, 70px) + 20px - var(--keyboard-inset, 0px)));
 }
 .bible-search__count { color: var(--color-text-muted); font-size: 0.85rem; padding: 4px 0 10px; }
 .bible-search__list { display: flex; flex-direction: column; gap: 10px; }
