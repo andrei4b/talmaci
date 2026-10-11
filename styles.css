@@ -183,18 +183,14 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface);
 }
 
-/* A row of pills to choose one of: the status filter between the search
-   field and the song list, and the choices in the new-song and status
-   sheets. */
+/* A row of pills to choose one of: the choices in the new-song and status
+   sheets, where the surrounding .field supplies the spacing. */
 .pill-row {
   flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 0 20px 12px;
 }
-/* Inside a sheet the surrounding .field already supplies the spacing. */
-.sheet .pill-row { padding: 0; }
 
 /* Song list */
 .song-list-wrap {

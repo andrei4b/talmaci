@@ -1,7 +1,7 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
 const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isShared,
-        SONG_STATUSES, songStatus, statusLabel, songWorkers } = window.Utils;
+        songStatus, statusLabel, songWorkers } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 // A drawn plus rather than the "+" character — text glyphs sit off-center
@@ -19,13 +19,10 @@ let _songs = [];
 let _loaded = false;
 let _listScrollTop = 0;
 let _query = '';
-// '' = every song, otherwise one status id — see Utils.SONG_STATUSES.
-// Module state like _query, deliberately not localStorage: a filter that
-// quietly persists across sessions is a good way to wonder where half your
-// songs went.
-let _statusFilter = '';
 // Which list is showing: the group's shared songs, or this user's own
-// personal ones. Same module-state reasoning as _statusFilter above.
+// personal ones. Module state like _query, deliberately not localStorage: a
+// choice that quietly persists across sessions is a good way to wonder
+// where half your songs went.
 let _scope = 'group';
 // Fetched once per session and cached — every visit after the first shows
 // the real name immediately instead of a placeholder.
@@ -58,7 +55,6 @@ async function render(root) {
       oninput: debounce((e) => { _query = e.target.value; _renderList(_listWrap); }, 150)
     })
   ]));
-  root.appendChild(_renderStatusFilter());
   root.appendChild(_listWrap);
 
   root.appendChild(el('button', {
@@ -126,25 +122,6 @@ function _openScopeSheet() {
   openSheet(overlay);
 }
 
-// Narrows the list to songs at one stage — what still needs review, what
-// is done.
-function _renderStatusFilter() {
-  const row = el('div', { class: 'pill-row' });
-  [['', 'Toate'], ...SONG_STATUSES.map(st => [st.id, st.label])].forEach(([value, label]) => {
-    row.appendChild(el('button', {
-      class: 'seg' + (_statusFilter === value ? ' seg--active' : ''),
-      onclick: () => {
-        _statusFilter = value;
-        // Redraw the row in place so the pills update, then the list.
-        const fresh = _renderStatusFilter();
-        row.replaceWith(fresh);
-        _renderList(_listWrap);
-      }
-    }, [label]));
-  });
-  return row;
-}
-
 async function _loadSongs() {
   if (!_listWrap) return;
   _listWrap.innerHTML = '';
@@ -190,10 +167,7 @@ function _renderList(listWrap) {
     : isShared(s));
 
   const q = _query.trim().toLowerCase();
-  const filtered = scoped.filter(s => {
-    if (q && !(s.title || '').toLowerCase().includes(q)) return false;
-    return !_statusFilter || songStatus(s) === _statusFilter;
-  });
+  const filtered = scoped.filter(s => !q || (s.title || '').toLowerCase().includes(q));
 
   if (!filtered.length) {
     let msg;
@@ -202,10 +176,7 @@ function _renderList(listWrap) {
         ? 'Nu ai nicio melodie personală. Apasă „+” pentru a începe.'
         : 'Nu a fost adăugată încă nicio melodie în grup. Apasă „+” pentru a începe.';
     } else {
-      msg = _statusFilter === 'draft' ? 'Nicio melodie în ciornă.'
-          : _statusFilter === 'review' ? 'Nicio melodie în revizie.'
-          : _statusFilter === 'final' ? 'Nicio melodie finală.'
-          : 'Nicio melodie găsită.';
+      msg = 'Nicio melodie găsită.';
     }
     listWrap.appendChild(el('div', { class: 'empty-state' }, [msg]));
     return;
@@ -357,7 +328,6 @@ function reset() {
   _loaded = false;
   _listScrollTop = 0;
   _query = '';
-  _statusFilter = '';
   _scope = 'group';
   _groupName = '';
   _scopeBtnEl = null;
