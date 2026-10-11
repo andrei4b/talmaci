@@ -1,6 +1,7 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
-const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isOriginal, isShared } = window.Utils;
+const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isOriginal, isShared,
+        songStatus, statusLabel, songWorkers } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 // A drawn plus rather than the "+" character — text glyphs sit off-center
@@ -30,6 +31,9 @@ let _scope = 'group';
 let _groupName = '';
 let _scopeBtnEl = null;
 let _listWrap = null;
+// uid -> short name of everyone in the group, for who is working on what.
+// Loaded once, after the list first draws; the list redraws when it lands.
+let _memberNames = null;
 // Bumped by reset(). A fetch that was already in flight for the previous
 // account must not write its result into the next account's list.
 let _gen = 0;
@@ -213,11 +217,43 @@ function _renderList(listWrap) {
         class: 'song-list__link'
       }, [
         el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
-        el('span', { class: 'song-list__snippet' }, [window.Sections.strip(song.originalText).slice(0, 80)])
+        el('span', { class: 'song-list__snippet' }, [window.Sections.strip(song.originalText).slice(0, 80)]),
+        _renderSongMeta(song)
       ])
     ]));
   });
   listWrap.appendChild(ul);
+  _loadMemberNames();
+}
+
+/* Under a song: where it stands and who is on it. A draft says nothing —
+ * it is where every song starts, and a list full of "Ciornă" would bury
+ * the two that mean something. Nothing at all when neither applies. */
+function _renderSongMeta(song) {
+  const status = songStatus(song);
+  const workers = songWorkers(song);
+  if (status === 'draft' && !workers.length) return null;
+  const meta = el('span', { class: 'song-list__meta' });
+  if (status !== 'draft') {
+    meta.appendChild(el('span', { class: 'status-chip status-chip--' + status }, [statusLabel(status)]));
+  }
+  if (workers.length) {
+    // Names arrive once the members are loaded; until then, a count.
+    const names = _memberNames
+      ? workers.map(uid => _memberNames.get(uid) || 'Cineva').join(', ')
+      : workers.length + (workers.length === 1 ? ' persoană' : ' persoane');
+    meta.appendChild(el('span', { class: 'song-list__workers' }, ['Lucrează: ' + names]));
+  }
+  return meta;
+}
+
+async function _loadMemberNames() {
+  if (_memberNames) return;
+  const gen = _gen;
+  const members = await window.Auth.groupMembers();
+  if (gen !== _gen || _memberNames) return;
+  _memberNames = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+  if (_listWrap && _listWrap.isConnected) _renderList(_listWrap);
 }
 
 // Called from song-detail.js after it changes a song directly, so the
@@ -324,6 +360,7 @@ function reset() {
   _groupName = '';
   _scopeBtnEl = null;
   _listWrap = null;
+  _memberNames = null;
 }
 
 window.Songs = { render, refresh, noteUpdated, noteDeleted, reset };

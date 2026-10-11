@@ -20,6 +20,8 @@ const icons = {
   // buttons so the two always read as the same destination.
   rime: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg>`,
   sinonime: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v14M3 13l4 4 4-4"/><path d="M17 21V7M13 11l4-4 4 4"/></svg>`,
+  // A flag — a song's status, in its menu.
+  flag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>`,
   logout: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>`
 };
 
@@ -34,6 +36,26 @@ function isOriginal(song) { return songKind(song) === 'original'; }
 // Visible to the whole group, vs personal. Absent (every song written
 // before this existed) defaults to shared — same reasoning as songKind.
 function isShared(song) { return !song || song.shared !== false; }
+
+// Where a song stands, from first draft to done — team coordination, set
+// by hand. Absent (every song written before this existed) reads as a
+// draft, like the defaults above.
+const SONG_STATUSES = [
+  { id: 'draft',  label: 'Ciornă' },
+  { id: 'review', label: 'În revizie' },
+  { id: 'final',  label: 'Final' }
+];
+function songStatus(song) {
+  const s = song && song.status;
+  return SONG_STATUSES.some(x => x.id === s) ? s : 'draft';
+}
+function statusLabel(id) {
+  return (SONG_STATUSES.find(x => x.id === id) || SONG_STATUSES[0]).label;
+}
+// Who has said they are working on a song, by uid. Absent means nobody.
+function songWorkers(song) {
+  return Array.isArray(song && song.workers) ? song.workers : [];
+}
 
 function $(sel, root) { return (root || document).querySelector(sel); }
 function $all(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
@@ -170,6 +192,6 @@ function menuLabel(icon, text) {
 }
 
 window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
-                 songKind, isOriginal, isShared };
+                 songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers };
 
 })();

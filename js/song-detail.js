@@ -11,7 +11,8 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal } = window.Utils;
+const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal,
+        SONG_STATUSES, songStatus, statusLabel, songWorkers } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -1223,6 +1224,12 @@ function _openSongMenu(root) {
   const original = isOriginal(_song);
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
+    // Anyone who can see the song may set this, unlike the items below —
+    // it is how the group says where a song stands.
+    el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => closeSheetThen(overlay, () => _openStatusSheet())
+    }, menuLabel(icons.flag, 'Stare: ' + statusLabel(songStatus(_song)))),
     el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: () => { closeSheet(overlay); _refreshSong(root); }
@@ -1268,6 +1275,79 @@ function _openSongMenu(root) {
     }, menuLabel(icons.trash, 'Șterge melodia'))
   ].filter(Boolean)));
   openSheet(overlay);
+}
+
+/* Where the song stands, and who is working on it. Each tap saves at once,
+ * shown straight away and put back if the save fails — a status is a
+ * small thing to set, and a Salvează button would be one more step. The
+ * song list's copy is kept in step, so going back shows it too. */
+function _openStatusSheet() {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const me = window.Auth.currentUser().uid;
+  const statusRow = el('div', { class: 'kind-filter' });
+  const workersText = el('p', { class: 'sheet__text' });
+  const workBtn = el('button', { class: 'btn btn--wide' });
+  let names = null;   // uid -> short name, once the members are in
+
+  const note = (patch) => { Object.assign(_song, patch); window.Songs.noteUpdated(_song.id, patch); };
+
+  function paint() {
+    const current = songStatus(_song);
+    statusRow.innerHTML = '';
+    SONG_STATUSES.forEach(s => statusRow.appendChild(el('button', {
+      class: 'seg' + (s.id === current ? ' seg--active' : ''),
+      onclick: () => setStatus(s.id)
+    }, [s.label])));
+
+    const workers = songWorkers(_song);
+    workersText.textContent = !workers.length ? 'Nimeni deocamdată.'
+      : workers.map(uid => uid === me ? 'tu' : (names && names.get(uid)) || '…').join(', ');
+    const mine = workers.includes(me);
+    workBtn.textContent = mine ? 'Nu mai lucrez la ea' : 'Lucrez la ea';
+    workBtn.classList.toggle('btn--primary', !mine);
+  }
+
+  async function setStatus(id) {
+    const before = _song.status;
+    if (songStatus(_song) === id) return;
+    note({ status: id });
+    paint();
+    try {
+      await window.Db.setSongStatus(_song.id, id);
+    } catch (err) {
+      note({ status: before });
+      paint();
+      toast('Nu am putut schimba starea: ' + err.message, { kind: 'error' });
+    }
+  }
+
+  workBtn.addEventListener('click', async () => {
+    const before = songWorkers(_song);
+    const working = !before.includes(me);
+    note({ workers: working ? [...before, me] : before.filter(uid => uid !== me) });
+    paint();
+    try {
+      await window.Db.setWorking(_song.id, me, working);
+    } catch (err) {
+      note({ workers: before });
+      paint();
+      toast('Nu am putut salva: ' + err.message, { kind: 'error' });
+    }
+  });
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Stare']),
+    statusRow,
+    el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Lucrează la ea']), workersText]),
+    workBtn
+  ]));
+  paint();
+  openSheet(overlay);
+
+  window.Auth.groupMembers().then(members => {
+    names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+    if (overlay.isConnected) paint();
+  });
 }
 
 function _confirmDeleteSong() {

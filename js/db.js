@@ -30,6 +30,14 @@
  *                               // it had to be backfilled with shared:
  *                               // true by a one-time migration rather
  *                               // than left to a client-side default.
+ *     status: 'draft' | 'review' | 'final',
+ *                               // where the song stands; absent reads as
+ *                               // 'draft' — see Utils.songStatus.
+ *     workers: uid[],           // who has said they are working on it;
+ *                               // absent means nobody. These two, unlike
+ *                               // everything else here, any group member
+ *                               // may change on a shared song — see
+ *                               // setSongStatus and firestore.rules.
  *     demoUrl: string,          // optional link to a recording of the song;
  *                               // '' or absent when there is none. Always
  *                               // saved through Utils.normalizeUrl, so it
@@ -119,6 +127,21 @@ async function updateSong(songId, patch) {
   });
 }
 
+/* A song's status and who is working on it. Written on their own, and
+ * without touching updatedAt: they are the only fields firestore.rules
+ * lets any group member change, and the rule allows exactly these. The
+ * worker list goes through arrayUnion/arrayRemove, so two people taking a
+ * song on at once both end up on it. */
+async function setSongStatus(songId, status) {
+  await fs().collection('songs').doc(songId).update({ status });
+}
+async function setWorking(songId, uid, working) {
+  const FV = firebase.firestore.FieldValue;
+  await fs().collection('songs').doc(songId).update({
+    workers: working ? FV.arrayUnion(uid) : FV.arrayRemove(uid)
+  });
+}
+
 function _versionsRef(songId) {
   return fs().collection('songs').doc(songId).collection('versions');
 }
@@ -161,7 +184,7 @@ async function deleteVersion(songId, versionId) {
 }
 
 window.Db = {
-  listSongs, getSong, getGroup, addSong, updateSong, deleteSong,
+  listSongs, getSong, getGroup, addSong, updateSong, deleteSong, setSongStatus, setWorking,
   listVersions, addVersion, updateVersion, deleteVersion
 };
 

@@ -11,12 +11,15 @@ rules_version = '2';
 //   /users/{uid}      { email, displayName, role: 'admin'|'user', groupId, createdAt }
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /invites/{code}   { groupId, createdBy, createdAt }
-//   /songs/{songId}   { title, originalText, translatedText, groupId, shared, createdBy, createdAt, updatedAt }
+//   /songs/{songId}   { title, originalText, translatedText, groupId, shared, status, workers, demoUrl, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
 //
 // Any group member can create a song, but editing (rename, original text)
 // or deleting one is limited to whoever created it, or an admin — same
-// ownership model as translation versions below. Translation versions
+// ownership model as translation versions below. The one exception is a
+// shared song's status and who is working on it (`status`, `workers`):
+// coordinating is the whole group's business, so any member may change
+// those two fields, and only those. Translation versions
 // inherit the parent song's group check via get().
 //
 // `shared` (bool) marks whether the rest of the group can see a song at
@@ -131,8 +134,16 @@ service cloud.firestore {
       allow read: if isSignedIn() && resource.data.groupId == myGroup()
         && (resource.data.shared == true || resource.data.createdBy == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.groupId == myGroup();
+      // Only status and workers changed, and to a status that exists.
+      function onlyStatusChange() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'workers'])
+          && (!('status' in request.resource.data) || request.resource.data.status in ['draft', 'review', 'final'])
+          && (!('workers' in request.resource.data) || request.resource.data.workers is list);
+      }
       allow update: if isSignedIn() && resource.data.groupId == myGroup() && unchanged('groupId')
-        && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(resource.data)));
+        && (resource.data.createdBy == request.auth.uid
+            || (isAdmin() && isShared(resource.data))
+            || (isShared(resource.data) && onlyStatusChange()));
       allow delete: if isSignedIn() && resource.data.groupId == myGroup()
         && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(resource.data)));
 

@@ -10,6 +10,8 @@
   --color-text-muted: #6B6B6B;
   --color-border: #E4DFD3;
   --color-danger: #B3432E;
+  /* A song marked final — the one green in the app. */
+  --color-success: #3F7A52;
   /* Cool tint pulled from --color-primary, used for the original-text
      "reference" panel — reads as clearly distinct from the warm cream
      page background and the white editable translation box. */
@@ -223,6 +225,24 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap;
 }
 .song-list__snippet { color: var(--color-text-muted); font-size: 0.9rem; }
+/* Where a song stands and who is on it, under its snippet. */
+.song-list__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+.status-chip {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+.status-chip--review { color: var(--color-accent); background: rgba(201, 125, 62, 0.08); }
+.status-chip--final { color: var(--color-success); background: rgba(63, 122, 82, 0.08); }
 
 .empty-state {
   text-align: center;

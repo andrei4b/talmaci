@@ -125,6 +125,32 @@ async function listGroupMembers() {
   return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 
+/* The group's members, fetched once and shared by everything that shows a
+ * member's name — who is working on a song, in the list and on the song.
+ * Refetched only when the group changes, i.e. on another account. A failed
+ * fetch is not kept, so the next caller tries again. */
+let _members = null;   // { groupId, promise } | null
+function groupMembers() {
+  const groupId = currentGroupId();
+  if (!_members || _members.groupId !== groupId) {
+    const entry = { groupId, promise: null };
+    entry.promise = listGroupMembers().catch(() => {
+      if (_members === entry) _members = null;
+      return [];
+    });
+    _members = entry;
+  }
+  return _members.promise;
+}
+
+// A member as shown beside a song: their first name, or failing that the
+// part of their email before the @.
+function shortName(member) {
+  if (!member) return 'Cineva';
+  const name = (member.displayName || '').trim().split(/\s+/)[0];
+  return name || (member.email || '').split('@')[0] || 'Cineva';
+}
+
 // Admin-only: flip another (or your own) member's role. The Firestore rule
 // only allows this update to touch the role field.
 async function setMemberRole(uid, role) {
@@ -137,7 +163,7 @@ window.Auth = {
   ready, onChange, currentUser, isAdmin, currentGroupId,
   signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
-  listGroupMembers, setMemberRole
+  listGroupMembers, setMemberRole, groupMembers, shortName
 };
 
 })();

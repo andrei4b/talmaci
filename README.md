@@ -123,6 +123,17 @@ Once deployed over HTTPS, visit the URL on your phone and add it to your
 home screen. The app shell (not the data) then works offline, via the
 service worker.
 
+## Song status
+
+A song's menu has **Stare**: where the song stands — *Ciornă*, *În revizie*
+or *Final* — and who is working on it, which anyone adds or removes
+themselves from with one tap. The song list shows both under each title
+(a draft with nobody on it shows nothing). Unlike the rest of a song,
+any group member may change these two on a shared song; `firestore.rules`
+allows exactly those fields, so **paste the updated rules into the
+Firebase console** (Firestore → Rules → Publish) for this to work for
+members who did not create the song.
+
 ## Groups & roles
 
 - **Sign-in** is Google-only. A brand-new sign-in with no profile lands on
