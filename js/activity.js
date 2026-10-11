@@ -106,18 +106,23 @@ async function _list(groupId, after) {
 
 const FIELD_LABELS = { title: 'titlul', demoUrl: 'linkul demo' };
 
-// What an entry says after the person's name.
+// What an entry says around the song's title: the words before it and,
+// for a few actions, after it. `a` is the auxiliary, conjugated for who did
+// it — "Ana a creat" but "Tu ai creat" — and `you` picks the second person
+// for the one verb that is not built on it.
 const DESCRIBE = {
-  song_created: () => 'a creat melodia',
-  song_deleted: () => 'a șters melodia',
-  song_edited: (e) => 'a modificat ' + ((e.fields || []).map(f => FIELD_LABELS[f] || f).join(' și ') || 'detaliile') + ' la',
-  original_text: () => 'a editat originalul la',
-  version_text: (e) => `a editat „${e.versionTitle || 'o versiune'}” la`,
-  version_added: (e) => `a adăugat „${e.versionTitle || 'o versiune'}” la`,
-  version_renamed: (e) => `a redenumit o versiune în „${e.versionTitle || ''}” la`,
-  version_deleted: (e) => `a șters „${e.versionTitle || 'o versiune'}” de la`,
-  status: (e) => `a marcat ca „${statusLabel(e.status)}”`,
-  working: (e) => e.working ? 'lucrează acum la' : 'nu mai lucrează la'
+  song_created: (e, a) => [`${a} creat melodia`],
+  song_deleted: (e, a) => [`${a} șters melodia`],
+  song_edited: (e, a) => [`${a} modificat ${(e.fields || []).map(f => FIELD_LABELS[f] || f).join(' și ') || 'detaliile'} la`],
+  original_text: (e, a) => [`${a} editat originalul din`],
+  version_text: (e, a) => [`${a} editat „${e.versionTitle || 'o versiune'}” din`],
+  version_added: (e, a) => [`${a} adăugat „${e.versionTitle || 'o versiune'}” la`],
+  version_renamed: (e, a) => [`${a} redenumit o versiune din`, `în „${e.versionTitle || ''}”`],
+  version_deleted: (e, a) => [`${a} șters „${e.versionTitle || 'o versiune'}” din`],
+  status: (e, a) => [`${a} marcat`, `ca „${statusLabel(e.status)}”`],
+  working: (e, a, you) => [e.working
+    ? (you ? 'lucrezi acum la' : 'lucrează acum la')
+    : (you ? 'nu mai lucrezi la' : 'nu mai lucrează la')]
 };
 
 const MONTHS = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
@@ -206,8 +211,10 @@ async function render(root) {
 }
 
 function _renderEntry(e, names, me, now) {
-  const who = e.by === me ? 'Tu' : (names.get(e.by) || e.byName || 'Cineva');
-  const describe = DESCRIBE[e.action] || (() => 'a modificat');
+  const you = e.by === me;
+  const who = you ? 'Tu' : (names.get(e.by) || e.byName || 'Cineva');
+  const describe = DESCRIBE[e.action] || ((e, a) => [`${a} modificat`]);
+  const [before, after] = describe(e, you ? 'ai' : 'a', you);
   const title = e.songTitle || 'Fără titlu';
   // A deleted song has nowhere to go; everything else opens it.
   const songEl = e.action === 'song_deleted'
@@ -215,7 +222,7 @@ function _renderEntry(e, names, me, now) {
     : el('a', { class: 'activity__song', href: `#/song/${encodeURIComponent(e.songId)}` }, [title]);
   return el('li', { class: 'activity' }, [
     el('div', { class: 'activity__text' }, [
-      el('strong', {}, [who]), ' ' + describe(e) + ' ', songEl
+      el('strong', {}, [who]), ' ' + before + ' ', songEl, after ? ' ' + after : null
     ]),
     el('time', { class: 'activity__when', datetime: new Date(e.at).toISOString(), title: new Date(e.at).toLocaleString('ro-RO') }, [formatWhen(e.at, now)])
   ]);
