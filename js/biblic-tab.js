@@ -48,11 +48,42 @@ function _loadIndexes() {
         .then(ix => {
           d.index = ix;
           d.keys = new Map();
-          ix.titles.forEach((t, i) => { if (!d.keys.has(t.toUpperCase())) d.keys.set(t.toUpperCase(), i); });
+          ix.titles.forEach((t, i) => _aliases(t).forEach(k => {
+            if (!d.keys.has(k)) d.keys.set(k, []);
+            d.keys.get(k).push(i);
+          }));
         })
     )).catch(err => { _indexPromise = null; throw err; });
   }
   return _indexPromise;
+}
+
+/* The words an entry is found under. ISBE files related words under one
+ * headword — "WONDER; WONDERFUL", "ABIA; ABIAH" — each of which is a word
+ * someone would look up, and numbers people and places that share a name
+ * — "ABEL (1)", "ABEL (2)" — which a search for "Abel" should find both
+ * of. A headword with a comma, "ADAM, CITY OF", is a phrase rather than a
+ * list, and is found by the suggestions instead. */
+function _aliases(title) {
+  const out = new Set();
+  const add = (s) => {
+    s = s.trim();
+    if (!s) return;
+    out.add(s);
+    out.add(s.replace(/\s*\(\d+\)$/, ''));
+  };
+  const t = title.toUpperCase();
+  add(t);
+  t.split(';').forEach(add);
+  return out;
+}
+
+// What a search finds: the entries filed under it, those whose own
+// headword it is first.
+function _find(d, key) {
+  const hits = d.keys.get(key) || [];
+  const own = (i) => d.index.titles[i].toUpperCase() === key ? 0 : 1;
+  return hits.slice().sort((a, b) => own(a) - own(b) || a - b);
 }
 
 // An entry's HTML, by its position in the index.
@@ -124,17 +155,18 @@ async function _run(body) {
 
   body.appendChild(el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' })]));
   const E = _dicts.easton, I = _dicts.isbe;
-  let easton = null, isbe = null;
+  let easton = [], isbe = [];
   try {
     await _loadIndexes();
     const key = q.toUpperCase();
-    const ei = E.keys.get(key), ii = I.keys.get(key);
+    const ei = _find(E, key), ii = _find(I, key);
+    const load = (d, i) => _entry(d, i).then(html => ({ title: d.index.titles[i], html }));
+    // ISBE's articles are fetched with Easton's only when they are what is
+    // shown; otherwise only whether there are any matters, until asked for.
     [easton, isbe] = await Promise.all([
-      ei != null ? _entry(E, ei).then(html => ({ title: E.index.titles[ei], html })) : null,
-      // ISBE's article is fetched with Easton's only when it is the one to
-      // show; otherwise just whether there is one matters, until asked for.
-      ii != null && (ei == null || _showIsbe) ? _entry(I, ii).then(html => ({ title: I.index.titles[ii], html }))
-        : ii != null ? { title: I.index.titles[ii] } : null
+      Promise.all(ei.map(i => load(E, i))),
+      !ei.length || _showIsbe ? Promise.all(ii.map(i => load(I, i)))
+        : ii.map(i => ({ title: I.index.titles[i] }))
     ]);
   } catch (err) {
     if (_query !== q) return;
@@ -148,30 +180,40 @@ async function _run(body) {
   if (_query !== q) return;
   body.innerHTML = '';
 
-  if (!easton && !isbe) {
+  if (!easton.length && !isbe.length) {
     body.appendChild(_notFound(q));
     return;
   }
 
-  const article = el('article', { class: 'en__entry' }, [
-    el('div', { class: 'en__head' }, [el('span', { class: 'en__hw' }, [easton ? easton.title : _titleCase(isbe.title)])])
-  ]);
-  if (easton) {
-    article.appendChild(el('div', { class: 'bd__text', html: easton.html }));
+  const head = (title) => el('div', { class: 'en__head' }, [el('span', { class: 'en__hw' }, [_titleCase(title)])]);
+  const article = el('article', { class: 'en__entry' });
+  easton.forEach(e => {
+    article.appendChild(head(e.title));
+    article.appendChild(el('div', { class: 'bd__text', html: e.html }));
+  });
+  if (easton.length) {
     article.appendChild(el('div', { class: 'en__source' }, ['Easton’s Bible Dictionary, 1897']));
   }
-  if (isbe && easton && !_showIsbe) {
+  if (isbe.length && easton.length && !_showIsbe) {
     article.appendChild(el('button', {
       class: 'btn btn--wide bd__more',
       onclick: () => { _showIsbe = true; _run(body); }
-    }, ['Mai mult (ISBE)']));
+    }, ['Mai mult (ISBE)' + (isbe.length > 1 ? ' · ' + isbe.length + ' articole' : '')]));
   }
-  if (isbe && isbe.html) {
-    article.appendChild(el('div', { class: 'bd__isbe' }, [
-      easton ? el('div', { class: 'bd__label' }, ['International Standard Bible Encyclopedia']) : null,
-      el('div', { class: 'bd__text', html: isbe.html }),
-      el('div', { class: 'en__source' }, ['International Standard Bible Encyclopedia, 1915'])
-    ]));
+  if (isbe.length && isbe[0].html) {
+    // Under Easton's, each article is named by its own headword: it may be
+    // a fuller one ("Wonder; Wonderful") or one of several ("Abel (2)").
+    const section = el('div', { class: easton.length ? 'bd__isbe' : '' }, [
+      easton.length ? el('div', { class: 'bd__label' }, ['International Standard Bible Encyclopedia']) : null
+    ]);
+    isbe.forEach(e => {
+      section.appendChild(easton.length
+        ? el('div', { class: 'bd__sub' }, [_titleCase(e.title)])
+        : head(e.title));
+      section.appendChild(el('div', { class: 'bd__text', html: e.html }));
+    });
+    section.appendChild(el('div', { class: 'en__source' }, ['International Standard Bible Encyclopedia, 1915']));
+    article.appendChild(section);
   }
   body.appendChild(article);
   requestAnimationFrame(() => { body.scrollTop = _scrollTop; });

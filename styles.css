@@ -898,6 +898,8 @@ button.text-tab__head { cursor: pointer; }
    of them readable. */
 .bd__text a[data-v] { text-decoration-color: rgba(201, 125, 62, 0.4); }
 .bd__more { margin-top: 4px; }
+.bd__sub { font-family: var(--font-heading); font-size: 1.1rem; font-weight: 600; margin-top: 10px; }
+.bd__text + .en__head { margin-top: 18px; }
 .bd__isbe { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--color-border); }
 .bd__label {
   font-size: 0.8rem;
