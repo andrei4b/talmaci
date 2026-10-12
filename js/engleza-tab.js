@@ -1,18 +1,18 @@
-/* engleza-tab.js — the English half of the Dicționare tab: a word looked up
- * in Merriam-Webster's Learner's Dictionary.
+/* engleza-tab.js — the English dictionary of the Dicționare tab: a word
+ * looked up in Merriam-Webster's Collegiate Dictionary.
  *
- * The Learner's rather than the Collegiate because it is written for people
- * whose first language is not English: plain definitions, a great many
- * example sentences, and the idioms and phrasal verbs ("hold on", "break
- * down") that lyrics are full of and a native-speaker dictionary skims.
+ * The Collegiate is their main dictionary, the one on merriam-webster.com:
+ * fuller senses than the Learner's it replaced, with where each word comes
+ * from and discussions of near-synonyms, which is the finer distinction a
+ * translator weighing two Romanian words is after.
  *
  * The lookup goes through the defineEnglish Cloud Function, which holds the
  * API key (see functions/index.js). What comes back is Merriam-Webster's own
  * JSON, laid out here; their documentation of it is at
  * https://dictionaryapi.com/products/json. Only the parts that make sense on
- * a phone are drawn — print-only notes and artwork are left out — and every
- * entry links to the same word on learnersdictionary.com, which their terms
- * ask for and which has the pictures and the rest.
+ * a phone are drawn — print-only notes, artwork and the long quotation
+ * sections are left out — and every lookup links to the same word on
+ * merriam-webster.com, which their terms ask for and which has the rest.
  *
  * Like Rime, the state is module-level, so a trip to the Text tab and back
  * finds the same word and the same scroll position.
@@ -20,7 +20,7 @@
 (function () {
 const { el, toast } = window.Utils;
 
-const WEB_URL = 'https://www.learnersdictionary.com/definition/';
+const WEB_URL = 'https://www.merriam-webster.com/dictionary/';
 const AUDIO_URL = 'https://media.merriam-webster.com/audio/prons/en/us/mp3/';
 
 let _query = '';
@@ -118,7 +118,7 @@ async function _run(body) {
   if (!q) {
     body.appendChild(el('div', { class: 'empty-state' }, [
       el('p', {}, ['Scrie un cuvânt sau o expresie în engleză.']),
-      el('p', { class: 'empty-state__hint' }, ['Din Merriam-Webster’s Learner’s Dictionary.'])
+      el('p', { class: 'empty-state__hint' }, ['Din Merriam-Webster’s Collegiate Dictionary.'])
     ]));
     return;
   }
@@ -196,7 +196,7 @@ async function _run(body) {
     href: WEB_URL + encodeURIComponent(q.toLowerCase()),
     target: '_blank',
     rel: 'noopener'
-  }, ['Merriam-Webster’s Learner’s Dictionary ↗']));
+  }, ['Merriam-Webster ↗']));
 
   requestAnimationFrame(() => { body.scrollTop = _scrollTop; });
 }
@@ -237,6 +237,9 @@ function _entry(e, only) {
   const labels = _labels(e);
   if (labels) out.appendChild(el('div', { class: 'en__meta' }, [labels]));
   if (e.ins && e.ins.length) out.appendChild(el('div', { class: 'en__meta' }, [_inflections(e.ins)]));
+  // A form that is defined elsewhere: "went" is the past tense of "go",
+  // with nothing of its own but the pointer.
+  if (e.cxs) out.appendChild(_cognates(e.cxs));
 
   (e.def || []).forEach(d => out.appendChild(_def(d)));
 
@@ -255,7 +258,47 @@ function _entry(e, only) {
   // Defined run-ons: the idioms and phrasal verbs, each a small entry.
   (e.dros || []).forEach(d => out.appendChild(_dro(d)));
 
+  (e.dxnls || []).forEach(x => out.appendChild(el('div', { class: 'en__note', html: _fmt(x) })));
+
+  // Discussions of near-synonyms ("wonder, marvel, miracle mean …") and of
+  // disputed usage, each under its own heading.
+  [].concat(e.syns || [], e.usages || []).forEach(s => {
+    const block = el('div', { class: 'en__para' }, [
+      el('div', { class: 'bd__label', html: _fmt(s.pl) })
+    ]);
+    (s.pt || []).forEach(x => _dtItem(block, x));
+    out.appendChild(block);
+  });
+
+  // Where the word comes from, and when it is first found in English.
+  if (e.et || e.date) {
+    const block = el('div', { class: 'en__para en__origin' }, [el('div', { class: 'bd__label' }, ['Origine'])]);
+    (e.et || []).forEach(x => { if (x[0] === 'text') block.appendChild(el('span', { html: _fmt(x[1]) })); });
+    if (e.date) block.appendChild(el('div', { class: 'en__meta', html: 'Prima atestare: ' + _fmt(e.date) }));
+    out.appendChild(block);
+  }
+
   return out;
+}
+
+function _cognates(cxs) {
+  const row = el('div', { class: 'en__meta en__cxs' });
+  cxs.forEach((c, i) => {
+    if (i) row.appendChild(document.createTextNode(', '));
+    if (c.cxl) row.appendChild(el('i', {}, [c.cxl + ' ']));
+    (c.cxtis || []).forEach((t, j) => {
+      if (j) row.appendChild(document.createTextNode(' '));
+      if (t.cxl) row.appendChild(el('i', {}, [t.cxl + ' ']));
+      if (t.cxt) {
+        row.appendChild(el('a', {
+          class: 'en__xref', href: '#',
+          'data-word': (t.cxr || t.cxt).replace(/:\d+$/, '')
+        }, [t.cxt]));
+      }
+      if (t.cxn) row.appendChild(document.createTextNode(' ' + t.cxn));
+    });
+  });
+  return row;
 }
 
 function _dro(d) {
@@ -278,8 +321,11 @@ function _prons(prs) {
   if (!prs || !prs.length) return null;
   const row = el('span', { class: 'en__prs' });
   prs.forEach((p, i) => {
-    const text = p.ipa || p.mw || '';
-    if (text) row.appendChild(el('span', { class: 'en__ipa' }, [(i ? ', ' : '') + '/' + text + '/']));
+    // The Collegiate writes pronunciation in Merriam-Webster's own symbols
+    // (mw), set between backslashes as in print; IPA, where there is any,
+    // between slashes.
+    const text = p.mw ? '\\' + p.mw + '\\' : p.ipa ? '/' + p.ipa + '/' : '';
+    if (text) row.appendChild(el('span', { class: 'en__ipa' }, [(i ? ', ' : '') + text]));
     const audio = p.sound && p.sound.audio;
     if (audio && !row.querySelector('.en__play')) {
       row.appendChild(el('button', {
@@ -405,7 +451,7 @@ function _dtItem(host, [kind, data]) {
     if (html.trim()) host.appendChild(el('span', { class: 'en__dt', html }));
   } else if (kind === 'vis') {
     host.appendChild(el('ul', { class: 'en__vis' },
-      data.map(v => el('li', { html: _fmt(v.t) }))));
+      data.map(v => el('li', { html: _fmt(v.t) + _attribution(v.aq) }))));
   } else if (kind === 'wsgram') {
     host.appendChild(el('div', { class: 'en__gram' }, ['[' + data + ']']));
   } else if (kind === 'uns') {
@@ -430,6 +476,13 @@ function _dtItem(host, [kind, data]) {
       else if (r[0] === 'text') host.appendChild(el('span', { html: _fmt(r[1]) }));
     });
   }
+}
+
+// Who a quoted example is from: "— Mark Twain, Life on the Mississippi".
+function _attribution(aq) {
+  if (!aq) return '';
+  const parts = [aq.auth, aq.source, aq.aqdate].filter(Boolean).map(s => _fmt(s));
+  return parts.length ? ' <span class="en__aq">— ' + parts.join(', ') + '</span>' : '';
 }
 
 /* ---- running text ----

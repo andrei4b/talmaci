@@ -19,11 +19,11 @@
  *   3. Deploy: firebase deploy --only functions
  *
  * defineEnglish: a callable function that looks a word up in
- * Merriam-Webster's Learner's Dictionary. Proxied for the key, not for
+ * Merriam-Webster's Collegiate Dictionary. Proxied for the key, not for
  * CORS — their API answers browsers directly — since a key in the page
  * would be anyone's to read and spend, and the free tier is 1000 calls a
  * day. It is kept as a secret:
- *   firebase functions:secrets:set MW_LEARNERS_KEY
+ *   firebase functions:secrets:set MW_COLLEGIATE_KEY
  *
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -33,7 +33,7 @@ const { Translate } = require('@google-cloud/translate').v2;
 
 admin.initializeApp();
 
-const MW_LEARNERS_KEY = defineSecret('MW_LEARNERS_KEY');
+const MW_COLLEGIATE_KEY = defineSecret('MW_COLLEGIATE_KEY');
 
 const translate = new Translate();
 
@@ -89,7 +89,7 @@ async function _usedToday() {
  * A word they do not have comes back as an array of spelling suggestions
  * (plain strings) instead, which is passed on the same way. With
  * { usage: true } instead of a word, it only reports today's count. */
-exports.defineEnglish = onCall({ secrets: [MW_LEARNERS_KEY] }, async (request) => {
+exports.defineEnglish = onCall({ secrets: [MW_COLLEGIATE_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Trebuie să fii autentificat.');
   }
@@ -110,8 +110,8 @@ exports.defineEnglish = onCall({ secrets: [MW_LEARNERS_KEY] }, async (request) =
   // fails on their side has still been made with the key.
   await _usageDoc().set({ count: admin.firestore.FieldValue.increment(1) }, { merge: true });
 
-  const url = 'https://www.dictionaryapi.com/api/v3/references/learners/json/' +
-    encodeURIComponent(word) + '?key=' + encodeURIComponent(MW_LEARNERS_KEY.value());
+  const url = 'https://www.dictionaryapi.com/api/v3/references/collegiate/json/' +
+    encodeURIComponent(word) + '?key=' + encodeURIComponent(MW_COLLEGIATE_KEY.value());
   let body;
   try {
     const res = await fetch(url);

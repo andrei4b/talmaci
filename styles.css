@@ -933,6 +933,13 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
 .en__usage--low { color: var(--color-accent); font-weight: 600; }
 /* Idioms from other entries that contain the word, as phrases to look up. */
 .en__idioms { padding: 4px 0 14px; }
+/* The Collegiate's sections after the senses: synonym and usage
+   discussions, and the word's origin. */
+.en__para { margin-top: 14px; font-size: 0.95rem; }
+.en__para .bd__label { margin-bottom: 4px; }
+.en__origin { color: var(--color-text-muted); }
+.en__aq { font-size: 0.9em; font-style: italic; }
+.en__cxs a { margin-left: 2px; }
 .en__idioms .bd__label { margin-bottom: 8px; }
 .en__source {
   display: block;

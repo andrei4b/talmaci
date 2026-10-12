@@ -114,19 +114,19 @@ else about the app is affected.
 
 ## English dictionary (Dicționare → Engleză)
 
-The Dicționare tab holds two dictionaries: dexonline's synonyms, and
-Merriam-Webster's **Learner's Dictionary** for the English original. The
+The Dicționare tab's Engleză view uses Merriam-Webster's **Collegiate
+Dictionary**, their main dictionary, for the English original. The
 English one is looked up through a second Cloud Function, `defineEnglish`,
 which keeps the API key out of the page. It needs the same Blaze plan and
 Firebase CLI as the translation function above.
 
 1. Register for a free key at
    [dictionaryapi.com](https://dictionaryapi.com/register/index) and pick
-   **Learner's Dictionary** as one of the two references. The free tier is
+   **Collegiate Dictionary** as one of the two references. The free tier is
    non-commercial and allows 1,000 lookups a day.
 2. Store the key as a secret (the CLI prompts for it):
    ```bash
-   firebase functions:secrets:set MW_LEARNERS_KEY
+   firebase functions:secrets:set MW_COLLEGIATE_KEY
    ```
 3. Deploy:
    ```bash
