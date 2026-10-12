@@ -17,6 +17,8 @@
      page background and the white editable translation box. */
   --color-panel: #EEF1F6;
   --color-panel-border: #D7DEE8;
+  /* The verse the caret is in, shaded across every column. */
+  --color-highlight: rgba(201, 125, 62, 0.12);
 
   --font-heading: 'Fraunces', serif;
   --font-body: 'Inter', system-ui, sans-serif;
@@ -575,6 +577,22 @@ button.text-tab__head { cursor: pointer; }
   border-color: transparent;
   color: var(--color-text);
   pointer-events: none;
+  /* So the verse band (z-index -1) sits behind the text, not the box. */
+  isolation: isolate;
+}
+/* The caret's verse, shaded in every column of the whole view — see
+   _linkColumns. It spans the box's full width, not just the words. */
+.editor__band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  background: var(--color-highlight);
+  border-left: 3px solid var(--color-accent);
+}
+/* The chain button only means anything with the columns side by side. */
+@media (max-width: 639px) {
+  .text-tab__link { display: none; }
 }
 .editor textarea {
   position: relative;

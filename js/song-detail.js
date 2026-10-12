@@ -409,13 +409,21 @@ function _openLookup(ta) {
  * of the song shows at a glance. Written as they were typed ("Chorus",
  * "Verse 2"), only without their brackets. Lines rawFrom..rawTo are left
  * exactly as typed: the editor's caret is on them, and a caret can only
- * sit in text drawn the way the textarea itself lays it out. */
+ * sit in text drawn the way the textarea itself lays it out.
+ *
+ * Each verse — a run of non-blank lines, as _verses counts them — is
+ * wrapped in a span of its own, which changes nothing about where its
+ * lines fall but lets the editor find where on the page it is. */
 function _renderMarkedText(text, rawFrom, rawTo) {
   const nodes = [];
+  let verse = null;
   String(text || '').split('\n').forEach((line, i) => {
-    if (i) nodes.push('\n');
     const sec = (i >= rawFrom && i <= rawTo) ? null : window.Sections.parse(line);
-    nodes.push(sec ? el('span', { class: 'section-label' }, [sec.text]) : line);
+    const node = sec ? el('span', { class: 'section-label' }, [sec.text]) : line;
+    if (verse && line.trim()) { verse.append('\n', node); return; }
+    if (i) nodes.push('\n');
+    verse = line.trim() ? el('span', { class: 'editor__verse' }, [node]) : null;
+    nodes.push(verse || node);
   });
   return nodes;
 }
@@ -448,9 +456,35 @@ const MIRROR_METRICS = ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'l
  * shorter than its block's own line-height.
  *
  * Returns a repaint to call after any change made without an input event —
- * undo, redo, a picked section. */
+ * undo, redo, a picked section. It also carries what the columns of the
+ * whole view need to follow one another (see _linkColumns): `band(k)`
+ * shades verse k (null for none), and `verses()` is where each verse sits,
+ * top to bottom, in the box's own scrolled content. */
 function _attachMirror(ta, mirror) {
   let rawLines = '';
+  let bandVerse = null;
+  const bandEl = el('div', { class: 'editor__band' });
+
+  // Each verse's span, measured against the mirror's content rather than
+  // the screen, so the result holds however far the box is scrolled.
+  function verses() {
+    const box = mirror.getBoundingClientRect();
+    const origin = box.top + mirror.clientTop - mirror.scrollTop;
+    return [...mirror.querySelectorAll('.editor__verse')].map(v => {
+      const r = v.getBoundingClientRect();
+      return { top: r.top - origin, bottom: r.bottom - origin };
+    });
+  }
+
+  // Draws the band behind the verse it marks; called after every paint,
+  // since a paint replaces everything in the mirror.
+  function placeBand() {
+    const at = bandVerse === null ? null : verses()[bandVerse];
+    if (!at) { bandEl.remove(); return; }
+    bandEl.style.top = (at.top - 4) + 'px';
+    bandEl.style.height = (at.bottom - at.top + 8) + 'px';
+    mirror.appendChild(bandEl);
+  }
 
   function syncMetrics() {
     const cs = getComputedStyle(ta);
@@ -472,6 +506,7 @@ function _attachMirror(ta, mirror) {
     // the zero-width space gives it its height, as the textarea does.
     mirror.replaceChildren(..._renderMarkedText(text, from, to), '\u200b');
     mirror.scrollTop = ta.scrollTop;
+    placeBand();
   }
 
   ta.addEventListener('input', () => paint(true));
@@ -490,7 +525,14 @@ function _attachMirror(ta, mirror) {
 
   syncMetrics();
   paint(true);
-  return () => paint(true);
+  const repaint = () => paint(true);
+  repaint.band = (k) => {
+    if (k === bandVerse) return;
+    bandVerse = k;
+    placeBand();
+  };
+  repaint.verses = verses;
+  return repaint;
 }
 
 /* Marks a section at the caret's line: "[Refren]" on a line of its own,
@@ -777,6 +819,8 @@ function _renderTextTab(content) {
     setLookupTarget: (fn) => { lookupTarget = fn; }
   });
 
+  // Anything the view adds to the row, after the version button.
+  (body.tools || []).forEach(t => switcher.insertBefore(t, lookupBtn));
   content.appendChild(el('div', { class: 'text-tab-wrap' }, [body.el, strip, switcher]));
   body.mounted();
 }
@@ -854,13 +898,19 @@ function _renderWholeView(ctx) {
       // Only once mounted: it copies the textarea's computed layout.
       repaint = _attachMirror(translation, mirror);
     });
-    return { ta: translation, editor: el('div', { class: 'editor' }, [mirror, translation]) };
+    return {
+      ta: translation,
+      editor: el('div', { class: 'editor' }, [mirror, translation]),
+      get mirror() { return repaint; }
+    };
   }
 
   // A composition has no source, so it gets one box instead of two. No
   // stylesheet change is needed for that: .text-tab__col is flex:1, so a
   // lone column fills the row at either breakpoint.
   const cols = [];
+  // Every box on screen, original first, for _linkColumns.
+  const panes = [];
   let originalEl = null, originalMirror = null, repaintOriginal = () => {};
   if (!original) {
     // The original, edited in place — the same editor as the translation,
@@ -904,6 +954,7 @@ function _renderWholeView(ctx) {
       originalEl.scrollTop = _originalScrollTop;
       repaintOriginal = _attachMirror(originalEl, originalMirror);
     });
+    panes.push({ ta: originalEl, get mirror() { return repaintOriginal; } });
   }
 
   if (_showingAllVersions()) {
@@ -925,6 +976,7 @@ function _renderWholeView(ctx) {
         set: (top) => _columnScrollTops.set(v.id, top)
       });
       if (v.id === _activeVersionId && !lookupBox) lookupBox = box.ta;
+      panes.push(box);
       cols.push(el('div', { class: 'text-tab__col' }, [head, box.editor]));
     });
     ctx.setLookupTarget(() => lookupBox);
@@ -934,13 +986,174 @@ function _renderWholeView(ctx) {
       set: (top) => { _translationScrollTop = top; }
     });
     ctx.setLookupTarget(() => lookupBox || box.ta);
+    panes.push(box);
     cols.push(el('div', { class: 'text-tab__col' }, [box.editor]));
   }
 
+  const link = panes.length > 1 ? _linkColumns(panes) : null;
   return {
     el: el('div', { class: 'text-tab' + (_showingAllVersions() ? ' text-tab--all' : '') }, cols),
-    mounted() { mounted.forEach(fn => fn()); }
+    tools: link ? [link.button] : [],
+    mounted() { mounted.forEach(fn => fn()); if (link) link.start(); }
   };
+}
+
+/* The columns of the whole view, kept together.
+ *
+ * Wherever the caret is, its verse is shaded — in its own box and, in
+ * every other, the verse that goes with it. With the columns linked (the
+ * chain button, on by default and remembered on this device), the others
+ * also scroll: when the caret moves to another verse, to bring theirs
+ * level with it, and as one box is scrolled, to keep the same part of the
+ * song in view. Scrolling them by the same amount instead would drift
+ * apart within a few verses: a verse is rarely as long in two languages,
+ * nor wraps alike.
+ *
+ * Which verse goes with which: by section mark when the caret's verse has
+ * one and the other text has it too — the second [Chorus] with the second
+ * [Refren], or the last there is when the other side wrote it out fewer
+ * times — and otherwise by position, as the verse view pairs them. */
+const LINK_KEY = 'talmaci:linkedColumns';
+const SIDE_BY_SIDE = window.matchMedia('(min-width: 640px)');
+const LINK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>`;
+
+function _columnsLinked() {
+  try { return localStorage.getItem(LINK_KEY) !== 'off'; } catch (_) { return true; }
+}
+
+// The verse an offset falls in, by its index in _verses, or -1 between verses.
+function _verseAt(text, pos) {
+  return _verses(text).findIndex(v => pos >= v.start && pos <= v.end);
+}
+
+// What a verse's section mark says, the same in either language, or null
+// when the verse has none.
+function _sectionKey(text, v) {
+  const sec = window.Sections.parse(text.slice(v.start, v.end).split('\n')[0]);
+  if (!sec) return null;
+  return sec.kind ? sec.kind + ' ' + (sec.number || '') : sec.text.toLowerCase();
+}
+
+// The verse of `to` that goes with verse k of `from`, or -1.
+function _matchVerse(from, k, to) {
+  const fv = _verses(from), tv = _verses(to);
+  if (k < 0 || k >= fv.length) return -1;
+  const key = _sectionKey(from, fv[k]);
+  if (key) {
+    const nth = fv.slice(0, k).filter(v => _sectionKey(from, v) === key).length;
+    const same = tv.map((v, j) => j).filter(j => _sectionKey(to, tv[j]) === key);
+    if (same.length) return same[Math.min(nth, same.length - 1)];
+  }
+  return k < tv.length ? k : -1;
+}
+
+function _linkColumns(panes) {
+  let linked = _columnsLinked();
+  let from = null, verse = -1;    // the box with the caret, and its verse
+
+  const button = el('button', {
+    class: 'version-switcher__nav text-tab__link' + (linked ? ' btn--icon-on' : ''),
+    'aria-label': 'Coloane legate',
+    'aria-pressed': String(linked),
+    title: 'Coloane legate: derulează împreună',
+    html: LINK_ICON,
+    onmousedown: (e) => e.preventDefault(),
+    onclick: () => {
+      linked = !linked;
+      try { localStorage.setItem(LINK_KEY, linked ? 'on' : 'off'); } catch (_) {}
+      button.classList.toggle('btn--icon-on', linked);
+      button.setAttribute('aria-pressed', String(linked));
+      if (linked && from) level(from, verse);
+    }
+  });
+
+  // A box scrolled from here, rather than by hand, is let be for a moment,
+  // so that its own scroll does not go on to move the others back.
+  const scrollTo = (p, top) => {
+    p.quietUntil = performance.now() + 150;
+    p.ta.scrollTop = top;
+  };
+  const following = () => linked && SIDE_BY_SIDE.matches;
+
+  // Brings verse k of `src` level, on screen, with its verse in every
+  // other box.
+  function level(src, k) {
+    if (!following() || k < 0) return;
+    const at = src.mirror.verses()[k];
+    if (!at) return;
+    const y = src.ta.getBoundingClientRect().top + at.top - src.ta.scrollTop;
+    panes.forEach(p => {
+      if (p === src) return;
+      const there = p.mirror.verses()[_matchVerse(src.ta.value, k, p.ta.value)];
+      if (there) scrollTo(p, there.top - (y - p.ta.getBoundingClientRect().top));
+    });
+  }
+
+  // Shades the caret's verse everywhere, and levels the others with it
+  // when the caret has moved to another verse.
+  function update(src) {
+    const k = _verseAt(src.ta.value, src.ta.selectionStart);
+    panes.forEach(p => {
+      const j = p === src ? k : _matchVerse(src.ta.value, k, p.ta.value);
+      p.mirror.band(j < 0 ? null : j);
+    });
+    if (src !== from || k !== verse) {
+      from = src;
+      verse = k;
+      level(src, k);
+    }
+  }
+
+  /* As one box scrolls, each other keeps the same part of the song in
+   * view: the point a third of the way down the box is followed through
+   * the verses both have, top to top and bottom to bottom, and
+   * proportionally through whatever lies between. */
+  function follow(src) {
+    if (!following()) return;
+    const fv = src.mirror.verses();
+    const anchor = src.ta.scrollTop + src.ta.clientHeight / 3;
+    panes.forEach(p => {
+      if (p === src) return;
+      const tv = p.mirror.verses();
+      const pts = [[0, 0]];
+      fv.forEach((a, k) => {
+        const b = tv[_matchVerse(src.ta.value, k, p.ta.value)];
+        const last = pts[pts.length - 1];
+        if (!b || b.top < last[1] || a.top < last[0]) return;
+        pts.push([a.top, b.top], [a.bottom, b.bottom]);
+      });
+      pts.push([Math.max(src.ta.scrollHeight, pts[pts.length - 1][0]),
+                Math.max(p.ta.scrollHeight, pts[pts.length - 1][1])]);
+      let i = 1;
+      while (i < pts.length - 1 && pts[i][0] < anchor) i++;
+      const [a0, b0] = pts[i - 1], [a1, b1] = pts[i];
+      const t = a1 > a0 ? Math.min(1, Math.max(0, (anchor - a0) / (a1 - a0))) : 0;
+      scrollTo(p, b0 + t * (b1 - b0) - p.ta.clientHeight / 3);
+    });
+  }
+
+  function start() {
+    panes.forEach(p => {
+      let frame = 0;
+      p.ta.addEventListener('scroll', () => {
+        if (performance.now() < (p.quietUntil || 0) || frame) return;
+        frame = requestAnimationFrame(() => { frame = 0; follow(p); });
+      });
+      p.ta.addEventListener('focus', () => update(p));
+      p.ta.addEventListener('input', () => update(p));
+    });
+    // The caret moving without typing: arrow keys, a click. The view is
+    // rebuilt on every render, so the listener retires itself once its
+    // boxes have left the page.
+    const onSelection = () => {
+      if (!panes[0].ta.isConnected) { document.removeEventListener('selectionchange', onSelection); return; }
+      const p = panes.find(x => x.ta === document.activeElement);
+      if (p) update(p);
+    };
+    document.addEventListener('selectionchange', onSelection);
+  }
+
+  return { button, start };
 }
 
 /* Each verse of the original above its verse of the translation.
