@@ -23,6 +23,28 @@ function syncViewportInsets() {
   // a vh unit for the "full" side of this subtraction, for the same
   // reliability reason #app itself avoids vh — see its own comment.
   root.setProperty('--keyboard-inset', Math.max(0, window.innerHeight - vvh) + 'px');
+  if (vv && vv.offsetTop > 0) requestAnimationFrame(unpanViewport);
+}
+
+// Tapping a field low on the screen makes the browser slide the whole page
+// up as the keyboard opens, so the caret is not hidden behind it. .shell
+// then shrinks to fit above the keyboard anyway, and the slide is left
+// over: the topbar pushed off the top and the same height of dead space
+// above the keyboard. Undo the slide, and scroll the field's own scroller
+// by as much instead, which leaves the caret exactly where it was on
+// screen. Not while zoomed in, when panning is the user's own doing.
+function unpanViewport() {
+  const vv = window.visualViewport;
+  const off = vv.offsetTop;
+  if (off <= 0 || vv.scale > 1.01) return;
+  window.scrollTo(0, 0);
+  if (vv.offsetTop === off) return;
+  for (let n = document.activeElement; n && n !== document.body; n = n.parentElement) {
+    if (n.scrollHeight > n.clientHeight && /auto|scroll/.test(getComputedStyle(n).overflowY)) {
+      n.scrollTop += off;
+      break;
+    }
+  }
 }
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncViewportInsets);
