@@ -25,16 +25,50 @@ const AUDIO_URL = 'https://media.merriam-webster.com/audio/prons/en/us/mp3/';
 
 let _query = '';
 let _scrollTop = 0;
-// Looked-up words for this session, by lowercased query. Each lookup spends
-// one of the day's free calls, and going back and forth between a few
-// words while translating a line is exactly how this gets used.
+/* Looked-up words, so that looking one up again spends none of the day's
+ * free calls — going back and forth between a few words while translating
+ * a line is exactly how this gets used. Kept in memory for the session and
+ * on the device for CACHE_DAYS, in Cache Storage rather than localStorage:
+ * a common word's entries run to tens of kilobytes, and localStorage holds
+ * about five megabytes in all. Android ends an app left in the background,
+ * so memory alone was lost every time the app was reopened.
+ *
+ * The cache's name carries the dictionary, so a word looked up in the
+ * Learner's is not shown as the Collegiate's. Every step is best-effort:
+ * where Cache Storage is missing or refuses, the word is simply looked up. */
 const _cache = new Map();
+const DEVICE_CACHE = 'talmaci-mw-collegiate-v1';
+const CACHE_DAYS = 30;
+
+function _cacheUrl(key) {
+  return location.origin + '/__mw-cache__/' + encodeURIComponent(key);
+}
+
+async function _fromDevice(key) {
+  try {
+    const res = await (await caches.open(DEVICE_CACHE)).match(_cacheUrl(key));
+    if (!res) return null;
+    const saved = await res.json();
+    if (Date.now() - saved.at > CACHE_DAYS * 864e5) return null;
+    return saved.entries;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function _toDevice(key, entries) {
+  try {
+    const body = JSON.stringify({ at: Date.now(), entries });
+    await (await caches.open(DEVICE_CACHE)).put(_cacheUrl(key),
+      new Response(body, { headers: { 'Content-Type': 'application/json' } }));
+  } catch (err) { /* full or unavailable: the word is looked up next time */ }
+}
 
 /* Today's lookups against the free tier's daily limit, as the Cloud
  * Function counts them — Merriam-Webster reports none of this itself.
  * Every lookup brings back the new count; opening the tab asks for it on
  * its own, at most once a minute, since the rest of the group spends from
- * the same key. A word from _cache costs nothing and changes nothing. */
+ * the same key. A word from the cache costs nothing and changes nothing. */
 let _usage = null;      // { used, limit, at }
 let _usageEl = null;    // the line under the search field, while shown
 const USAGE_MAX_AGE = 60 * 1000;
@@ -123,8 +157,13 @@ async function _run(body) {
     return;
   }
 
-  const key = q.toLowerCase();
+  const key = _norm(q);
   let entries = _cache.get(key);
+  if (!entries) {
+    entries = await _fromDevice(key);
+    if (_query !== q) return;
+    if (entries) _cache.set(key, entries);
+  }
   if (!entries) {
     body.appendChild(el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' })]));
     try {
@@ -132,6 +171,7 @@ async function _run(body) {
       const res = await fn({ word: q });
       entries = res.data.entries || [];
       _cache.set(key, entries);
+      _toDevice(key, entries);
       _setUsage(res.data);
     } catch (err) {
       if (_query !== q) return;

@@ -38,6 +38,9 @@ const CACHE_FIRST = ['/data/bible-cornilescu.json', '/data/rhyme-index.json'];
 // not throw away every entry read so far. Bump this when they are rebuilt.
 const BIBLIC_CACHE = 'talmaci-biblic-v1';
 const BIBLIC_PATH = '/data/biblic/';
+// Caches the page keeps for itself, which activation must leave alone like
+// BIBLIC_CACHE: the English dictionary's looked-up words (js/engleza-tab.js).
+const PAGE_CACHE_PREFIX = 'talmaci-mw-';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -96,7 +99,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME && k !== BIBLIC_CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys
+        .filter(k => k !== CACHE_NAME && k !== BIBLIC_CACHE && !k.startsWith(PAGE_CACHE_PREFIX))
+        .map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
