@@ -110,13 +110,13 @@ function _renderCurrentScreen() {
  *
  * Text has a second level, and remembers where it was, so going Rime ->
  * Text lands back on the song you were reading rather than dumping you at
- * the top of the list. Dicționare remembers which of its two dictionaries
+ * the top of the list. Dicționare remembers which of its dictionaries
  * was open in the same way. */
 const TAB_ICONS = {
   text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
   rime: icons.rime,
   dictionare: icons.dictionary,
-  biblie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H12v18H4.5A2.5 2.5 0 0 0 2 22z"/><path d="M22 4.5A2.5 2.5 0 0 0 19.5 2H12v18h7.5a2.5 2.5 0 0 1 2.5 2z"/></svg>`
+  biblie: icons.bible
 };
 
 const TABS = [
@@ -129,12 +129,13 @@ const TABS = [
 // Where the Text tab was last, so its button returns there.
 let _textRoute = '#/';
 
-/* The two dictionaries behind the Dicționare tab, each with its own route
+/* The dictionaries behind the Dicționare tab, each with its own route
  * so the editor's lookup can open either. Romanian synonyms come first:
  * the translation is in Romanian, and that is where most lookups are. */
 const DICTIONARIES = [
   { id: 'sinonime', label: 'Sinonime', route: '#/sinonime' },
-  { id: 'engleza', label: 'Engleză', route: '#/engleza' }
+  { id: 'engleza', label: 'Engleză', route: '#/engleza', module: () => window.EnglezaTab },
+  { id: 'biblic', label: 'Biblic', route: '#/biblic', module: () => window.BiblicTab }
 ];
 // Which of them the tab's button returns to.
 let _dictRoute = '#/sinonime';
@@ -289,7 +290,7 @@ function _renderRoute(root) {
   } else if (tab === 'dictionare') {
     _renderSimpleTab(content, 'Dicționare', (host) => {
       host.appendChild(_dictSwitch(hash));
-      window.EnglezaTab.render(host);
+      DICTIONARIES.find(d => d.route === hash).module().render(host);
     });
   } else {
     // Builds its own topbar (book/chapter pickers, search) rather than

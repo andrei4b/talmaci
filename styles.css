@@ -885,6 +885,28 @@ button.text-tab__head { cursor: pointer; }
   text-decoration: underline;
 }
 
+/* Dicționare → Biblic: Easton's entry, then ISBE's on request. Built on
+   the English dictionary's entry styles. */
+.bd__text p { margin: 8px 0 0; }
+.bd__text a[data-v], .bd__text a[data-k] {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+/* Verse references are many and short; a lighter line keeps a paragraph
+   of them readable. */
+.bd__text a[data-v] { text-decoration-color: rgba(201, 125, 62, 0.4); }
+.bd__more { margin-top: 4px; }
+.bd__isbe { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.bd__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* Biblie tab */
 /* The book name replaces the plain .topbar__title with a button — same
    look (serif, truncates), but tappable, so the header reads exactly like

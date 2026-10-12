@@ -59,6 +59,10 @@ let _targetVerse = null;
 // clear _selected/_targetVerse for the same reason).
 let _readScrollTop = 0;
 
+// A verse asked for from elsewhere (the Bible dictionary), scrolled to once
+// the reader is next drawn — which may be after the text has loaded.
+let _pendingVerse = null;
+
 function load() {
   if (_promise) return _promise;
   _state = 'loading';
@@ -139,6 +143,11 @@ function _renderReader(host) {
   });
   body.addEventListener('scroll', () => { _readScrollTop = body.scrollTop; });
   host.appendChild(body);
+  if (_pendingVerse) {
+    _scrollVerseIntoView(host, _pendingVerse);
+    _pendingVerse = null;
+    return;
+  }
   // A jump-to-verse call (verse picker, search result) scrolls explicitly
   // right after render() returns, which overrides this — so restoring here
   // only ever matters for a plain re-render (a tab switch back to Biblie),
@@ -622,6 +631,24 @@ function preload() {
   load().catch(() => { _promise = null; _state = 'idle'; _error = null; });
 }
 
-window.BibleTab = { render, preload };
+/* Opens a book (by its index in the standard order), chapter and verse —
+ * for the Bible dictionary's references. Only the state is set; the tab
+ * draws it when it is opened. A verse past the chapter's end, which a
+ * reference numbered for the KJV can be, opens the chapter without one. */
+function show(bookIdx, chapter, verse) {
+  _view = 'read';
+  _bookIdx = bookIdx;
+  _chapter = chapter;
+  _selected.clear();
+  _readScrollTop = 0;
+  _targetVerse = verse || null;
+  _pendingVerse = verse || null;
+  if (_books) {
+    const verses = (_books[bookIdx].chapters[chapter - 1] || []);
+    if (verse && !verses[verse - 1]) _targetVerse = _pendingVerse = null;
+  }
+}
+
+window.BibleTab = { render, preload, show };
 
 })();

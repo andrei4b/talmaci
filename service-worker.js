@@ -23,7 +23,7 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v94';
+const CACHE_NAME = 'talmaci-shell-v95';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -32,6 +32,12 @@ const NETWORK_TIMEOUT_MS = 1500;
 const BIBLE_URL = './data/bible-cornilescu.json';
 const RHYME_URL = './data/rhyme-index.json';
 const CACHE_FIRST = ['/data/bible-cornilescu.json', '/data/rhyme-index.json'];
+// The Bible dictionaries (data/biblic/) are 28 MB in all, far too much to
+// install up front, so their chunks are cached as they are opened — in a
+// cache of their own that a new CACHE_NAME leaves alone, so a deploy does
+// not throw away every entry read so far. Bump this when they are rebuilt.
+const BIBLIC_CACHE = 'talmaci-biblic-v1';
+const BIBLIC_PATH = '/data/biblic/';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -50,6 +56,7 @@ const SHELL_FILES = [
   './js/rime-tab.js',
   './js/sinonime-tab.js',
   './js/engleza-tab.js',
+  './js/biblic-tab.js',
   './js/bible-tab.js',
   './js/song-detail.js',
   './js/app.js',
@@ -89,7 +96,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME && k !== BIBLIC_CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -137,6 +144,13 @@ self.addEventListener('fetch', (event) => {
   if (_isBypassed(req.url)) return;
 
   const path = new URL(req.url).pathname;
+  if (path.includes(BIBLIC_PATH)) {
+    event.respondWith(caches.open(BIBLIC_CACHE).then(cache => cache.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res.ok) cache.put(req, res.clone());
+      return res;
+    }))));
+    return;
+  }
   if (CACHE_FIRST.some(p => path.endsWith(p))) {
     event.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE_NAME).then(c => c.put(req, copy)); }

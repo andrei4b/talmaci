@@ -136,6 +136,24 @@ Firebase CLI as the translation function above.
 Until that is done the Engleză view shows an error under the search field,
 and nothing else is affected.
 
+## Bible dictionary (Dicționare → Biblic)
+
+Easton's Bible Dictionary (1897), with the International Standard Bible
+Encyclopedia (1915) under a "Mai mult (ISBE)" button for the same word. Both
+are public domain, from CrossWire's SWORD modules; see
+`data/BIBLIC-LICENSE.md`. Verse references open the verse in the Biblie tab.
+
+Nothing to set up: the data is static, in `data/biblic/`. It is 28 MB in all,
+so it is cut into chunks of about 200 KB that load as entries are opened, and
+the service worker keeps them for offline use. To rebuild it from the
+modules in `data/build-inputs/`:
+
+```bash
+node tools/biblic/build-index.js
+```
+
+After a rebuild, bump `BIBLIC_CACHE` in `service-worker.js`.
+
 ## Deploy it for real use
 
 This repo includes `.github/workflows/deploy-pages.yml`, which deploys to
@@ -194,12 +212,15 @@ js/rhyme.js                        Loads the rhyme index, answers queries
 js/songs.js                         Main page: song list, search, add song
 js/song-detail.js                    Song page: the text and its editor
 js/engleza-tab.js                    Dicționare → Engleză (Merriam-Webster)
+js/biblic-tab.js                     Dicționare → Biblic (Easton's, ISBE)
 js/app.js                             Sign-in/join gating, routing, account
 functions/index.js                     Cloud Functions: Google Translate and
                                          Merriam-Webster proxies (optional,
                                          see above)
 tools/rhyme/                            Offline build for the rhyme index —
                                           dev-only, never ships
+data/biblic/                             Generated Bible dictionaries (public
+                                           domain, see BIBLIC-LICENSE.md)
 data/rhyme-index.json                    Generated rhyme dataset (GPL v2+,
                                            see RHYME-INDEX-LICENSE.md)
 icons/                                    App icons (192, 512, maskable 512 —

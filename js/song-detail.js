@@ -370,7 +370,7 @@ function _wordAtCaret(ta) {
 }
 
 /* Rime or Sinonime for the word at the caret, without retyping it — or,
- * in the original, its English definition. One button for all of them
+ * in the original, its English definition or Bible dictionary entry. One button for all of them
  * keeps the row under the text short; the sheet it opens names the word,
  * so a caret a letter off shows before the trip, not after. The other tab
  * keeps the word and Text keeps its place, so the tab bar is the way back. */
@@ -384,15 +384,18 @@ function _openLookup(ta) {
   const go = (tab) => closeSheetThen(overlay, () => {
     if (tab === 'rime') window.RimeTab.search(word);
     else if (tab === 'engleza') window.EnglezaTab.search(word);
+    else if (tab === 'biblic') window.BiblicTab.search(word);
     else window.SinonimeTab.show(word);
     window.App.openTab(tab);
   });
   // The original is in English, so rhymes and synonyms from Romanian
-  // dictionaries are no use there.
+  // dictionaries are no use there; the Bible dictionary is English too.
   const english = !!ta.closest('.editor--source');
   overlay.appendChild(el('div', { class: 'sheet' }, english ? [
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('engleza') },
-      menuLabel(icons.dictionary, 'Definiția pentru „' + word + '”'))
+      menuLabel(icons.dictionary, 'Definiția pentru „' + word + '”')),
+    el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('biblic') },
+      menuLabel(icons.bible, 'Dicționar biblic pentru „' + word + '”'))
   ] : [
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('rime') },
       menuLabel(icons.rime, 'Rime pentru „' + word + '”')),
