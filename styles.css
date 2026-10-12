@@ -279,7 +279,9 @@ a { color: inherit; text-decoration: none; }
   position: fixed;
   /* Above the tab bar, not behind it. */
   bottom: calc(var(--tabbar-h, 70px) + 16px);
-  right: max(24px, calc((100vw - 720px) / 2 + 24px));
+  /* #app's transform makes it this button's containing block, so this is
+     measured from #app's right edge, not the viewport's. */
+  right: 24px;
   width: 56px; height: 56px;
   padding: 0;
   display: flex;
