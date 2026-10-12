@@ -672,6 +672,31 @@ button.text-tab__head { cursor: pointer; }
   .verses__note--pair { grid-column: 1 / -1; }
 }
 
+/* Every version in the verse view, on a big screen (see
+   _showingVerseGrid): one column each after the original, the app as wide
+   as the window, and the rows scrolling sideways together once the
+   columns no longer fit. Each card's columns are set in place from the
+   script; here, only the rules between them. */
+#app:has(.verses-wrap--all),
+body:has(.verses-wrap--all) .tab-bar { max-width: none; }
+.verses-wrap--all { overflow-x: auto; }
+.verse--grid > .verse__editor--source { border-right: 0; }
+.verse--grid > :not(:first-child):not(.verses__note) { border-left: 1px solid var(--color-border); }
+.verse--grid > .verse__editor--source + :not(.verses__note) { border-left-color: var(--color-panel-border); }
+/* A version with no verse in this row: the cell is left empty. */
+.verse__gap--source { background: var(--color-panel); }
+/* The column names, kept in view above the rows. */
+.verses__heads {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  margin-bottom: -10px;
+  padding: 6px 1px 0;
+  background: var(--color-bg);
+}
+.verses__heads .text-tab__head { padding: 0 15px; }
+
 /* Version list sheet rows */
 .version-list { display: flex; flex-direction: column; gap: 8px; }
 .version-row { display: flex; align-items: center; gap: 8px; }

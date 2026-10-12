@@ -115,6 +115,12 @@ let _shellRoot = null;
 function _showingAllVersions() {
   return WIDE.matches && !_showingVerses() && _versions.length > 1;
 }
+/* The verse view's counterpart: on a big screen, every version gets a
+ * column of its own beside the original, so each row lines up the same
+ * verse in all of them — see _renderVersesView. */
+function _showingVerseGrid() {
+  return WIDE.matches && _showingVerses() && _versions.length > 1;
+}
 WIDE.addEventListener('change', () => {
   if (_song && _shellRoot && _shellRoot.isConnected) _renderShell(_shellRoot);
 });
@@ -1156,32 +1162,48 @@ function _linkColumns(panes) {
   return { button, start };
 }
 
-/* Each verse of the original above its verse of the translation.
+/* Each verse of the original above its verse of the translation — or, on
+ * a big screen with more than one version, beside its verse in every
+ * version, one column each (see _showingVerseGrid), so the rows line the
+ * same verse up across all of them with nothing to scroll in step.
  *
- * Verses are runs of lines between blank lines, on both sides, and are
+ * Verses are runs of lines between blank lines, on every side, and are
  * paired by position: the first with the first, and so on. Every verse,
- * on either side, is its own box, but each side stays one string — an edit
+ * on any side, is its own box, but each side stays one string — an edit
  * goes back into it in place, so the blank lines between verses, and the
  * other view, are left exactly as they were.
  *
  * Pairing by position goes wrong from the first verse one side has and the
  * other does not — typically a chorus written out again on one side only.
- * That is shown rather than guessed at: a count of both sides when they
- * differ, and a note on any pair whose section marks disagree. */
+ * That is shown rather than guessed at: a count of the sides when they
+ * differ, and a note on any row whose section marks disagree. */
 function _renderVersesView(ctx) {
-  // One side of the pairs: the original or the translation. `spans` are the
-  // live positions of its verses in its text, shifted as edits change
-  // their lengths; rebuilt only on a full redraw.
+  // One side of the rows: the original or a version. `spans` are the live
+  // positions of its verses in its text, shifted as edits change their
+  // lengths; rebuilt only on a full redraw.
   const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, spans: [], boxes: [] });
   const orig = side(ctx.original, ctx.original.canEdit, true);
-  const tr = side(ctx.version, !!ctx.active && ctx.canEdit, false);
-  orig.other = tr;
-  tr.other = orig;
+  const grid = _showingVerseGrid();
+  const trs = grid
+    ? _versions.map(v => {
+        const doc = v.id === _activeVersionId ? ctx.version : _versionDoc(v, _historyFor(v));
+        return Object.assign(side(doc, _canEditVersion(v), false), { version: v, title: v.title || 'Fără titlu' });
+      })
+    : [side(ctx.version, !!ctx.active && ctx.canEdit, false)];
+  // A version's stand-ins come from the original; the original's from the
+  // version being worked on.
+  trs.forEach(t => { t.other = orig; });
+  orig.other = trs.find(t => !t.version || t.version.id === _activeVersionId) || trs[0];
   let lastBox = null;
 
   const list = el('div', { class: 'verses' });
-  const wrap = el('div', { class: 'verses-wrap' }, [list]);
+  const wrap = el('div', { class: 'verses-wrap' + (grid ? ' verses-wrap--all' : '') }, [list]);
   wrap.addEventListener('scroll', () => { _versesScrollTop = wrap.scrollTop; });
+  // Every column as wide as the others, and never narrower than a line of
+  // lyrics needs: past what fits, the rows scroll sideways together.
+  const columns = `repeat(${1 + trs.length}, minmax(260px, 1fr))`;
+  const heads = [];
+  if (grid) list.style.minWidth = `${(1 + trs.length) * 260 + 4}px`;
 
   /* A stand-in for a verse not written yet, so that one typed further down
    * keeps its place: verses are told apart by position, and a verse typed
@@ -1263,10 +1285,16 @@ function _renderVersesView(ctx) {
       strip();
     });
     ta.addEventListener('focus', () => {
-      // The lookup reads from either side: the original's words go to the
-      // English dictionary, the translation's to Rime and Sinonime.
+      // The lookup reads from any side: the original's words go to the
+      // English dictionary, a version's to Rime and Sinonime. Writing in a
+      // version's column makes it the active one, as in the whole view.
       lastBox = ta;
-      ctx.focusDoc(s.doc);
+      if (s.version) {
+        ctx.activate(s.version, s.doc);
+        heads.forEach(h => h.classList.toggle('text-tab__head--active', h.side === s));
+      } else {
+        ctx.focusDoc(s.doc);
+      }
     });
     ta.addEventListener('keyup', strip);
     ta.addEventListener('mouseup', strip);
@@ -1279,51 +1307,92 @@ function _renderVersesView(ctx) {
     }, [mirror, ta]);
   }
 
-  function draw() {
-    const ot = orig.doc.text, tt = tr.doc.text;
-    orig.spans = _verses(ot);
-    tr.spans = _verses(tt);
-    orig.boxes = [];
-    tr.boxes = [];
-    list.innerHTML = '';
-    const mounted = [];
-    const on = orig.spans.length, tn = tr.spans.length;
-    // Room for one more verse at the end of whichever side can take it.
-    const n = Math.max(on + (orig.editable ? 1 : 0), tn + (tr.editable ? 1 : 0), on, tn);
+  // In the grid every cell is set in its own column, an empty one too, so
+  // a version with no verse in a row leaves a gap rather than letting the
+  // next column slide into its place.
+  const place = (cell, col) => { if (grid) cell.style.gridColumn = String(col); return cell; };
+  const gap = (s, col) => place(el('div', {
+    class: 'verse__gap' + (s.inOriginal ? ' verse__gap--source' : '')
+  }), col);
 
-    if (tn && on !== tn) {
+  function draw() {
+    const ot = orig.doc.text;
+    orig.spans = _verses(ot);
+    orig.boxes = [];
+    trs.forEach(s => { s.spans = _verses(s.doc.text); s.boxes = []; });
+    list.innerHTML = '';
+    heads.length = 0;
+    const mounted = [];
+    const on = orig.spans.length;
+    // Room for one more verse at the end of whichever side can take it.
+    const n = Math.max(on + (orig.editable ? 1 : 0), on,
+      ...trs.map(s => s.spans.length + (s.editable ? 1 : 0)));
+
+    const off = trs.filter(s => s.spans.length && s.spans.length !== on);
+    const strofe = (k) => `${k} ${k === 1 ? 'strofă' : 'strofe'}`;
+    if (off.length) {
       list.appendChild(el('p', { class: 'verses__note' }, [
-        `Originalul are ${on} ${on === 1 ? 'strofă' : 'strofe'}, ` +
-        `traducerea ${tn}. De la prima diferență, perechile pot fi decalate — ` +
+        `Originalul are ${strofe(on)}, ` +
+        (grid ? off.map(s => `${s.title} ${s.spans.length}`).join(', ')
+              : `traducerea ${off[0].spans.length}`) +
+        '. De la prima diferență, perechile pot fi decalate — ' +
         'verifică rândurile goale dintre strofe.'
       ]));
     }
 
+    // Who is in which column, kept in view while the rows scroll by.
+    if (grid) {
+      const row = el('div', { class: 'verses__heads' }, [
+        place(el('div', { class: 'text-tab__head' }, ['Original']), 1)
+      ]);
+      row.style.gridTemplateColumns = columns;
+      trs.forEach((s, c) => {
+        const h = el('div', {
+          class: 'text-tab__head' + (s.version.id === _activeVersionId ? ' text-tab__head--active' : '')
+        }, [s.title]);
+        h.side = s;
+        heads.push(h);
+        row.appendChild(place(h, c + 2));
+      });
+      list.appendChild(row);
+    }
+
     for (let i = 0; i < n; i++) {
       const o = i < on ? ot.slice(orig.spans[i].start, orig.spans[i].end) : null;
-      const t = i < tn ? tt.slice(tr.spans[i].start, tr.spans[i].end) : null;
-      const pair = el('div', { class: 'verse' });
+      const ts = trs.map(s => i < s.spans.length ? s.doc.text.slice(s.spans[i].start, s.spans[i].end) : null);
+      const any = ts.some(t => t != null);
+      const pair = el('div', { class: 'verse' + (grid ? ' verse--grid' : '') });
+      if (grid) pair.style.gridTemplateColumns = columns;
 
-      // Past the original's last verse, its box says why the translation's
-      // verse has nothing above it — or, under the last empty translation
-      // box, offers room for one more. Neither, and the row has none.
+      // Past the original's last verse, its box says why a version's verse
+      // has nothing beside it — or, by the last empty version box, offers
+      // room for one more. Neither, and the row has none.
       if (o != null) {
-        pair.appendChild(verseBox(orig, i, o, '', mounted));
-      } else if (t != null || (orig.editable && i === on)) {
-        const ph = t != null ? 'Fără pereche în original' : 'Strofa următoare din original…';
-        pair.appendChild(verseBox(orig, i, '', ph, mounted));
+        pair.appendChild(place(verseBox(orig, i, o, '', mounted), 1));
+      } else if (any || (orig.editable && i === on)) {
+        const ph = any ? 'Fără pereche în original' : 'Strofa următoare din original…';
+        pair.appendChild(place(verseBox(orig, i, '', ph, mounted), 1));
+      } else if (grid) {
+        pair.appendChild(gap(orig, 1));
       }
-      // Under every original verse, and one more for a verse of its own.
-      if (i <= tn || o != null) {
-        const ph = t != null ? '' : o != null ? 'Traducerea…' : 'Strofa următoare…';
-        pair.appendChild(verseBox(tr, i, t || '', ph, mounted));
-      }
+      // By every original verse, and one more for a verse of its own.
+      trs.forEach((s, c) => {
+        const t = ts[c];
+        if (i <= s.spans.length || o != null) {
+          const ph = t != null ? '' : o != null ? 'Traducerea…' : 'Strofa următoare…';
+          pair.appendChild(place(verseBox(s, i, t || '', ph, mounted), c + 2));
+        } else if (grid) {
+          pair.appendChild(gap(s, c + 2));
+        }
+      });
 
-      const ok = o != null && t != null ? _verseKind(o) : null;
-      const tk = t != null ? _verseKind(t) : null;
-      if (ok && tk && ok !== tk) {
+      const ok = o != null ? _verseKind(o) : null;
+      const clash = ok ? trs.map((s, c) => ({ s, k: ts[c] != null ? _verseKind(ts[c]) : null }))
+        .filter(x => x.k && x.k !== ok) : [];
+      if (clash.length) {
         pair.appendChild(el('p', { class: 'verses__note verses__note--pair' }, [
-          `Aici originalul are ${ok}, traducerea ${tk}.`
+          grid ? `Aici originalul are ${ok}; ` + clash.map(x => `${x.s.title}: ${x.k}`).join(', ') + '.'
+               : `Aici originalul are ${ok}, traducerea ${clash[0].k}.`
         ]));
       }
       list.appendChild(pair);
@@ -1341,6 +1410,7 @@ function _renderVersesView(ctx) {
   };
   ctx.setShowHistory(redraw);
   ctx.original.showHistory = redraw;
+  trs.forEach(s => { s.doc.showHistory = redraw; });
 
   const pending = draw();
   return {
