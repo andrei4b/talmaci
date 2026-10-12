@@ -1406,6 +1406,8 @@ function _openSongMenu(root) {
 function _openStatusSheet() {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const me = window.Auth.currentUser().uid;
+  // Your own name is known right away, without waiting on the members.
+  const myName = window.Auth.shortName(window.Auth.currentUser());
   const statusRow = el('div', { class: 'pill-row' });
   const workersText = el('p', { class: 'sheet__text' });
   const workBtn = el('button', { class: 'btn btn--wide' });
@@ -1426,7 +1428,7 @@ function _openStatusSheet() {
     const others = songWorkers(_song).filter(uid => uid !== me);
     const shown = working ? [me, ...others] : others;
     workersText.textContent = !shown.length ? 'Nimeni deocamdată.'
-      : shown.map(uid => uid === me ? 'tu' : (names && names.get(uid)) || '…').join(', ');
+      : shown.map(uid => uid === me ? myName : (names && names.get(uid)) || '…').join(', ');
     workBtn.textContent = working ? 'Nu mai lucrez la ea' : 'Lucrez la ea';
   }
   workBtn.addEventListener('click', () => { working = !working; paint(); });
