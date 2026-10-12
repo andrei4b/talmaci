@@ -1,8 +1,9 @@
 /* activity.js — the group's activity log: who changed what, and when.
  *
  * Every change to a shared song is written here as one entry, from the
- * places in the UI that make it, and admins read the list back on the
- * "Jurnal de activitate" screen (#/jurnal, reached from the account menu).
+ * places in the UI that make it. Any member reads the whole list on the
+ * "Jurnal de activitate" screen (#/jurnal, reached from the account menu),
+ * or one song's entries from that song's menu (openForSong).
  *
  * Entries live under the group, groups/{groupId}/activity/{entryId}:
  *   {
@@ -36,7 +37,7 @@
  * entry's time forward instead of adding another. Kept in memory only, so
  * a reload starts a new entry, which is fine. */
 (function () {
-const { el, toast, icons, isShared, statusLabel } = window.Utils;
+const { el, toast, icons, isShared, statusLabel, openSheet, closeSheet } = window.Utils;
 
 const COALESCE_MS = 15 * 60 * 1000;
 // How often a coalesced entry's time is moved forward at most — saves come
@@ -102,27 +103,58 @@ async function _list(groupId, after) {
   };
 }
 
+// One song's entries, newest first. Filtered on songId alone and sorted
+// here: adding orderBy('at') to it would need a composite index created by
+// hand, and a song's own log stays small enough to fetch whole.
+async function _listForSong(groupId, songId) {
+  const snap = await _ref(groupId).where('songId', '==', songId).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
+}
+
 // ---- the screen ----
 
 const FIELD_LABELS = { title: 'titlul', demoUrl: 'linkul demo' };
 
-// What an entry says around the song's title: the words before it and,
-// for a few actions, after it. `a` is the auxiliary, conjugated for who did
-// it — "Ana a creat" but "Tu ai creat" — and `you` picks the second person
-// for the one verb that is not built on it.
+/* What an entry says. `before`/`after` go around the song's title, for
+ * the group's log; `own` is the same sentence without it, for the log of
+ * one song, where naming the song every line would only be noise. `a` is
+ * the auxiliary, conjugated for who did it — "Ana a creat" but "Tu ai
+ * creat" — and `you` picks the second person for the one verb not built
+ * on it. */
 const DESCRIBE = {
-  song_created: (e, a) => [`${a} creat melodia`],
-  song_deleted: (e, a) => [`${a} șters melodia`],
-  song_edited: (e, a) => [`${a} modificat ${(e.fields || []).map(f => FIELD_LABELS[f] || f).join(' și ') || 'detaliile'} la`],
-  original_text: (e, a) => [`${a} editat originalul din`],
-  version_text: (e, a) => [`${a} editat „${e.versionTitle || 'o versiune'}” din`],
-  version_added: (e, a) => [`${a} adăugat „${e.versionTitle || 'o versiune'}” la`],
-  version_renamed: (e, a) => [`${a} redenumit o versiune din`, `în „${e.versionTitle || ''}”`],
-  version_deleted: (e, a) => [`${a} șters „${e.versionTitle || 'o versiune'}” din`],
-  status: (e, a) => [`${a} marcat`, `ca „${statusLabel(e.status)}”`],
-  working: (e, a, you) => [e.working
-    ? (you ? 'lucrezi acum la' : 'lucrează acum la')
-    : (you ? 'nu mai lucrezi la' : 'nu mai lucrează la')]
+  song_created: (e, a) => ({ before: `${a} creat melodia`, own: `${a} creat melodia` }),
+  song_deleted: (e, a) => ({ before: `${a} șters melodia`, own: `${a} șters melodia` }),
+  song_edited: (e, a) => {
+    const what = (e.fields || []).map(f => FIELD_LABELS[f] || f).join(' și ') || 'detaliile';
+    return { before: `${a} modificat ${what} la`, own: `${a} modificat ${what}` };
+  },
+  original_text: (e, a) => ({ before: `${a} editat originalul din`, own: `${a} editat originalul` }),
+  version_text: (e, a) => {
+    const v = `„${e.versionTitle || 'o versiune'}”`;
+    return { before: `${a} editat ${v} din`, own: `${a} editat ${v}` };
+  },
+  version_added: (e, a) => {
+    const v = `„${e.versionTitle || 'o versiune'}”`;
+    return { before: `${a} adăugat ${v} la`, own: `${a} adăugat ${v}` };
+  },
+  version_renamed: (e, a) => {
+    const v = `în „${e.versionTitle || ''}”`;
+    return { before: `${a} redenumit o versiune din`, after: v, own: `${a} redenumit o versiune ${v}` };
+  },
+  version_deleted: (e, a) => {
+    const v = `„${e.versionTitle || 'o versiune'}”`;
+    return { before: `${a} șters ${v} din`, own: `${a} șters ${v}` };
+  },
+  status: (e, a) => {
+    const v = `ca „${statusLabel(e.status)}”`;
+    return { before: `${a} marcat`, after: v, own: `${a} marcat melodia ${v}` };
+  },
+  working: (e, a, you) => {
+    const verb = e.working
+      ? (you ? 'lucrezi acum la' : 'lucrează acum la')
+      : (you ? 'nu mai lucrezi la' : 'nu mai lucrează la');
+    return { before: verb, own: verb + ' ea' };
+  }
 };
 
 const MONTHS = ['ian.', 'feb.', 'mar.', 'apr.', 'mai', 'iun.', 'iul.', 'aug.', 'sept.', 'oct.', 'nov.', 'dec.'];
@@ -156,11 +188,6 @@ async function render(root) {
   ]));
   const wrap = el('div', { class: 'song-list-wrap' });
   root.appendChild(wrap);
-
-  if (!window.Auth.isAdmin()) {
-    wrap.appendChild(el('div', { class: 'empty-state' }, ['Doar adminii pot vedea jurnalul.']));
-    return;
-  }
 
   wrap.appendChild(el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' }), 'Se încarcă…']));
   const gen = ++_gen;
@@ -210,11 +237,52 @@ async function render(root) {
   }
 }
 
-function _renderEntry(e, names, me, now) {
+/* One song's log, in a sheet over the song. */
+async function openForSong(song) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (ev) => { if (ev.target === overlay) closeSheet(overlay); } });
+  const body = el('div', {}, [el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' })])]);
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Jurnal']),
+    body
+  ]));
+  openSheet(overlay);
+
+  let entries, members;
+  try {
+    [entries, members] = await Promise.all([
+      _listForSong(window.Auth.currentGroupId(), song.id),
+      window.Auth.groupMembers()
+    ]);
+  } catch (err) {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut încărca jurnalul: ' + err.message]));
+    return;
+  }
+  body.innerHTML = '';
+  if (!entries.length) {
+    body.appendChild(el('div', { class: 'empty-state' }, ['Nicio modificare înregistrată încă.']));
+    return;
+  }
+  const names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+  const me = window.Auth.currentUser().uid;
+  const now = Date.now();
+  body.appendChild(el('ul', { class: 'activity-list' },
+    entries.map(e => _renderEntry(e, names, me, now, true))));
+}
+
+function _renderEntry(e, names, me, now, inSong) {
   const you = e.by === me;
   const who = you ? 'Tu' : (names.get(e.by) || e.byName || 'Cineva');
-  const describe = DESCRIBE[e.action] || ((e, a) => [`${a} modificat`]);
-  const [before, after] = describe(e, you ? 'ai' : 'a', you);
+  const a = you ? 'ai' : 'a';
+  const describe = DESCRIBE[e.action] || (() => ({ before: `${a} modificat`, own: `${a} modificat` }));
+  const { before, after, own } = describe(e, a, you);
+  const when = el('time', { class: 'activity__when', datetime: new Date(e.at).toISOString(), title: new Date(e.at).toLocaleString('ro-RO') }, [formatWhen(e.at, now)]);
+  if (inSong) {
+    return el('li', { class: 'activity' }, [
+      el('div', { class: 'activity__text' }, [el('strong', {}, [who]), ' ' + own]),
+      when
+    ]);
+  }
   const title = e.songTitle || 'Fără titlu';
   // A deleted song has nowhere to go; everything else opens it.
   const songEl = e.action === 'song_deleted'
@@ -224,10 +292,10 @@ function _renderEntry(e, names, me, now) {
     el('div', { class: 'activity__text' }, [
       el('strong', {}, [who]), ' ' + before + ' ', songEl, after ? ' ' + after : null
     ]),
-    el('time', { class: 'activity__when', datetime: new Date(e.at).toISOString(), title: new Date(e.at).toLocaleString('ro-RO') }, [formatWhen(e.at, now)])
+    when
   ]);
 }
 
-window.Activity = { log, render, formatWhen };
+window.Activity = { log, render, openForSong, formatWhen };
 
 })();

@@ -456,12 +456,12 @@ function openAccountMenu() {
       class: 'btn btn--wide btn--menu',
       onclick: () => { closeSheet(overlay); _openManageMembers(); }
     }, menuLabel(icons.users, 'Gestionează membrii')));
-
-    items.push(el('button', {
-      class: 'btn btn--wide btn--menu',
-      onclick: () => closeSheetThen(overlay, () => { location.hash = '#/jurnal'; })
-    }, menuLabel(icons.history, 'Jurnal de activitate')));
   }
+
+  items.push(el('button', {
+    class: 'btn btn--wide btn--menu',
+    onclick: () => closeSheetThen(overlay, () => { location.hash = '#/jurnal'; })
+  }, menuLabel(icons.history, 'Jurnal de activitate')));
 
   items.push(el('button', {
     class: 'btn btn--wide btn--menu',

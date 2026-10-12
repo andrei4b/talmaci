@@ -12,7 +12,7 @@
  * db.js's versions subcollection. */
 (function () {
 const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal,
-        SONG_STATUSES, songStatus, statusLabel, songWorkers } = window.Utils;
+        isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -1374,6 +1374,12 @@ function _openSongMenu(root) {
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openEditSong(root)); }
     }, menuLabel(icons.edit, 'Editează melodia')),
+    // Any member's to read, unlike the whole group's log. A personal song
+    // has none, since it is never logged.
+    isShared(_song) ? el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => closeSheetThen(overlay, () => window.Activity.openForSong(_song))
+    }, menuLabel(icons.history, 'Jurnal')) : null,
     // A source text is something a composition does not have, so the
     // generate item is absent rather than disabled — "Adaugă mai întâi
     // textul original" is a confusing thing to be told about your own lyrics.
