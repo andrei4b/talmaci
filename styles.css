@@ -18,7 +18,8 @@
   --color-panel: #EEF1F6;
   --color-panel-border: #D7DEE8;
   /* The verse the caret is in, shaded across every column. */
-  --color-highlight: rgba(201, 125, 62, 0.12);
+  --color-highlight: rgba(250, 204, 21, 0.16);
+  --color-highlight-edge: rgba(214, 168, 20, 0.5);
 
   --font-heading: 'Fraunces', serif;
   --font-body: 'Inter', system-ui, sans-serif;
@@ -588,7 +589,7 @@ button.text-tab__head { cursor: pointer; }
   right: 0;
   z-index: -1;
   background: var(--color-highlight);
-  border-left: 3px solid var(--color-accent);
+  border-left: 2px solid var(--color-highlight-edge);
 }
 /* The chain button only means anything with the columns side by side. */
 @media (max-width: 639px) {
