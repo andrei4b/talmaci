@@ -866,7 +866,12 @@ function _renderWholeView(ctx) {
     const translation = el('textarea', {
       class: 'field__input text-tab__translation',
       placeholder: placeholderFor(version, doc.canEdit),
-      disabled: !doc.canEdit,
+      // Someone else's version is read-only rather than disabled, as the
+      // original is: not dimmed, and still focusable, so its verse can be
+      // picked out across the columns. Only the empty box of a song with
+      // no version yet is disabled.
+      readonly: !doc.canEdit,
+      disabled: !version,
       oninput: () => { doc.typed(translation.value); strip(); }
     });
     translation.value = doc.text;
@@ -874,7 +879,7 @@ function _renderWholeView(ctx) {
     // Redraws the formatted section marks; set once the editor is mounted.
     let repaint = () => {};
 
-    const strip = () => ctx.updateStrip(translation, '', (t, label) => {
+    const strip = () => doc.canEdit && ctx.updateStrip(translation, '', (t, label) => {
       const r = _withSection(ctx.withoutTyped(translation, t), t.start, label);
       translation.value = r.text;
       doc.replaced(r.text);
