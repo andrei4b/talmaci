@@ -196,15 +196,16 @@ function _renderList(listWrap) {
     ]));
   });
   listWrap.appendChild(ul);
-  _loadMemberNames();
+  if (_scope !== 'personal') _loadMemberNames();
 }
 
 /* Under a song: where it stands and who is on it. A draft says nothing —
  * it is where every song starts, and a list full of "Ciornă" would bury
- * the two that mean something. Nothing at all when neither applies. */
+ * the two that mean something. Nothing at all when neither applies.
+ * Not who on a personal song: that can only be you. */
 function _renderSongMeta(song) {
   const status = songStatus(song);
-  const workers = songWorkers(song);
+  const workers = _scope === 'personal' ? [] : songWorkers(song);
   if (status === 'draft' && !workers.length) return null;
   const meta = el('span', { class: 'song-list__meta' });
   if (status !== 'draft') {
