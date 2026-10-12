@@ -166,7 +166,8 @@ async function render(root, songId) {
         createdBy: window.Auth.currentUser().uid
       });
       const now = Date.now();
-      _versions = [{ id, title: 'Versiunea 1', text: _song.translatedText, createdAt: now, updatedAt: now }];
+      _versions = [{ id, title: 'Versiunea 1', text: _song.translatedText,
+        createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now }];
     }
 
     const remembered = _recallVersion(songId);
@@ -1567,7 +1568,10 @@ function _openAddVersion(content) {
               createdBy: window.Auth.currentUser().uid
             });
             const now = Date.now();
-            _versions.push({ id, title, text: '', createdAt: now, updatedAt: now });
+            // With its creator, as listVersions would bring it: that is
+            // who may write in it, and without it the version you just
+            // made would be read-only to you until the song is reloaded.
+            _versions.push({ id, title, text: '', createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now });
             window.Activity.log(_song, 'version_added', { versionTitle: title });
             _activeVersionId = id;
             _rememberVersion(_song.id, id);
