@@ -770,6 +770,9 @@ function _renderTextTab(content) {
   body.mounted();
 }
 
+// Shown in an empty original-text box: how to start a section.
+const SECTION_HINT = '\n\nScrie [ la început de rând pentru o secțiune: Strofa, Refren…';
+
 /* The whole text in one box, beside the whole original — or, on a big
  * screen, every version in a box of its own, side by side after it. */
 function _renderWholeView(ctx) {
@@ -783,8 +786,9 @@ function _renderWholeView(ctx) {
     if (!version) return original ? 'Creează o versiune ca să începi.'
                                    : 'Creează o versiune pentru a începe traducerea.';
     if (!editable) return 'Doar creatorul sau un admin poate edita această versiune.';
-    return (original ? 'Versurile tale…' : 'Traducerea în română…') +
-           '\n\nScrie [ la început de rând pentru o secțiune: Strofa, Refren…';
+    // The section hint belongs with the original text only: a translation
+    // follows the original's sections, so it is just noise there.
+    return original ? 'Versurile tale…' + SECTION_HINT : 'Traducerea în română…';
   };
 
   // Run once the view is on the page, in order: restoring scroll positions
@@ -851,7 +855,7 @@ function _renderWholeView(ctx) {
     const doc = ctx.original;
     originalEl = el('textarea', {
       class: 'field__input text-tab__translation text-tab__source',
-      placeholder: doc.canEdit ? 'Textul original…' : '',
+      placeholder: doc.canEdit ? 'Textul original…' + SECTION_HINT : '',
       readonly: !doc.canEdit,
       oninput: () => { doc.typed(originalEl.value); originalStrip(); }
     });
