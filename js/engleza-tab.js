@@ -48,7 +48,7 @@ function _setUsage(data) {
 function _paintUsage() {
   if (!_usageEl || !_usage) return;
   const left = Math.max(0, _usage.limit - _usage.used);
-  _usageEl.textContent = 'Azi: ' + _usage.used + ' din ' + _usage.limit + ' căutări · rămân ' + left;
+  _usageEl.textContent = 'Azi: ' + left + (left === 1 ? ' căutare rămasă' : ' căutări rămase');
   _usageEl.classList.toggle('en__usage--low', left <= _usage.limit / 10);
 }
 
