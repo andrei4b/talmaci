@@ -22,7 +22,8 @@ const ROW_ICONS = {
 // Two stacked pairs of lines — the original over its translation.
 const VERSES_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/><path d="M7 6.5h10M7 17.5h7"/></svg>`;
 
-// A magnifier — looks the word at the caret up in Rime or Sinonime.
+// A magnifier — looks the word at the caret up in Rime, Sinonime or the
+// English dictionary.
 const LOOKUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>`;
 
 // The sections offered when marking one, in the order a song usually runs.
@@ -368,11 +369,11 @@ function _wordAtCaret(ta) {
   return a < b ? text.slice(a, b) : null;
 }
 
-/* Rime or Sinonime for the word at the caret, without retyping it. One
- * button for both keeps the row under the text short; the sheet it opens
- * names the word, so a caret a letter off shows before the trip, not
- * after. The other tab keeps the word and Text keeps its place, so the
- * tab bar is the way back. */
+/* Rime or Sinonime for the word at the caret, without retyping it — or,
+ * in the original, its English definition. One button for all of them
+ * keeps the row under the text short; the sheet it opens names the word,
+ * so a caret a letter off shows before the trip, not after. The other tab
+ * keeps the word and Text keeps its place, so the tab bar is the way back. */
 function _openLookup(ta) {
   const word = _wordAtCaret(ta);
   if (!word) {
@@ -382,10 +383,17 @@ function _openLookup(ta) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const go = (tab) => closeSheetThen(overlay, () => {
     if (tab === 'rime') window.RimeTab.search(word);
+    else if (tab === 'engleza') window.EnglezaTab.search(word);
     else window.SinonimeTab.show(word);
     window.App.openTab(tab);
   });
-  overlay.appendChild(el('div', { class: 'sheet' }, [
+  // The original is in English, so rhymes and synonyms from Romanian
+  // dictionaries are no use there.
+  const english = !!ta.closest('.editor--source');
+  overlay.appendChild(el('div', { class: 'sheet' }, english ? [
+    el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('engleza') },
+      menuLabel(icons.dictionary, 'Definiția pentru „' + word + '”'))
+  ] : [
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('rime') },
       menuLabel(icons.rime, 'Rime pentru „' + word + '”')),
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('sinonime') },
@@ -653,8 +661,8 @@ function _renderTextTab(content) {
   // selection has to still be in the textarea when the click reads it.
   const lookupBtn = el('button', {
     class: 'version-switcher__nav',
-    'aria-label': 'Rime sau sinonime pentru cuvânt',
-    title: 'Rime sau sinonime pentru cuvânt',
+    'aria-label': 'Caută cuvântul',
+    title: 'Caută cuvântul',
     html: LOOKUP_ICON,
     disabled: !active || !canEdit,
     onmousedown: keepFocus
@@ -795,6 +803,10 @@ function _renderWholeView(ctx) {
   // and attaching mirrors both need the layout.
   const mounted = [];
 
+  // The box the lookup reads from: whichever was focused last, the
+  // original included, and the active version's until one has been.
+  let lookupBox = null;
+
   /* The box for one version's text. `onFocus` runs as it gains focus;
    * `scroll` keeps where it was scrolled to across redraws. */
   function versionBox(version, doc, onFocus, scroll) {
@@ -861,7 +873,7 @@ function _renderWholeView(ctx) {
     });
     originalEl.value = doc.text;
     originalEl.addEventListener('scroll', () => { _originalScrollTop = originalEl.scrollTop; });
-    originalEl.addEventListener('focus', () => ctx.focusDoc(doc));
+    originalEl.addEventListener('focus', () => { lookupBox = originalEl; ctx.focusDoc(doc); });
     const originalStrip = () => {
       if (!doc.canEdit) return;
       ctx.updateStrip(originalEl, '', (t, label) => {
@@ -892,9 +904,7 @@ function _renderWholeView(ctx) {
   }
 
   if (_showingAllVersions()) {
-    // Every version, in the order they were made, named above its box. The
-    // lookup reads from whichever was written in last.
-    let lastBox = null;
+    // Every version, in the order they were made, named above its box.
     _versions.forEach(v => {
       const doc = v.id === _activeVersionId ? ctx.version : _versionDoc(v, _historyFor(v));
       const head = el('button', {
@@ -902,7 +912,7 @@ function _renderWholeView(ctx) {
         onclick: () => box.ta.focus()
       }, [v.title || 'Fără titlu']);
       const box = versionBox(v, doc, () => {
-        lastBox = box.ta;
+        lookupBox = box.ta;
         ctx.activate(v, doc);
         document.querySelectorAll('.text-tab__head--active')
           .forEach(h => h.classList.remove('text-tab__head--active'));
@@ -911,16 +921,16 @@ function _renderWholeView(ctx) {
         get: () => _columnScrollTops.get(v.id) || 0,
         set: (top) => _columnScrollTops.set(v.id, top)
       });
-      if (v.id === _activeVersionId) lastBox = box.ta;
+      if (v.id === _activeVersionId && !lookupBox) lookupBox = box.ta;
       cols.push(el('div', { class: 'text-tab__col' }, [head, box.editor]));
     });
-    ctx.setLookupTarget(() => lastBox);
+    ctx.setLookupTarget(() => lookupBox);
   } else {
-    const box = versionBox(active, ctx.version, () => ctx.focusDoc(ctx.version), {
+    const box = versionBox(active, ctx.version, () => { lookupBox = box.ta; ctx.focusDoc(ctx.version); }, {
       get: () => _translationScrollTop,
       set: (top) => { _translationScrollTop = top; }
     });
-    ctx.setLookupTarget(() => box.ta);
+    ctx.setLookupTarget(() => lookupBox || box.ta);
     cols.push(el('div', { class: 'text-tab__col' }, [box.editor]));
   }
 
@@ -1037,9 +1047,9 @@ function _renderVersesView(ctx) {
       strip();
     });
     ta.addEventListener('focus', () => {
-      // The lookup is for Romanian words, so only a translation box is one
-      // it reads from.
-      if (!s.inOriginal) lastBox = ta;
+      // The lookup reads from either side: the original's words go to the
+      // English dictionary, the translation's to Rime and Sinonime.
+      lastBox = ta;
       ctx.focusDoc(s.doc);
     });
     ta.addEventListener('keyup', strip);

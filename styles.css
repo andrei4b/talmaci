@@ -821,6 +821,70 @@ button.text-tab__head { cursor: pointer; }
   cursor: pointer;
 }
 
+/* Dicționare tab — which dictionary, right under the topbar. On Sinonime
+   it is the last thing in the header-only shell, above the frame. */
+.dict-switch {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  padding: 0 20px 12px;
+}
+
+/* Dicționare → Engleză: a Merriam-Webster entry. Laid out on .rime and
+   .rime__body, so the field, the padding and the scrolling are Rime's. */
+.en__body { line-height: 1.5; }
+.en__entry { padding: 4px 0 18px; }
+.en__entry + .en__entry { border-top: 1px solid var(--color-border); padding-top: 14px; }
+.en__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.en__hw { font-family: var(--font-heading); font-size: 1.4rem; font-weight: 600; }
+.en__hom { color: var(--color-text-muted); margin-left: -8px; }
+.en__fl { font-style: italic; color: var(--color-accent); }
+.en__prs { display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-muted); }
+.en__play {
+  display: inline-flex;
+  border: none;
+  background: none;
+  padding: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.en__play svg { width: 18px; height: 18px; }
+.en__meta { font-size: 0.9rem; color: var(--color-text-muted); margin-top: 2px; }
+.en__lbl, .en__gram { font-style: italic; color: var(--color-text-muted); }
+.en__vd { font-style: italic; color: var(--color-accent); margin-top: 10px; }
+.en__def { margin-top: 6px; }
+.en__group { margin-top: 8px; }
+.en__sense { display: flex; gap: 8px; }
+.en__sense + .en__sense { margin-top: 6px; }
+.en__sense--sub { padding-left: 14px; }
+.en__sn { flex-shrink: 0; min-width: 14px; font-weight: 700; }
+.en__sbody { min-width: 0; }
+.en__pv { margin-bottom: 2px; }
+.en__vis {
+  margin: 4px 0;
+  padding-left: 14px;
+  list-style: none;
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-border);
+}
+.en__vis li + li { margin-top: 2px; }
+.en__gloss { color: var(--color-text-muted); font-style: normal; }
+.en__note { font-size: 0.92rem; margin-top: 4px; }
+.en__dx { color: var(--color-text-muted); }
+.en__xref { color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; }
+.en__xsn { font-size: 0.85em; color: var(--color-text-muted); }
+.en__uro { margin-top: 10px; }
+.en__dro { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--color-border); }
+.en__drp { font-size: 1.05rem; }
+.en__near { justify-content: center; margin-top: 10px; }
+.en__source {
+  display: block;
+  padding: 6px 0 14px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-decoration: underline;
+}
+
 /* Biblie tab */
 /* The book name replaces the plain .topbar__title with a button — same
    look (serif, truncates), but tappable, so the header reads exactly like

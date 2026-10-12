@@ -103,30 +103,48 @@ function _renderCurrentScreen() {
 }
 
 /* ---- the shell ----
- * The four tabs are app-level destinations, not something a song owns, so
+ * The tabs are app-level destinations, not something a song owns, so
  * the bar is drawn under every screen — including the song list, which is
  * itself the Text tab's first screen. That is the whole point: Rime is
  * reachable without opening a song.
  *
- * Text is the only tab with a second level. It remembers where it was, so
- * going Rime -> Text lands back on the song you were reading rather than
- * dumping you at the top of the list. */
+ * Text has a second level, and remembers where it was, so going Rime ->
+ * Text lands back on the song you were reading rather than dumping you at
+ * the top of the list. Dicționare remembers which of its two dictionaries
+ * was open in the same way. */
 const TAB_ICONS = {
   text: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h6M9 9h1"/></svg>`,
   rime: icons.rime,
-  sinonime: icons.sinonime,
+  dictionare: icons.dictionary,
   biblie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5A2.5 2.5 0 0 1 4.5 2H12v18H4.5A2.5 2.5 0 0 0 2 22z"/><path d="M22 4.5A2.5 2.5 0 0 0 19.5 2H12v18h7.5a2.5 2.5 0 0 1 2.5 2z"/></svg>`
 };
 
 const TABS = [
   { id: 'text', label: 'Text', route: '#/' },
   { id: 'rime', label: 'Rime', route: '#/rime' },
-  { id: 'sinonime', label: 'Sinonime', route: '#/sinonime' },
+  { id: 'dictionare', label: 'Dicționare', route: '#/sinonime' },
   { id: 'biblie', label: 'Biblie', route: '#/biblie' }
 ];
 
 // Where the Text tab was last, so its button returns there.
 let _textRoute = '#/';
+
+/* The two dictionaries behind the Dicționare tab, each with its own route
+ * so the editor's lookup can open either. Romanian synonyms come first:
+ * the translation is in Romanian, and that is where most lookups are. */
+const DICTIONARIES = [
+  { id: 'sinonime', label: 'Sinonime', route: '#/sinonime' },
+  { id: 'engleza', label: 'Engleză', route: '#/engleza' }
+];
+// Which of them the tab's button returns to.
+let _dictRoute = '#/sinonime';
+
+function _tabRoute(tab) {
+  return tab.id === 'text' ? _textRoute
+    : tab.id === 'dictionare' ? _dictRoute
+    : tab.route;
+}
+
 // The route rendered before this one, used only to decide whether a song
 // was opened from the list. Captured when a render starts, not when it
 // ends — at the end of a render the "previous" route is the one just drawn.
@@ -171,11 +189,14 @@ function _switchTab(route) {
   _renderCurrentScreen();
 }
 
-/* Another tab, by id, the way its button in the bar would open it. Used by
- * the editor's lookup buttons, which hand Rime or Sinonime a word first. */
+/* Another tab, by id, the way its button in the bar would open it — or one
+ * of the dictionaries by its own id. Used by the editor's lookup buttons,
+ * which hand Rime, Sinonime or the English dictionary a word first. */
 function openTab(id) {
+  const dict = DICTIONARIES.find(d => d.id === id);
+  if (dict) return _switchTab(dict.route);
   const tab = TABS.find(t => t.id === id);
-  if (tab) _switchTab(tab.id === 'text' ? _textRoute : tab.route);
+  if (tab) _switchTab(_tabRoute(tab));
 }
 
 /* "Up" from a song is the song list. history.back() is the right way there
@@ -220,6 +241,7 @@ function _persistLayer(root) {
 }
 
 function _tabForHash(hash) {
+  if (DICTIONARIES.some(d => d.route === hash)) return 'dictionare';
   const t = TABS.find(x => x.id !== 'text' && x.route === hash);
   return t ? t.id : 'text';
 }
@@ -229,6 +251,7 @@ function _renderRoute(root) {
   const tab = _tabForHash(hash);
   if (hash !== _currentRoute) { _prevRoute = _currentRoute; _currentRoute = hash; }
   if (tab === 'text') _textRoute = hash;
+  if (tab === 'dictionare') _dictRoute = hash;
 
   // Record, once per entry, whether this song was opened from the list.
   // The list's links are plain anchors, so the push happens in the browser
@@ -244,7 +267,7 @@ function _renderRoute(root) {
   for (const child of [...root.children]) {
     if (child !== layer) child.remove();
   }
-  layer.hidden = (tab !== 'sinonime');
+  layer.hidden = (hash !== '#/sinonime');
 
   const content = el('div', { class: 'shell' });
   root.appendChild(content);
@@ -256,12 +279,18 @@ function _renderRoute(root) {
     else window.Songs.render(content);
   } else if (tab === 'rime') {
     _renderSimpleTab(content, 'Rime', (host) => window.RimeTab.render(host));
-  } else if (tab === 'sinonime') {
+  } else if (hash === '#/sinonime') {
     // The topbar is rebuilt as usual; the frame under it is mounted into
     // the persistent layer instead, once, and simply revealed after that.
     content.classList.add('shell--header-only');
-    _renderSimpleTab(content, 'Sinonime', () => {}, window.SinonimeTab.actions());
+    _renderSimpleTab(content, 'Dicționare', (host) => host.appendChild(_dictSwitch(hash)),
+      window.SinonimeTab.actions());
     window.SinonimeTab.render(layer);
+  } else if (tab === 'dictionare') {
+    _renderSimpleTab(content, 'Dicționare', (host) => {
+      host.appendChild(_dictSwitch(hash));
+      window.EnglezaTab.render(host);
+    });
   } else {
     // Builds its own topbar (book/chapter pickers, search) rather than
     // going through _renderSimpleTab, which only knows a static title.
@@ -292,6 +321,16 @@ function _renderSimpleTab(content, title, fill, actions) {
   fill(content);
 }
 
+// Which dictionary, under the topbar of either. Switching is a tab switch
+// as far as history goes: a place, not a step.
+function _dictSwitch(hash) {
+  return el('div', { class: 'dict-switch' }, DICTIONARIES.map(d => el('button', {
+    class: 'seg' + (d.route === hash ? ' seg--active' : ''),
+    'aria-pressed': d.route === hash ? 'true' : 'false',
+    onclick: () => _switchTab(d.route)
+  }, [d.label])));
+}
+
 function _renderTabBar(activeTab) {
   const bar = el('div', { class: 'tab-bar', role: 'tablist' });
   TABS.forEach(tab => {
@@ -300,7 +339,7 @@ function _renderTabBar(activeTab) {
       class: 'tab-bar__tab' + (active ? ' tab-bar__tab--active' : ''),
       role: 'tab',
       'aria-selected': active ? 'true' : 'false',
-      onclick: () => _switchTab(tab.id === 'text' ? _textRoute : tab.route)
+      onclick: () => _switchTab(_tabRoute(tab))
     }, [
       el('span', { html: TAB_ICONS[tab.id], 'aria-hidden': 'true' }),
       tab.label

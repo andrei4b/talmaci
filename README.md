@@ -112,6 +112,30 @@ If a translation ever fails (API not enabled yet, IAM role missing, quota
 exceeded, function not deployed), it just shows an error toast — nothing
 else about the app is affected.
 
+## English dictionary (Dicționare → Engleză)
+
+The Dicționare tab holds two dictionaries: dexonline's synonyms, and
+Merriam-Webster's **Learner's Dictionary** for the English original. The
+English one is looked up through a second Cloud Function, `defineEnglish`,
+which keeps the API key out of the page. It needs the same Blaze plan and
+Firebase CLI as the translation function above.
+
+1. Register for a free key at
+   [dictionaryapi.com](https://dictionaryapi.com/register/index) and pick
+   **Learner's Dictionary** as one of the two references. The free tier is
+   non-commercial and allows 1,000 lookups a day.
+2. Store the key as a secret (the CLI prompts for it):
+   ```bash
+   firebase functions:secrets:set MW_LEARNERS_KEY
+   ```
+3. Deploy:
+   ```bash
+   firebase deploy --only functions
+   ```
+
+Until that is done the Engleză view shows an error under the search field,
+and nothing else is affected.
+
 ## Deploy it for real use
 
 This repo includes `.github/workflows/deploy-pages.yml`, which deploys to
@@ -168,10 +192,12 @@ js/ro-phonetics.js                Romanian G2P, syllables, stress — shared
                                     by the app AND the index build script
 js/rhyme.js                        Loads the rhyme index, answers queries
 js/songs.js                         Main page: song list, search, add song
-js/song-detail.js                    Song page: Text/Rime/Sinonime/Biblie
+js/song-detail.js                    Song page: the text and its editor
+js/engleza-tab.js                    Dicționare → Engleză (Merriam-Webster)
 js/app.js                             Sign-in/join gating, routing, account
-functions/index.js                     Cloud Function: Google Translate proxy
-                                         (optional, see above)
+functions/index.js                     Cloud Functions: Google Translate and
+                                         Merriam-Webster proxies (optional,
+                                         see above)
 tools/rhyme/                            Offline build for the rhyme index —
                                           dev-only, never ships
 data/rhyme-index.json                    Generated rhyme dataset (GPL v2+,
