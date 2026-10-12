@@ -30,6 +30,35 @@ let _scrollTop = 0;
 // words while translating a line is exactly how this gets used.
 const _cache = new Map();
 
+/* Today's lookups against the free tier's daily limit, as the Cloud
+ * Function counts them — Merriam-Webster reports none of this itself.
+ * Every lookup brings back the new count; opening the tab asks for it on
+ * its own, at most once a minute, since the rest of the group spends from
+ * the same key. A word from _cache costs nothing and changes nothing. */
+let _usage = null;      // { used, limit, at }
+let _usageEl = null;    // the line under the search field, while shown
+const USAGE_MAX_AGE = 60 * 1000;
+
+function _setUsage(data) {
+  if (!data || typeof data.used !== 'number') return;
+  _usage = { used: data.used, limit: data.limit || 1000, at: Date.now() };
+  _paintUsage();
+}
+
+function _paintUsage() {
+  if (!_usageEl || !_usage) return;
+  const left = Math.max(0, _usage.limit - _usage.used);
+  _usageEl.textContent = 'Azi: ' + _usage.used + ' din ' + _usage.limit + ' căutări · rămân ' + left;
+  _usageEl.classList.toggle('en__usage--low', left <= _usage.limit / 10);
+}
+
+function _refreshUsage() {
+  if (_usage && Date.now() - _usage.at < USAGE_MAX_AGE) return;
+  firebase.functions().httpsCallable('defineEnglish')({ usage: true })
+    .then(res => _setUsage(res.data))
+    .catch(() => {});   // only a count; the search itself reports real errors
+}
+
 function render(host) {
   const wrap = el('div', { class: 'rime en' });
 
@@ -56,6 +85,10 @@ function render(host) {
     }
   }, [input]);
   host.appendChild(el('div', { class: 'search-bar' }, [form]));
+  _usageEl = el('div', { class: 'en__usage' });
+  host.appendChild(_usageEl);
+  _paintUsage();
+  _refreshUsage();
 
   const body = el('div', { class: 'rime__body en__body', lang: 'en' });
   body.addEventListener('scroll', () => { _scrollTop = body.scrollTop; });
@@ -99,6 +132,7 @@ async function _run(body) {
       const res = await fn({ word: q });
       entries = res.data.entries || [];
       _cache.set(key, entries);
+      _setUsage(res.data);
     } catch (err) {
       if (_query !== q) return;
       body.innerHTML = '';

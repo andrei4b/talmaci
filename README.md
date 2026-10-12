@@ -136,6 +136,11 @@ Firebase CLI as the translation function above.
 Until that is done the Engleză view shows an error under the search field,
 and nothing else is affected.
 
+Merriam-Webster doesn't report how much of the daily limit is used, so the
+function counts its own lookups, one Firestore document per UTC day
+(`usage/mw-YYYY-MM-DD`), and the view shows the count under the search field.
+The count is for the whole app, since the key is shared by every group.
+
 ## Bible dictionary (Dicționare → Biblic)
 
 Easton's Bible Dictionary (1897), with the International Standard Bible

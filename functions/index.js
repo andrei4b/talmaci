@@ -28,7 +28,10 @@
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
+const admin = require('firebase-admin');
 const { Translate } = require('@google-cloud/translate').v2;
+
+admin.initializeApp();
 
 const MW_LEARNERS_KEY = defineSecret('MW_LEARNERS_KEY');
 
@@ -61,12 +64,38 @@ exports.translateText = onCall(async (request) => {
   return { translatedText };
 });
 
+/* How many lookups have gone to Merriam-Webster today, so the app can show
+ * how much of the free tier's 1000 a day is left. They report nothing of
+ * the kind themselves — no header, no endpoint — so it is counted here,
+ * one Firestore document per day: usage/mw-2026-10-12 { count }. The key
+ * is one for the whole app, so the count is too, across every group.
+ *
+ * The day is UTC's. When Merriam-Webster's own day turns over is not
+ * documented; if theirs is another timezone's, the two drift apart by a
+ * few hours around midnight. The Admin SDK writes past the security
+ * rules, and no rule lets a browser read or write these documents. */
+const MW_DAILY_LIMIT = 1000;
+
+function _usageDoc() {
+  return admin.firestore().collection('usage').doc('mw-' + new Date().toISOString().slice(0, 10));
+}
+
+async function _usedToday() {
+  const snap = await _usageDoc().get();
+  return (snap.exists && snap.data().count) || 0;
+}
+
 /* The entries as Merriam-Webster sends them, for the client to lay out.
  * A word they do not have comes back as an array of spelling suggestions
- * (plain strings) instead, which is passed on the same way. */
+ * (plain strings) instead, which is passed on the same way. With
+ * { usage: true } instead of a word, it only reports today's count. */
 exports.defineEnglish = onCall({ secrets: [MW_LEARNERS_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Trebuie să fii autentificat.');
+  }
+
+  if (request.data && request.data.usage) {
+    return { used: await _usedToday(), limit: MW_DAILY_LIMIT };
   }
 
   const word = (request.data && request.data.word || '').trim();
@@ -76,6 +105,10 @@ exports.defineEnglish = onCall({ secrets: [MW_LEARNERS_KEY] }, async (request) =
   if (word.length > 100) {
     throw new HttpsError('invalid-argument', 'Cuvântul e prea lung.');
   }
+
+  // Counted before the request rather than after it succeeds: a call that
+  // fails on their side has still been made with the key.
+  await _usageDoc().set({ count: admin.firestore.FieldValue.increment(1) }, { merge: true });
 
   const url = 'https://www.dictionaryapi.com/api/v3/references/learners/json/' +
     encodeURIComponent(word) + '?key=' + encodeURIComponent(MW_LEARNERS_KEY.value());
@@ -94,5 +127,9 @@ exports.defineEnglish = onCall({ secrets: [MW_LEARNERS_KEY] }, async (request) =
   } catch (err) {
     throw new HttpsError('failed-precondition', 'Merriam-Webster a refuzat cererea: ' + body.slice(0, 200));
   }
-  return { entries: Array.isArray(entries) ? entries : [] };
+  return {
+    entries: Array.isArray(entries) ? entries : [],
+    used: await _usedToday(),
+    limit: MW_DAILY_LIMIT
+  };
 });
