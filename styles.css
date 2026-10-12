@@ -877,6 +877,9 @@ button.text-tab__head { cursor: pointer; }
 .en__dro { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--color-border); }
 .en__drp { font-size: 1.05rem; }
 .en__near { justify-content: center; margin-top: 10px; }
+/* Idioms from other entries that contain the word, as phrases to look up. */
+.en__idioms { padding: 4px 0 14px; }
+.en__idioms .bd__label { margin-bottom: 8px; }
 .en__source {
   display: block;
   padding: 6px 0 14px;

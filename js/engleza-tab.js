@@ -126,7 +126,37 @@ async function _run(body) {
     return;
   }
 
-  found.forEach(e => body.appendChild(_entry(e)));
+  /* Merriam-Webster answers with every entry the word occurs in, idioms
+   * filed under other headwords included: "die" brings back "hard" for
+   * "die hard" and "habit" for "old habits die hard". An entry is the
+   * word's own when its stems — headword, inflections, variants, phrases,
+   * every form it should be found by — include what was typed; "died"
+   * still finds "die" that way. When a phrase was typed ("die hard"), the
+   * entry it belongs to shows that phrase alone, not all of "hard". The
+   * idioms left over are offered as phrases to look up. If nothing at all
+   * passes, everything is shown, as better than an empty page. */
+  const k = _norm(q);
+  const own = found.filter(e => (e.meta.stems || []).some(s => _norm(s) === k));
+  const shown = own.length ? own : found;
+  shown.forEach(e => {
+    const phrase = _norm(_hw(e.hwi && e.hwi.hw || e.meta.id.split(':')[0]).replace(/·/g, '')) !== k
+      ? (e.dros || []).filter(d => _phraseHas(d.drp, k)) : [];
+    body.appendChild(_entry(e, phrase.length ? phrase : null));
+  });
+
+  const idioms = [];
+  found.filter(e => !shown.includes(e)).forEach(e => (e.dros || []).forEach(d => {
+    const p = _plain(d.drp);
+    if (_phraseHas(d.drp, k) && !idioms.includes(p)) idioms.push(p);
+  }));
+  if (idioms.length) {
+    body.appendChild(el('div', { class: 'en__idioms' }, [
+      el('div', { class: 'bd__label' }, ['Expresii cu „' + q + '”']),
+      el('div', { class: 'rime__results' },
+        idioms.map(p => el('button', { class: 'rime__word', 'data-word': p }, [p])))
+    ]));
+  }
+
   body.appendChild(el('a', {
     class: 'en__source',
     href: WEB_URL + encodeURIComponent(q.toLowerCase()),
@@ -137,9 +167,25 @@ async function _run(body) {
   requestAnimationFrame(() => { body.scrollTop = _scrollTop; });
 }
 
-/* ---- one entry ---- */
+// For comparing what was typed with Merriam-Webster's forms: lower case,
+// one kind of apostrophe, single spaces.
+function _norm(s) {
+  return String(s || '').toLowerCase().replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
+}
+// A phrase as plain text, without its {it}-style marks.
+function _plain(s) { return String(s || '').replace(/\{[^}]*\}/g, ''); }
+// Whether a phrase contains every word typed, in any order: "old
+// habits die hard" contains "die"; "act on/upon" contains "act upon".
+function _phraseHas(drp, key) {
+  const words = new Set(_norm(_plain(drp)).split(/[^a-z']+/).filter(Boolean));
+  return key.split(/[^a-z']+/).filter(Boolean).every(w => words.has(w));
+}
 
-function _entry(e) {
+/* ---- one entry ----
+ * `only`, when given, is the entry's phrases to show instead of all of it:
+ * the ones a phrase search was for. */
+
+function _entry(e, only) {
   const hwi = e.hwi || {};
   const head = el('div', { class: 'en__head' }, [
     el('span', { class: 'en__hw' }, [_hw(hwi.hw || e.meta.id.split(':')[0])]),
@@ -150,6 +196,10 @@ function _entry(e) {
   if (prs) head.appendChild(prs);
 
   const out = el('section', { class: 'en__entry' }, [head]);
+  if (only) {
+    only.forEach(d => out.appendChild(_dro(d)));
+    return out;
+  }
   const labels = _labels(e);
   if (labels) out.appendChild(el('div', { class: 'en__meta' }, [labels]));
   if (e.ins && e.ins.length) out.appendChild(el('div', { class: 'en__meta' }, [_inflections(e.ins)]));
@@ -169,20 +219,22 @@ function _entry(e) {
   });
 
   // Defined run-ons: the idioms and phrasal verbs, each a small entry.
-  (e.dros || []).forEach(d => {
-    const block = el('div', { class: 'en__dro' }, [
-      el('div', { class: 'en__drp' }, [
-        el('b', { html: _fmt(d.drp) }),
-        d.gram ? el('span', { class: 'en__gram' }, [' [' + d.gram + ']']) : null,
-        d.rsl ? el('i', { class: 'en__lbl' }, [' (' + d.rsl + ')']) : null
-      ])
-    ]);
-    if (d.vrs) block.appendChild(el('div', { class: 'en__meta' }, [_variants(d.vrs)]));
-    (d.def || []).forEach(x => block.appendChild(_def(x)));
-    out.appendChild(block);
-  });
+  (e.dros || []).forEach(d => out.appendChild(_dro(d)));
 
   return out;
+}
+
+function _dro(d) {
+  const block = el('div', { class: 'en__dro' }, [
+    el('div', { class: 'en__drp' }, [
+      el('b', { html: _fmt(d.drp) }),
+      d.gram ? el('span', { class: 'en__gram' }, [' [' + d.gram + ']']) : null,
+      d.rsl ? el('i', { class: 'en__lbl' }, [' (' + d.rsl + ')']) : null
+    ])
+  ]);
+  if (d.vrs) block.appendChild(el('div', { class: 'en__meta' }, [_variants(d.vrs)]));
+  (d.def || []).forEach(x => block.appendChild(_def(x)));
+  return block;
 }
 
 // "wan*der" → "wan·der": the asterisks mark the syllable breaks.
