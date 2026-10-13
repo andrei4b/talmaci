@@ -91,9 +91,11 @@ function _withTimeout(promise, ms) {
  * back to (signing out removes it). Either used to land a member on the
  * join screen; now a failure is reported as one, with a way to try again. */
 let _profileFailed = false;
+let _profileError = null;
 
 async function _loadProfile() {
   _profileFailed = false;
+  _profileError = null;
   if (!_fbUser) { _profile = null; return; }
   const user = _fbUser;
   const uid = user.uid;
@@ -110,19 +112,41 @@ async function _loadProfile() {
       _profile = snap.exists ? snap.data() : null;
       _writeCachedProfile(uid, _profile);
       return;
-    } catch (_) {
+    } catch (err) {
+      _profileError = err;
       if (attempt >= waits.length) break;
       await new Promise(r => setTimeout(r, waits[attempt]));
       if (_fbUser !== user) return;
     }
   }
-  // Every attempt failed — fall back to the last profile we saw, and when
-  // there is none, say so rather than take it for no profile at all.
+  // Every attempt at the server failed. Firestore asked the usual way may
+  // still answer, from the device's copy if need be — and a profile found
+  // there is this member's, even if not the latest, so it is trusted;
+  // only "no profile" has to come from the server.
+  try {
+    const snap = await _withTimeout(fs.collection('users').doc(uid).get(), PROFILE_FETCH_TIMEOUT_MS);
+    if (_fbUser !== user) return;
+    if (snap.exists) {
+      _profile = snap.data();
+      _writeCachedProfile(uid, _profile);
+      return;
+    }
+  } catch (err) {
+    _profileError = err;
+  }
+  // Then the last profile we saw, and when there is none, say so rather
+  // than take it for no profile at all.
   _profile = _readCachedProfile(uid);
   _profileFailed = !_profile;
 }
 
 function profileFailed() { return _profileFailed; }
+// What went wrong, for the screen that says it — so a failure that keeps
+// happening can be reported as it is.
+function profileError() {
+  const e = _profileError;
+  return e ? [e.code, e.message].filter(Boolean).join(': ') : '';
+}
 
 /* A member's name and email, as everyone else sees them, are copied into
  * their profile from their Google account when they join. Firebase does not
@@ -304,7 +328,7 @@ async function setMemberRole(uid, role) {
 }
 
 window.Auth = {
-  ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence, profileFailed,
+  ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence, profileFailed, profileError,
   signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
   listGroupMembers, setMemberRole, groupMembers, shortName

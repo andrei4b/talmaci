@@ -422,18 +422,21 @@ function _renderProfileFailed(root) {
       el('p', { class: 'gate__subtitle' }, [isOffline()
         ? 'Nu ai conexiune la internet. Contul se încarcă singur când revine.'
         : 'Verifică conexiunea și încearcă din nou.']),
+      // A reload, not just the read again: a read that failed every time
+      // in this page tends to keep failing in it, and a fresh start gives
+      // Firestore a new connection as well.
       el('button', {
         class: 'btn btn--primary btn--wide',
         onclick: (e) => {
           _setButtonLoading(e.currentTarget, 'primary', 'Încearcă din nou');
-          // Re-renders through Auth.onChange, replacing this button.
-          window.Auth.refreshProfile();
+          location.reload();
         }
       }, ['Încearcă din nou']),
       el('button', {
         class: 'btn btn--text',
         onclick: () => window.Auth.signOut().catch(err => toast(failText('Nu te-am putut deconecta', err), { kind: 'error' }))
-      }, ['Deconectează-te'])
+      }, ['Deconectează-te']),
+      window.Auth.profileError() ? el('p', { class: 'gate__error' }, [window.Auth.profileError()]) : null
     ])
   ]));
 }
