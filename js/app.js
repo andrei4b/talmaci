@@ -500,8 +500,7 @@ function openAccountMenu() {
       onclick: async () => {
         try {
           const code = await window.Auth.createInvite();
-          closeSheet(overlay);
-          _openInviteCode(code);
+          closeSheetThen(overlay, () => _openInviteCode(code));
         } catch (err) {
           toast(err.message, { kind: 'error' });
         }
@@ -510,7 +509,7 @@ function openAccountMenu() {
 
     items.push(el('button', {
       class: 'btn btn--wide btn--menu',
-      onclick: () => { closeSheet(overlay); _openManageMembers(); }
+      onclick: () => closeSheetThen(overlay, _openManageMembers)
     }, menuLabel(icons.users, 'Gestionează membrii')));
   }
 
@@ -603,8 +602,7 @@ async function _setMemberRole(btn, member, nextRole, overlay) {
   btn.disabled = true;
   try {
     await window.Auth.setMemberRole(member.uid, nextRole);
-    closeSheet(overlay);
-    _openManageMembers();
+    closeSheetThen(overlay, _openManageMembers);
   } catch (err) {
     toast(err.message, { kind: 'error' });
     btn.disabled = false;
