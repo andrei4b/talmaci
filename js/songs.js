@@ -153,6 +153,7 @@ async function _loadSongs(quiet) {
     _loaded = true;
     _offline = false;
     _fromDevice = offline;
+    if (!offline) _keepAllOnDevice(songs, gen);
   } catch (err) {
     if (gen !== _gen) return false;
     if (_loaded) {
@@ -172,6 +173,28 @@ async function _loadSongs(quiet) {
   _renderList(_listWrap);
   if (quiet) _listWrap.scrollTop = top;
   return _loaded;
+}
+
+/* Every song's versions, read once per session in the background so that
+ * all of them, not only those opened, are in the device's copy and open
+ * offline (see auth.js). One read per version, a few at a time, once the
+ * app has settled; a refresh reads only songs not read yet. Notes are left
+ * to be read when a song is opened. */
+let _kept = new Set();   // song ids whose versions this session has read
+async function _keepAllOnDevice(songs, gen) {
+  if (!(await window.Auth.persistence())) return;
+  const queue = songs.filter(s => !_kept.has(s.id));
+  queue.forEach(s => _kept.add(s.id));
+  if (!queue.length) return;
+  await new Promise(r => window.requestIdleCallback ? requestIdleCallback(r, { timeout: 5000 }) : setTimeout(r, 2000));
+  const next = async () => {
+    while (queue.length && gen === _gen) {
+      const song = queue.shift();
+      if (isOffline()) { _kept.delete(song.id); continue; }
+      try { await window.Db.listVersions(song.id); } catch (_) { _kept.delete(song.id); }
+    }
+  };
+  await Promise.all([next(), next(), next()]);
 }
 
 // Re-fetches from Firestore — there are no live listeners for another
@@ -385,6 +408,7 @@ function reset() {
   _loaded = false;
   _offline = false;
   _fromDevice = false;
+  _kept = new Set();
   _listScrollTop = 0;
   _query = '';
   _scope = 'group';
