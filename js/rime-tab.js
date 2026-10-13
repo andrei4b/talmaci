@@ -208,7 +208,7 @@ async function _runRimeSearch(wrap) {
       const i = r.reading;
       const label = el('span', {});
       r.parts.forEach((p, k) => {
-        if (k) label.appendChild(el('span', { class: 'rime__syl-sep' }, ['-']));
+        if (k) label.appendChild(el('span', { class: 'rime__syl-sep' }, ['·']));
         label.appendChild(el('span', {
           class: k === r.stressIndex ? 'rime__syl--stressed' : ''
         }, [p]));

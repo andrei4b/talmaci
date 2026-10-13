@@ -979,7 +979,8 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.rime__syl-sep { color: var(--color-text-muted); margin: 0 2px; }
+.rime__syl-sep { color: var(--color-text-muted); margin: 0 1px; }
+.rime__hw .rime__syl-sep { margin: 0 2px; }
 .rime__meta { color: var(--color-text-muted); }
 .rime__results { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; }
 .rime__word {
