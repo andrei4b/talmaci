@@ -34,15 +34,24 @@ function syncViewportInsets() {
 // above the keyboard. Undo the slide, and scroll the field's own scroller
 // by as much instead, which leaves the caret exactly where it was on
 // screen. Not while zoomed in, when panning is the user's own doing.
+// The slide is the visual viewport's, inside a layout viewport that never
+// scrolled (#app is fixed), so window.scrollTo alone often moves nothing —
+// as when tapping from one field to another with the keyboard already up.
+// scrollIntoView does move the visual viewport, so line #app's top back
+// up with it.
 function unpanViewport() {
   const vv = window.visualViewport;
   const off = vv.offsetTop;
   if (off <= 0 || vv.scale > 1.01) return;
   window.scrollTo(0, 0);
-  if (vv.offsetTop === off) return;
+  if (vv.offsetTop > 0) {
+    document.getElementById('app').scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+  }
+  const moved = off - vv.offsetTop;
+  if (moved <= 0) return;
   for (let n = document.activeElement; n && n !== document.body; n = n.parentElement) {
     if (n.scrollHeight > n.clientHeight && /auto|scroll/.test(getComputedStyle(n).overflowY)) {
-      n.scrollTop += off;
+      n.scrollTop += moved;
       break;
     }
   }
