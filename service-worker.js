@@ -23,7 +23,9 @@
  * exactly the "white screen after being idle a while" symptom this fixes.
  * Force-quitting the app only "fixed" it before by giving the network a
  * fresh attempt once connectivity was actually back. */
-const CACHE_NAME = 'talmaci-shell-v103';
+// The release, also in the ?v= of every app file index.html loads — bump
+// the two together (see index.html).
+const CACHE_NAME = 'talmaci-shell-v104';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -41,34 +43,30 @@ const BIBLIC_PATH = '/data/biblic/';
 // Caches the page keeps for itself, which activation must leave alone like
 // BIBLIC_CACHE: the English dictionary's looked-up words (js/engleza-tab.js).
 const PAGE_CACHE_PREFIX = 'talmaci-mw-';
+// The page itself, its stylesheet and its scripts are not listed here:
+// install reads them off index.html (see _cacheShell), so what is stored is
+// always exactly the set of URLs that page asks for, ?v= and all.
 const SHELL_FILES = [
-  './',
-  './index.html',
-  './styles.css',
   './manifest.webmanifest',
-  './js/utils.js',
-  './js/firebase-config.js',
-  './js/auth.js',
-  './js/db.js',
-  './js/sections.js',
-  './js/translate.js',
-  './js/ro-phonetics.js',
-  './js/rhyme.js',
-  './js/activity.js',
-  './js/songs.js',
-  './js/rime-tab.js',
-  './js/sinonime-tab.js',
-  './js/engleza-tab.js',
-  './js/biblic-tab.js',
-  './js/bible-tab.js',
-  './js/song-detail.js',
-  './js/app.js',
   BIBLE_URL,
   RHYME_URL,
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png'
 ];
+
+/* Stores index.html and the app files it loads, as one release. The same
+ * copy of the page is stored that the file list was read from, so the
+ * cached page and its files can't come from two different deploys. */
+async function _cacheShell(cache) {
+  const res = await fetch('./index.html', { cache: 'no-store' });
+  if (!res.ok) throw new Error('index.html: ' + res.status);
+  const html = await res.text();
+  const files = [...html.matchAll(/(?:src|href)="(\.\/(?:js\/[^"]+|styles\.css[^"]*))"/g)].map(m => m[1]);
+  await cache.addAll(files.map(f => new Request(f, { cache: 'no-store' })));
+  const page = () => new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  await Promise.all([cache.put('./', page()), cache.put('./index.html', page())]);
+}
 
 // The Firebase SDK is cross-origin and needed to render anything at all
 // (its <script> tags block parsing), so it's precached up front too, rather
@@ -88,6 +86,7 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then(cache => Promise.all([
         cache.addAll(SHELL_FILES),
+        _cacheShell(cache),
         ...CDN_FILES.map(url =>
           fetch(new Request(url, { mode: 'no-cors' })).then(res => cache.put(url, res)).catch(() => {})
         )
@@ -182,7 +181,13 @@ self.addEventListener('fetch', (event) => {
 
   const timeout = new Promise(resolve => setTimeout(() => resolve(null), NETWORK_TIMEOUT_MS));
 
+  // Past the timeout, the stored copy — but only of this very URL. A file
+  // of a release not stored yet (a new page, loaded while the worker still
+  // holds the last one) has none, and then the network is waited for
+  // rather than failing: it is the only place that file can come from.
   event.respondWith(
-    Promise.race([networkFetch, timeout]).then(res => res || caches.match(req))
+    Promise.race([networkFetch, timeout])
+      .then(res => res || caches.match(req).then(hit => hit || networkFetch))
+      .then(res => res || Response.error())
   );
 });
