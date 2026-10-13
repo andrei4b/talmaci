@@ -35,6 +35,8 @@ let _memberNames = null;
 // Bumped by reset(). A fetch that was already in flight for the previous
 // account must not write its result into the next account's list.
 let _gen = 0;
+// Whether the list is unloaded because the last attempt found no connection.
+let _offline = false;
 
 async function render(root) {
   root.innerHTML = '';
@@ -136,6 +138,7 @@ async function _loadSongs() {
     if (gen !== _gen) return false;
     _songs = songs;
     _loaded = true;
+    _offline = false;
   } catch (err) {
     if (gen !== _gen) return false;
     if (_loaded) {
@@ -148,15 +151,8 @@ async function _loadSongs() {
     // settling permanently on an empty list until someone thinks to use
     // "Reîmprospătează".
     _songs = [];
-    if (isNetworkError(err)) {
-      _listWrap.innerHTML = '';
-      _listWrap.appendChild(offlineNotice({
-        text: 'Melodiile nu se pot încărca fără internet.',
-        retry: () => { _loadSongs(); if (!_groupName) _loadGroupName(); }
-      }));
-      return false;
-    }
-    toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
+    _offline = isNetworkError(err);
+    if (!_offline) toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
   }
   _renderList(_listWrap);
   return _loaded;
@@ -172,6 +168,15 @@ async function refresh() {
 
 function _renderList(listWrap) {
   listWrap.innerHTML = '';
+  // Not loaded for want of a connection: that is the answer for either
+  // list and any search, not "no songs".
+  if (!_loaded && _offline) {
+    listWrap.appendChild(offlineNotice({
+      text: 'Melodiile nu se pot încărca fără internet.',
+      retry: () => { _loadSongs(); if (!_groupName) _loadGroupName(); }
+    }));
+    return;
+  }
   const myUid = window.Auth.currentUser().uid;
   // Firestore's own rules already keep another member's personal songs out
   // of what _loadSongs fetches at all — the createdBy check here is just
@@ -361,6 +366,7 @@ function reset() {
   _gen++;
   _songs = [];
   _loaded = false;
+  _offline = false;
   _listScrollTop = 0;
   _query = '';
   _scope = 'group';
