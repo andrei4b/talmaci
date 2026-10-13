@@ -15,6 +15,20 @@ firebase.initializeApp(window.FIREBASE_CONFIG);
 const auth = firebase.auth();
 const fs = firebase.firestore();
 
+// Firestore keeps what it has read on the device, in IndexedDB, so a song
+// opened once can be opened again offline, and a change made offline waits
+// there — across a restart of the app — until the connection is back. It
+// has to be asked for before Firestore is first used, which is here.
+// synchronizeTabs lets two tabs share the copy rather than the second
+// being refused it. Where IndexedDB is unavailable (some private modes) it
+// is refused, and Firestore keeps to memory, as before.
+let _persistent = false;
+const _persistence = fs.enablePersistence({ synchronizeTabs: true })
+  .then(() => { _persistent = true; return true; }, () => false);
+function isPersistent() { return _persistent; }
+// For a decision that cannot wait for the answer to be in, at boot.
+function persistence() { return _persistence; }
+
 // Keep the sign-in across app restarts. LOCAL is already the SDK's default
 // in a browser, but it's set explicitly so that can't silently change, and
 // the browser is asked to treat this site's storage as persistent: by
@@ -120,9 +134,24 @@ async function signInWithGoogle() {
   // onAuthStateChanged handles profile load + notify.
 }
 
+// The account's songs are on the device, and whoever signs in next on it
+// must not find them there, so signing out clears that copy — which needs
+// the connection, or changes made offline and not yet sent would go with
+// it. Firestore cannot be used again in the same page after it is cleared,
+// hence the reload.
 async function signOut() {
+  window.Utils.requireOnline();
   if (_fbUser) _writeCachedProfile(_fbUser.uid, null);
   await auth.signOut();
+  if (!_persistent) return;
+  try {
+    await fs.waitForPendingWrites();
+    await fs.terminate();
+    await fs.clearPersistence();
+    // What db.js noted about the copy went with it.
+    Object.keys(localStorage).filter(k => k.startsWith('talmaci.songsSynced:')).forEach(k => localStorage.removeItem(k));
+  } catch (_) { /* another tab still has it open; it is left */ }
+  location.reload();
 }
 
 async function refreshProfile() {
@@ -174,10 +203,10 @@ function _genInviteCode() {
 // Admin-only: every profile in the current group, for a future "Manage
 // members" / promote-to-admin screen.
 async function listGroupMembers() {
-  window.Utils.requireOnline();
   const groupId = currentGroupId();
   if (!groupId) return [];
-  const snap = await fs.collection('users').where('groupId', '==', groupId).get();
+  const offline = window.Utils.isOffline();
+  const snap = await fs.collection('users').where('groupId', '==', groupId).get(offline ? { source: 'cache' } : undefined);
   return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 
@@ -190,7 +219,13 @@ function groupMembers() {
   const groupId = currentGroupId();
   if (!_members || _members.groupId !== groupId) {
     const entry = { groupId, promise: null };
-    entry.promise = listGroupMembers().catch(() => {
+    // Offline they come from the device and may be fewer, so they are not
+    // kept either: the next caller, online, asks again.
+    const offline = window.Utils.isOffline();
+    entry.promise = listGroupMembers().then(members => {
+      if (offline && _members === entry) _members = null;
+      return members;
+    }, () => {
       if (_members === entry) _members = null;
       return [];
     });
@@ -217,7 +252,7 @@ async function setMemberRole(uid, role) {
 }
 
 window.Auth = {
-  ready, onChange, currentUser, isAdmin, currentGroupId,
+  ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence,
   signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
   listGroupMembers, setMemberRole, groupMembers, shortName

@@ -79,6 +79,27 @@
 
 function fs() { return firebase.firestore(); }
 
+/* Offline, reads come from the device's copy (see auth.js), and only from
+ * it: asked the usual way, Firestore first spends about ten seconds trying
+ * the server. A document that was never read here is not in the copy, and
+ * fails as a missing connection would. A query cannot fail that way — it
+ * answers with whatever of it is on the device, which may be nothing — so
+ * the two that matter say themselves when they have nothing to go on. */
+function _get(ref) {
+  return window.Utils.isOffline() ? ref.get({ source: 'cache' }) : ref.get();
+}
+
+// Whether this account's song list has been read here from the server into
+// the device's copy, so that offline an empty list from it means no songs,
+// not none yet. auth.js forgets it when it clears the copy.
+const SYNCED_PREFIX = 'talmaci.songsSynced:';
+function _listSynced(uid) {
+  try { return localStorage.getItem(SYNCED_PREFIX + uid) === '1'; } catch (_) { return false; }
+}
+function _markListSynced(uid) {
+  try { localStorage.setItem(SYNCED_PREFIX + uid, '1'); } catch (_) {}
+}
+
 // Two queries, not one — see firestore.rules for why a single
 // groupId-only query can no longer be proven safe against a rule that also
 // depends on `shared`/`createdBy` per document. Each of these two is
@@ -90,9 +111,13 @@ async function listSongs(groupId, myUid) {
   const byId = new Map();
   const add = (snap) => snap.docs.forEach(d => byId.set(d.id, { id: d.id, ...d.data() }));
 
-  const queries = [fs().collection('songs').where('groupId', '==', groupId).where('shared', '==', true).get()];
-  if (myUid) queries.push(fs().collection('songs').where('groupId', '==', groupId).where('createdBy', '==', myUid).get());
+  const offline = window.Utils.isOffline();
+  const persistent = await window.Auth.persistence();
+  if (offline && !(persistent && _listSynced(myUid))) window.Utils.requireOnline();
+  const queries = [_get(fs().collection('songs').where('groupId', '==', groupId).where('shared', '==', true))];
+  if (myUid) queries.push(_get(fs().collection('songs').where('groupId', '==', groupId).where('createdBy', '==', myUid)));
   (await Promise.all(queries)).forEach(add);
+  if (!offline && persistent) _markListSynced(myUid);
 
   const songs = [...byId.values()];
   songs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -100,7 +125,7 @@ async function listSongs(groupId, myUid) {
 }
 
 async function getSong(songId) {
-  const snap = await fs().collection('songs').doc(songId).get();
+  const snap = await _get(fs().collection('songs').doc(songId));
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
@@ -108,7 +133,7 @@ async function getSong(songId) {
 // else about a group is used anywhere in the app yet.
 async function getGroup(groupId) {
   if (!groupId) return null;
-  const snap = await fs().collection('groups').doc(groupId).get();
+  const snap = await _get(fs().collection('groups').doc(groupId));
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
@@ -170,8 +195,11 @@ async function deleteSong(songId) {
   await fs().collection('songs').doc(songId).delete();
 }
 
+// Every song has a version, so none at all, offline, means a song whose
+// versions were never read on this device.
 async function listVersions(songId) {
-  const snap = await _versionsRef(songId).orderBy('createdAt', 'asc').get();
+  const snap = await _get(_versionsRef(songId).orderBy('createdAt', 'asc'));
+  if (snap.empty) window.Utils.requireOnline();
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
@@ -185,6 +213,23 @@ async function addVersion(songId, { title, text, createdBy }) {
     updatedAt: now
   });
   return ref.id;
+}
+
+/* The texts being written, which unlike every other change go out offline
+ * too: Firestore keeps them on the device and sends them when the
+ * connection is back. Offline they return once the change is made here
+ * rather than waiting on the server, which would be until then; `sent` is
+ * the server's answer, for whoever wants to know how it went. */
+function _queued(write) {
+  const sent = write();
+  if (!window.Utils.isOffline()) return sent.then(() => ({ queued: false, sent }));
+  return Promise.resolve({ queued: true, sent });
+}
+function setVersionText(songId, versionId, text) {
+  return _queued(() => _versionsRef(songId).doc(versionId).update({ text, updatedAt: Date.now() }));
+}
+function setOriginalText(songId, text) {
+  return _queued(() => fs().collection('songs').doc(songId).update({ originalText: text, updatedAt: Date.now() }));
 }
 
 async function updateVersion(songId, versionId, patch) {
@@ -209,7 +254,7 @@ function _notesRef(songId, versionId) {
 // Sorted here rather than by the query, so a read that fails for want of
 // an index can't be what keeps them off screen.
 async function listNotes(songId, versionId) {
-  const snap = await _notesRef(songId, versionId).get();
+  const snap = await _get(_notesRef(songId, versionId));
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.at - b.at);
 }
 
@@ -229,7 +274,7 @@ function _seenRef(uid, songId) {
 
 // { versionId: ms } — when this member last read each version's notes.
 async function getSeen(uid, songId) {
-  const snap = await _seenRef(uid, songId).get();
+  const snap = await _get(_seenRef(uid, songId));
   return snap.exists ? snap.data() : {};
 }
 
@@ -237,14 +282,17 @@ async function markSeen(uid, songId, versionId, at) {
   await _seenRef(uid, songId).set({ [versionId]: at }, { merge: true });
 }
 
-// Every call fails at once when there is no connection, rather than
-// waiting on Firestore — see Utils.requireOnline.
+// Every other write fails at once when there is no connection, rather
+// than leaving whatever awaits it waiting until there is one.
 const _online = (fn) => async (...args) => { window.Utils.requireOnline(); return fn(...args); };
 
-window.Db = Object.fromEntries(Object.entries({
-  listSongs, getSong, getGroup, addSong, updateSong, deleteSong, setSongStatus, setWorking,
-  listVersions, addVersion, updateVersion, deleteVersion,
-  listNotes, addNote, deleteNote, getSeen, markSeen
-}).map(([name, fn]) => [name, _online(fn)]));
+window.Db = {
+  listSongs, getSong, getGroup, listVersions, listNotes, getSeen,
+  setVersionText, setOriginalText,
+  ...Object.fromEntries(Object.entries({
+    addSong, updateSong, deleteSong, setSongStatus, setWorking,
+    addVersion, updateVersion, deleteVersion, addNote, deleteNote, markSeen
+  }).map(([name, fn]) => [name, _online(fn)]))
+};
 
 })();

@@ -167,8 +167,11 @@ Pages, set **Source** to "GitHub Actions" once. After that, every push
 publishes the new version.
 
 Once deployed over HTTPS, visit the URL on your phone and add it to your
-home screen. The app shell (not the data) then works offline, via the
-service worker.
+home screen. It then works offline: the service worker keeps the app, the
+Bible and the rhyme index, and Firestore keeps a copy of the songs already
+opened on that device (IndexedDB), so they open and can be edited without a
+connection — the edits are sent when it is back. Other changes (new songs,
+status, notes…) need the connection. Signing out clears the device's copy.
 
 ## Song status
 

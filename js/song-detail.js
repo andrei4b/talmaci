@@ -190,7 +190,8 @@ async function render(root, songId) {
     if (isNetworkError(err)) {
       root.querySelector('.topbar__title').textContent = 'Fără internet';
       root.querySelector('.loading-state').replaceWith(offlineNotice({
-        text: 'Melodia nu se poate deschide fără internet.',
+        text: 'Melodia nu a mai fost deschisă pe acest dispozitiv.',
+        hint: 'Fără internet se deschid doar melodiile deschise deja. Rimele și Biblia merg oricând.',
         retry: () => render(root, songId)
       }));
       return;
@@ -1647,41 +1648,41 @@ function _refreshTextTab(content) {
   _renderTextTab(content);
 }
 
-/* Text that could not be saved for want of a connection, kept on the page
- * and saved once the connection is back — only the latest of each text, by
- * song and version. It lives no longer than the page does, so leaving the
- * app with any of it unsaved asks first. Every other change needs the
- * connection there and then, and says so when it is not. */
-const _unsaved = new Map();
-let _toldUnsaved = false;
+/* Text typed offline is saved all the same: Firestore keeps the change on
+ * the device and sends it when the connection is back (see Db._queued).
+ * Kept on the device survives the app being closed; where Firestore could
+ * not have the device's storage (Auth.isPersistent) it is only in memory,
+ * so leaving the app with any of it unsent asks first. */
+let _unsent = 0;
+let _toldQueued = false;
 
-function _keepUnsaved(key, retry) {
-  _unsaved.set(key, retry);
-  if (_toldUnsaved) return;
-  _toldUnsaved = true;
-  toast('Fără internet: textul se salvează când revine conexiunea. Nu închide aplicația.', { kind: 'error' });
+function _queued(sent, what) {
+  if (!_toldQueued) {
+    _toldQueued = true;
+    toast(window.Auth.isPersistent()
+      ? 'Fără internet: textul e păstrat pe dispozitiv și se salvează când revine conexiunea.'
+      : 'Fără internet: textul se salvează când revine conexiunea. Nu închide aplicația.');
+  }
+  _unsent++;
+  sent.catch(err => toast(failText(what, err), { kind: 'error' }))
+    .finally(() => { _unsent--; });
 }
 
-window.addEventListener('online', () => {
-  _toldUnsaved = false;
-  const retries = [..._unsaved.values()];
-  _unsaved.clear();
-  retries.forEach(f => f());
-});
+window.addEventListener('online', () => { _toldQueued = false; });
 window.addEventListener('beforeunload', (e) => {
-  if (!_unsaved.size) return;
+  if (!_unsent || window.Auth.isPersistent()) return;
   e.preventDefault();
   e.returnValue = '';
 });
 
-// The song is passed along rather than read from _song when it is saved
-// again later, by which time another song may be open.
-async function _saveVersionText(versionId, history, text, song = _song) {
+// The song is read once, up front, so what follows the save is about the
+// song it was made on even if another has been opened meanwhile.
+async function _saveVersionText(versionId, history, text) {
   if (!versionId) return;
-  const key = song.id + '/' + versionId;
+  const song = _song;
   try {
-    await window.Db.updateVersion(song.id, versionId, { text });
-    _unsaved.delete(key);
+    const { queued, sent } = await window.Db.setVersionText(song.id, versionId, text);
+    if (queued) _queued(sent, 'Nu am putut salva textul');
     const version = _versions.find(v => v.id === versionId);
     window.Activity.log(song, 'version_text', { versionTitle: version ? version.title : '' }, versionId);
     // The version's text is kept current as it is typed (see the Text
@@ -1689,18 +1690,17 @@ async function _saveVersionText(versionId, history, text, song = _song) {
     history.last = text;
     history.pending = false;
   } catch (err) {
-    if (isNetworkError(err)) _keepUnsaved(key, () => _saveVersionText(versionId, history, text, song));
-    else toast(failText('Nu am putut salva textul', err), { kind: 'error' });
+    toast(failText('Nu am putut salva textul', err), { kind: 'error' });
   }
 }
 
 // The original text, edited in place on the Text tab. The song list keeps
 // its own copy for the snippet under each title, so it is told as well.
-async function _saveOriginalText(text, song = _song) {
-  const key = song.id + '/original';
+async function _saveOriginalText(text) {
+  const song = _song;
   try {
-    await window.Db.updateSong(song.id, { originalText: text });
-    _unsaved.delete(key);
+    const { queued, sent } = await window.Db.setOriginalText(song.id, text);
+    if (queued) _queued(sent, 'Nu am putut salva originalul');
     window.Songs.noteUpdated(song.id, { originalText: text });
     window.Activity.log(song, 'original_text', null, 'original');
     if (_originalHistory && _originalHistorySongId === song.id) {
@@ -1708,8 +1708,7 @@ async function _saveOriginalText(text, song = _song) {
       _originalHistory.pending = false;
     }
   } catch (err) {
-    if (isNetworkError(err)) _keepUnsaved(key, () => _saveOriginalText(text, song));
-    else toast(failText('Nu am putut salva originalul', err), { kind: 'error' });
+    toast(failText('Nu am putut salva originalul', err), { kind: 'error' });
   }
 }
 
@@ -2147,8 +2146,6 @@ async function _generateMotAMot(root) {
 
 // Drops the open song so the next account never sees it (see Songs.reset).
 function reset() {
-  // Another account's text is not saved as this one.
-  _unsaved.clear();
   _song = null;
   _versions = [];
   _activeVersionId = null;

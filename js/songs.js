@@ -1,7 +1,7 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
 const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isShared,
-        songStatus, statusLabel, songWorkers, isNetworkError, failText, offlineNotice } = window.Utils;
+        songStatus, statusLabel, songWorkers, isOffline, isNetworkError, failText, offlineNotice } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 // A drawn plus rather than the "+" character — text glyphs sit off-center
@@ -37,6 +37,14 @@ let _memberNames = null;
 let _gen = 0;
 // Whether the list is unloaded because the last attempt found no connection.
 let _offline = false;
+// Whether the list showing came from the device's copy, offline. It is
+// read again from the server as soon as the connection is back.
+let _fromDevice = false;
+window.addEventListener('online', () => {
+  if (!_loaded || !_fromDevice) return;
+  if (_listWrap && _listWrap.isConnected) _loadSongs(true);
+  else _loaded = false;   // the next visit to the list reads it
+});
 
 async function render(root) {
   root.innerHTML = '';
@@ -125,25 +133,31 @@ function _openScopeSheet() {
   openSheet(overlay);
 }
 
-async function _loadSongs() {
+// `quiet` keeps the list on screen while it is read again, rather than a
+// spinner in its place — for an update nobody asked for.
+async function _loadSongs(quiet) {
   if (!_listWrap) return false;
-  _listWrap.innerHTML = '';
-  _listWrap.appendChild(el('div', { class: 'loading-state' }, [
-    el('div', { class: 'spinner' }),
-    'Se încarcă…'
-  ]));
+  if (!quiet) {
+    _listWrap.innerHTML = '';
+    _listWrap.appendChild(el('div', { class: 'loading-state' }, [
+      el('div', { class: 'spinner' }),
+      'Se încarcă…'
+    ]));
+  }
   const gen = _gen;
+  const offline = isOffline();
   try {
     const songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
     if (gen !== _gen) return false;
     _songs = songs;
     _loaded = true;
     _offline = false;
+    _fromDevice = offline;
   } catch (err) {
     if (gen !== _gen) return false;
     if (_loaded) {
       // A refresh that failed: the list already there stays.
-      toast(failText('Nu am putut reîmprospăta', err), { kind: 'error' });
+      if (!quiet) toast(failText('Nu am putut reîmprospăta', err), { kind: 'error' });
       _renderList(_listWrap);
       return false;
     }
@@ -154,7 +168,9 @@ async function _loadSongs() {
     _offline = isNetworkError(err);
     if (!_offline) toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
   }
+  const top = _listScrollTop;
   _renderList(_listWrap);
+  if (quiet) _listWrap.scrollTop = top;
   return _loaded;
 }
 
@@ -172,7 +188,8 @@ function _renderList(listWrap) {
   // list and any search, not "no songs".
   if (!_loaded && _offline) {
     listWrap.appendChild(offlineNotice({
-      text: 'Melodiile nu se pot încărca fără internet.',
+      text: 'Lista de melodii nu a fost încărcată încă pe acest dispozitiv.',
+      hint: 'Se încarcă o dată cu internet; după aceea se deschide și fără. Rimele și Biblia merg oricând.',
       retry: () => { _loadSongs(); if (!_groupName) _loadGroupName(); }
     }));
     return;
@@ -367,6 +384,7 @@ function reset() {
   _songs = [];
   _loaded = false;
   _offline = false;
+  _fromDevice = false;
   _listScrollTop = 0;
   _query = '';
   _scope = 'group';

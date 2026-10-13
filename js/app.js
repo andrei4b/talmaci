@@ -1,7 +1,7 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
 const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
-        isOffline, failText, OFFLINE_HINT } = window.Utils;
+        isOffline, failText } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
 // accessory bar (the key/card/location icon row) ----
@@ -68,7 +68,7 @@ async function boot() {
   });
   window.Auth.onChange(_renderCurrentScreen);
   window.addEventListener('hashchange', _renderCurrentScreen);
-  window.addEventListener('offline', () => toast('Ai rămas fără internet. ' + OFFLINE_HINT));
+  window.addEventListener('offline', () => toast('Ai rămas fără internet. Melodiile deschise deja, rimele și Biblia merg în continuare.'));
   window.addEventListener('online', _backOnline);
   _renderCurrentScreen();
   // The Bible (~4 MB) and the rhyme index (~5.7 MB): fetch and parse them
@@ -438,7 +438,7 @@ function _renderJoinGroup(root) {
       }, ['Alătură-te']),
       el('button', {
         class: 'btn btn--text',
-        onclick: () => window.Auth.signOut()
+        onclick: () => window.Auth.signOut().catch(err => toast(failText('Nu te-am putut deconecta', err), { kind: 'error' }))
       }, ['Deconectează-te'])
     ])
   ]));
@@ -482,7 +482,14 @@ function openAccountMenu() {
 
   items.push(el('button', {
     class: 'btn btn--wide btn--menu',
-    onclick: async () => { await window.Auth.signOut(); closeSheet(overlay); }
+    onclick: async () => {
+      try {
+        await window.Auth.signOut();
+        closeSheet(overlay);
+      } catch (err) {
+        toast(failText('Nu te-am putut deconecta', err), { kind: 'error' });
+      }
+    }
   }, menuLabel(icons.logout, 'Deconectează-te')));
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
