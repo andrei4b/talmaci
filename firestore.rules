@@ -14,6 +14,8 @@ rules_version = '2';
 //   /invites/{code}   { groupId, createdBy, createdAt }
 //   /songs/{songId}   { title, originalText, translatedText, groupId, shared, status, workers, demoUrl, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
+//   /songs/{songId}/versions/{versionId}/notes/{noteId} { text, by, byName, at }
+//   /users/{uid}/seen/{songId} { [versionId]: ms }
 //
 // Any group member can create a song, but editing (rename, original text)
 // or deleting one is limited to whoever created it, or an admin — same
@@ -92,6 +94,12 @@ service cloud.firestore {
         && request.resource.data.role in ['admin', 'user'];
 
       allow delete: if false;
+
+      // When this member last read each version's observations, per song.
+      // Their own business only.
+      match /seen/{songId} {
+        allow read, write: if isSignedIn() && userId == request.auth.uid;
+      }
     }
 
     match /groups/{groupId} {
@@ -188,6 +196,31 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid;
         allow update, delete: if isSignedIn() && canSeeParent()
           && (resource.data.createdBy == request.auth.uid || (isAdmin() && isShared(parentSong())));
+
+        // The team's observations on a version. Any member reads them and,
+        // on a shared song only — a personal one has no team to leave them —
+        // adds them, in their own name. Reading is not limited the same way
+        // so that deleting a personal song's versions can still list them. Nobody edits one; its author or an
+        // admin deletes it — and so does whoever may delete the version or
+        // the song, which has to clear them out first (see db.js).
+        match /notes/{noteId} {
+          function parentVersion() {
+            return get(/databases/$(database)/documents/songs/$(songId)/versions/$(versionId)).data;
+          }
+          allow read: if isSignedIn() && canSeeParent();
+          allow create: if isSignedIn() && canSeeParent() && isShared(parentSong())
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 4000
+            && request.resource.data.at is number;
+          allow update: if false;
+          allow delete: if isSignedIn() && canSeeParent()
+            && (resource.data.by == request.auth.uid
+                || isAdmin()
+                || parentVersion().createdBy == request.auth.uid
+                || parentSong().createdBy == request.auth.uid);
+        }
       }
     }
   }

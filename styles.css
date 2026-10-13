@@ -489,6 +489,18 @@ body:has(.text-tab--all) .tab-bar { max-width: none; }
   white-space: nowrap;
 }
 button.text-tab__head { cursor: pointer; }
+/* A column's name with its observations button at the right, both kept
+   the same height in every column, the original's too, so the boxes
+   under them start level. */
+.text-tab__headrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  margin-bottom: 6px;
+}
+.text-tab__headrow .text-tab__head { flex: 1; min-width: 0; margin-bottom: 0; }
 .text-tab__head--active { color: var(--color-accent); }
 
 /* Version switcher — a row under the translation box: the version button
@@ -696,7 +708,68 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
   padding: 6px 1px 0;
   background: var(--color-bg);
 }
-.verses__heads .text-tab__head { padding: 0 15px; }
+.verses__heads .text-tab__head { padding: 0 0 0 15px; }
+.verses__heads .text-tab__headrow { padding-right: 9px; }
+
+/* The observations button — a version's, in the row under its box or
+   above its column — and the dot on it while someone else's are unread. */
+.notes-btn { position: relative; }
+.notes-btn--head {
+  flex-shrink: 0;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.notes-btn--head:hover { background: var(--color-border); }
+.notes-btn--head svg { width: 17px; height: 17px; }
+.notes-btn--unread::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+.notes-btn--head.notes-btn--unread::after { top: 1px; right: 2px; box-shadow: 0 0 0 2px var(--color-bg); }
+
+/* The observations sheet */
+.note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.note-list__empty { color: var(--color-text-muted); padding: 4px 0 8px; }
+.note { padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+.note:last-child { border-bottom: none; }
+.note__meta { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.note__when { color: var(--color-text-muted); font-size: 0.8rem; }
+.note__delete {
+  margin-left: auto;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.note__delete svg { width: 15px; height: 15px; }
+.note__delete--confirm { color: #fff; background: var(--color-danger); }
+.note__text { margin-top: 4px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-input { flex-shrink: 0; min-height: 76px; }
 
 /* Version list sheet rows */
 .version-list { display: flex; flex-direction: column; gap: 8px; }

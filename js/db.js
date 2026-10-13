@@ -59,6 +59,20 @@
  *     updatedAt: number (ms)
  *   }
  *
+ * Each version of a shared song has the team's observations on it, plain
+ * notes in the order they were left:
+ *   songs/{songId}/versions/{versionId}/notes/{noteId}
+ *   {
+ *     text: string,
+ *     by: uid,
+ *     byName: string,            // the author's name when it was written
+ *     at: number (ms)
+ *   }
+ * and each member's own record of when they last read a song's, so the
+ * button can mark what is new to them on any device:
+ *   users/{uid}/seen/{songId}
+ *   { [versionId]: number (ms) }
+ *
  * The Rime/Sinonime/Biblie tabs have no persisted fields yet — their data
  * model will be added once that functionality is specified. */
 (function () {
@@ -152,7 +166,7 @@ function _versionsRef(songId) {
 // otherwise they'd be orphaned (unreachable, but still taking up storage).
 async function deleteSong(songId) {
   const versionsSnap = await _versionsRef(songId).get();
-  await Promise.all(versionsSnap.docs.map(d => d.ref.delete()));
+  await Promise.all(versionsSnap.docs.map(d => deleteVersion(songId, d.id)));
   await fs().collection('songs').doc(songId).delete();
 }
 
@@ -180,13 +194,53 @@ async function updateVersion(songId, versionId, patch) {
   });
 }
 
+// Its observations first: the rule that lets a version's creator clear
+// them out reads the version, which has to still be there.
 async function deleteVersion(songId, versionId) {
+  const notesSnap = await _notesRef(songId, versionId).get();
+  await Promise.all(notesSnap.docs.map(d => d.ref.delete()));
   await _versionsRef(songId).doc(versionId).delete();
+}
+
+function _notesRef(songId, versionId) {
+  return _versionsRef(songId).doc(versionId).collection('notes');
+}
+
+// Sorted here rather than by the query, so a read that fails for want of
+// an index can't be what keeps them off screen.
+async function listNotes(songId, versionId) {
+  const snap = await _notesRef(songId, versionId).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.at - b.at);
+}
+
+async function addNote(songId, versionId, { text, by, byName }) {
+  const note = { text, by, byName: byName || '', at: Date.now() };
+  const ref = await _notesRef(songId, versionId).add(note);
+  return { id: ref.id, ...note };
+}
+
+async function deleteNote(songId, versionId, noteId) {
+  await _notesRef(songId, versionId).doc(noteId).delete();
+}
+
+function _seenRef(uid, songId) {
+  return fs().collection('users').doc(uid).collection('seen').doc(songId);
+}
+
+// { versionId: ms } — when this member last read each version's notes.
+async function getSeen(uid, songId) {
+  const snap = await _seenRef(uid, songId).get();
+  return snap.exists ? snap.data() : {};
+}
+
+async function markSeen(uid, songId, versionId, at) {
+  await _seenRef(uid, songId).set({ [versionId]: at }, { merge: true });
 }
 
 window.Db = {
   listSongs, getSong, getGroup, addSong, updateSong, deleteSong, setSongStatus, setWorking,
-  listVersions, addVersion, updateVersion, deleteVersion
+  listVersions, addVersion, updateVersion, deleteVersion,
+  listNotes, addNote, deleteNote, getSeen, markSeen
 };
 
 })();

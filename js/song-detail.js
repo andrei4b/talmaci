@@ -26,6 +26,9 @@ const VERSES_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 // English dictionary.
 const LOOKUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>`;
 
+// A speech bubble — the team's observations on a version.
+const NOTES_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 14h4.5"/></svg>`;
+
 // The sections offered when marking one, in the order a song usually runs.
 // Strofa is left out: it is offered numbered, as the next one due.
 const SECTION_CHOICES = ['Pre-refren', 'Refren', 'Bridge', 'Intro', 'Interludiu', 'Final'];
@@ -38,6 +41,13 @@ const UNDO_REDO_ICONS = {
 
 let _song = null;
 let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
+
+/* The team's observations on each version (see db.js), by version id, and
+ * when you last read each version's — the two together are what puts the
+ * dot on a version's button. Fetched with the song, after it is on screen,
+ * and again for one version whenever its observations are opened. */
+let _notes = new Map();
+let _seen = {};
 let _activeVersionId = null;
 
 // Remembers which version was last viewed, per song, per device — a
@@ -185,6 +195,7 @@ async function render(root, songId) {
   }
 
   _renderShell(root);
+  _loadNotes();
 }
 
 function _renderShell(root) {
@@ -231,6 +242,196 @@ function _renderShell(root) {
   const content = el('div', { class: 'tab-content' });
   root.appendChild(content);
   _renderTextTab(content);
+}
+
+/* ---- observations ---- */
+
+// Only a shared song has a team to leave them.
+function _hasNotes() {
+  return !!_song && isShared(_song);
+}
+
+async function _loadNotes() {
+  const song = _song;
+  _notes = new Map();
+  _seen = {};
+  if (!_hasNotes()) return;
+  const uid = window.Auth.currentUser().uid;
+  try {
+    const [seen, lists] = await Promise.all([
+      window.Db.getSeen(uid, song.id),
+      Promise.all(_versions.map(v => window.Db.listNotes(song.id, v.id)))
+    ]);
+    if (_song !== song) return;
+    _seen = seen;
+    _versions.forEach((v, i) => _notes.set(v.id, lists[i]));
+    _syncNoteDots();
+  } catch (_) { /* no dots, and the sheet fetches its own */ }
+}
+
+// Someone else's observation left since you last read the version's.
+function _hasUnread(versionId) {
+  const me = window.Auth.currentUser().uid;
+  const seen = _seen[versionId] || 0;
+  return (_notes.get(versionId) || []).some(n => n.by !== me && n.at > seen);
+}
+
+function _syncNoteDots() {
+  document.querySelectorAll('.notes-btn[data-version]').forEach(b => {
+    b.classList.toggle('notes-btn--unread', _hasUnread(b.dataset.version));
+  });
+}
+
+/* The button that opens a version's observations: in the row under the
+ * box, or — `inHead` — beside the version's name above its column. */
+function _notesButton(version, inHead) {
+  if (!version || !_hasNotes()) return null;
+  return el('button', {
+    class: 'notes-btn ' + (inHead ? 'notes-btn--head' : 'version-switcher__nav')
+      + (_hasUnread(version.id) ? ' notes-btn--unread' : ''),
+    'data-version': version.id,
+    'aria-label': 'Observații',
+    title: 'Observații',
+    html: NOTES_ICON,
+    onmousedown: (e) => e.preventDefault(),
+    onclick: () => _openNotes(version)
+  });
+}
+
+// A version's name above its column, with its observations at the right.
+function _headRow(head, version) {
+  return el('div', { class: 'text-tab__headrow' }, [head, _notesButton(version, true)]);
+}
+
+function _markNotesSeen(versionId) {
+  const list = _notes.get(versionId) || [];
+  // Never behind the newest one, in case its writer's clock runs ahead.
+  const at = Math.max(Date.now(), ...list.map(n => n.at));
+  _seen[versionId] = at;
+  _syncNoteDots();
+  window.Db.markSeen(window.Auth.currentUser().uid, _song.id, versionId, at).catch(() => {});
+}
+
+function _openNotes(version) {
+  const song = _song;
+  const me = window.Auth.currentUser().uid;
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const list = el('ul', { class: 'note-list' });
+  const input = el('textarea', {
+    class: 'field__input note-input',
+    rows: 3,
+    maxlength: 4000,
+    placeholder: 'O observație pentru echipă…'
+  });
+  const addBtn = el('button', { class: 'btn btn--primary' }, ['Adaugă']);
+  let names = new Map();
+
+  // Its author, an admin, or whoever may delete the version or the song.
+  const canDelete = (n) => n.by === me || window.Auth.isAdmin()
+    || version.createdBy === me || song.createdBy === me;
+
+  function draw() {
+    const notes = _notes.get(version.id) || [];
+    list.innerHTML = '';
+    if (!notes.length) {
+      list.appendChild(el('li', { class: 'note-list__empty' }, ['Nicio observație încă.']));
+      return;
+    }
+    const now = Date.now();
+    notes.forEach(n => {
+      const who = n.by === me ? 'Tu' : (names.get(n.by) || n.byName || 'Cineva');
+      // Two taps to delete: the first only asks.
+      const del = canDelete(n) ? el('button', {
+        class: 'note__delete',
+        'aria-label': 'Șterge observația',
+        title: 'Șterge',
+        html: ROW_ICONS.delete,
+        onclick: async () => {
+          if (!del.classList.contains('note__delete--confirm')) {
+            del.classList.add('note__delete--confirm');
+            del.textContent = 'Șterge';
+            return;
+          }
+          del.disabled = true;
+          try {
+            await window.Db.deleteNote(song.id, version.id, n.id);
+            _notes.set(version.id, (_notes.get(version.id) || []).filter(x => x.id !== n.id));
+            draw();
+          } catch (err) {
+            del.disabled = false;
+            toast('Nu am putut șterge observația: ' + err.message, { kind: 'error' });
+          }
+        }
+      }) : null;
+      list.appendChild(el('li', { class: 'note' }, [
+        el('div', { class: 'note__meta' }, [
+          el('strong', {}, [who]),
+          el('time', {
+            class: 'note__when',
+            datetime: new Date(n.at).toISOString(),
+            title: new Date(n.at).toLocaleString('ro-RO')
+          }, [window.Activity.formatWhen(n.at, now)]),
+          del
+        ]),
+        el('div', { class: 'note__text' }, [n.text])
+      ]));
+    });
+  }
+
+  async function add() {
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    const user = window.Auth.currentUser();
+    addBtn.disabled = true;
+    try {
+      const note = await window.Db.addNote(song.id, version.id, {
+        text, by: user.uid, byName: user.displayName || (user.email || '').split('@')[0] || ''
+      });
+      _notes.set(version.id, [...(_notes.get(version.id) || []), note]);
+      window.Activity.log(song, 'note_added', { versionTitle: version.title || '' });
+      input.value = '';
+      draw();
+      _markNotesSeen(version.id);
+      list.lastChild.scrollIntoView({ block: 'nearest' });
+    } catch (err) {
+      toast('Nu am putut adăuga observația: ' + err.message, { kind: 'error' });
+    }
+    addBtn.disabled = false;
+  }
+  addBtn.onclick = add;
+  // Enter is a new line; Ctrl/Cmd+Enter sends.
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); add(); }
+  });
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title sheet__title--row' }, [
+      el('span', {}, ['Observații']),
+      el('span', { class: 'sheet__title-accent' }, [version.title || 'Fără titlu'])
+    ]),
+    list,
+    input,
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Închide']),
+      addBtn
+    ])
+  ]));
+  draw();
+  openSheet(overlay);
+  if (WIDE.matches) input.focus();
+  _markNotesSeen(version.id);
+
+  // What was loaded with the song may be behind: fetch this version's
+  // again, and the names to put on them.
+  Promise.all([window.Db.listNotes(song.id, version.id), window.Auth.groupMembers()])
+    .then(([notes, members]) => {
+      if (_song !== song) return;
+      names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+      _notes.set(version.id, notes);
+      if (overlay.isConnected) { draw(); _markNotesSeen(version.id); }
+      else _syncNoteDots();
+    })
+    .catch(() => {});
 }
 
 function _activeVersion() {
@@ -728,8 +929,11 @@ function _renderTextTab(content) {
     class: 'version-switcher__current',
     onclick: () => _openVersionList(content)
   }, [active ? (active.title || 'Fără titlu') : 'Adaugă o versiune']);
+  // With every version in a column of its own, each has its button above
+  // it instead.
   const switcher = el('div', { class: 'version-switcher' }, [
     currentBtn,
+    _showingAllVersions() || _showingVerseGrid() ? null : _notesButton(active, false),
     lookupBtn,
     undoBtn,
     redoBtn
@@ -958,7 +1162,7 @@ function _renderWholeView(ctx) {
 
     originalMirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
     cols.push(el('div', { class: 'text-tab__col' }, [
-      _showingAllVersions() ? el('div', { class: 'text-tab__head' }, ['Original']) : null,
+      _showingAllVersions() ? _headRow(el('div', { class: 'text-tab__head' }, ['Original']), null) : null,
       el('div', { class: 'editor editor--source' }, [originalMirror, originalEl])
     ]));
     mounted.push(() => {
@@ -989,7 +1193,7 @@ function _renderWholeView(ctx) {
       });
       if (v.id === _activeVersionId && !lookupBox) lookupBox = box.ta;
       panes.push(box);
-      cols.push(el('div', { class: 'text-tab__col' }, [head, box.editor]));
+      cols.push(el('div', { class: 'text-tab__col' }, [_headRow(head, v), box.editor]));
     });
     ctx.setLookupTarget(() => lookupBox);
   } else {
@@ -1349,7 +1553,7 @@ function _renderVersesView(ctx) {
     // Who is in which column, kept in view while the rows scroll by.
     if (grid) {
       const row = el('div', { class: 'verses__heads' }, [
-        place(el('div', { class: 'text-tab__head' }, ['Original']), 1)
+        place(_headRow(el('div', { class: 'text-tab__head' }, ['Original']), null), 1)
       ]);
       row.style.gridTemplateColumns = columns;
       trs.forEach((s, c) => {
@@ -1358,7 +1562,7 @@ function _renderVersesView(ctx) {
         }, [s.title]);
         h.side = s;
         heads.push(h);
-        row.appendChild(place(h, c + 2));
+        row.appendChild(place(_headRow(h, s.version), c + 2));
       });
       list.appendChild(row);
     }
@@ -1829,6 +2033,7 @@ async function _refreshSong(root) {
       _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
     }
     _renderShell(root);
+    _loadNotes();
     toast('Actualizat.');
   } catch (err) {
     toast('Nu am putut actualiza: ' + err.message, { kind: 'error' });

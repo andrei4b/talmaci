@@ -145,6 +145,10 @@ const DESCRIBE = {
     const v = `„${e.versionTitle || 'o versiune'}”`;
     return { before: `${a} șters ${v} din`, own: `${a} șters ${v}` };
   },
+  note_added: (e, a) => {
+    const v = `„${e.versionTitle || 'o versiune'}”`;
+    return { before: `${a} lăsat o observație la ${v} din`, own: `${a} lăsat o observație la ${v}` };
+  },
   status: (e, a) => {
     const v = `ca „${statusLabel(e.status)}”`;
     return { before: `${a} marcat`, after: v, own: `${a} marcat melodia ${v}` };
