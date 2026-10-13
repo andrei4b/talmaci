@@ -18,13 +18,43 @@ const fs = firebase.firestore();
 // Firestore keeps what it has read on the device, in IndexedDB, so a song
 // opened once can be opened again offline, and a change made offline waits
 // there — across a restart of the app — until the connection is back. It
-// has to be asked for before Firestore is first used, which is here.
-// synchronizeTabs lets two tabs share the copy rather than the second
-// being refused it. Where IndexedDB is unavailable (some private modes) it
-// is refused, and Firestore keeps to memory, as before.
+// has to be asked for before Firestore is first used, which is here;
+// _loadProfile, the first use, waits for it. synchronizeTabs lets two tabs
+// share the copy rather than the second being refused it. Where IndexedDB
+// is unavailable (some private modes) it is refused, and Firestore keeps to
+// memory, as before.
+//
+// Signing out marks the copy to be cleared (see signOut), and it is cleared
+// here, at the next start, before anything has opened it — clearing it in
+// a running page means shutting Firestore down first, and a page whose
+// reload did not follow was left signing the next account in with no
+// Firestore at all. If it is still in use (another tab of the app), this
+// start goes without it, from memory, and the next one tries again: opening
+// it now would wait on that clearing for as long as the other tab is open.
+const CLEAR_KEY = 'talmaci.clearDeviceCopy';
+const CLEAR_TIMEOUT_MS = 3000;
 let _persistent = false;
-const _persistence = fs.enablePersistence({ synchronizeTabs: true })
-  .then(() => { _persistent = true; return true; }, () => false);
+const _persistence = (async () => {
+  if (_flagged(CLEAR_KEY)) {
+    const cleared = await _withTimeout(fs.clearPersistence(), CLEAR_TIMEOUT_MS).then(() => true, () => false);
+    if (!cleared) return false;
+    try {
+      localStorage.removeItem(CLEAR_KEY);
+      // What db.js noted about the copy went with it.
+      Object.keys(localStorage).filter(k => k.startsWith('talmaci.songsSynced:')).forEach(k => localStorage.removeItem(k));
+    } catch (_) {}
+  }
+  try {
+    await fs.enablePersistence({ synchronizeTabs: true });
+    _persistent = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+})();
+function _flagged(key) {
+  try { return localStorage.getItem(key) === '1'; } catch (_) { return false; }
+}
 function isPersistent() { return _persistent; }
 // For a decision that cannot wait for the answer to be in, at boot.
 function persistence() { return _persistence; }
@@ -96,6 +126,7 @@ let _profileError = null;
 async function _loadProfile() {
   _profileFailed = false;
   _profileError = null;
+  await _persistence;   // Firestore's first use; see above
   if (!_fbUser) { _profile = null; return; }
   const user = _fbUser;
   const uid = user.uid;
@@ -180,6 +211,7 @@ async function _syncIdentity() {
 }
 
 auth.onAuthStateChanged(async (user) => {
+  if (_leaving) return;   // signing out; the page is about to reload
   _fbUser = user;
   await _loadProfile();
   _syncIdentity();
@@ -211,23 +243,28 @@ async function signInWithGoogle() {
 }
 
 // The account's songs are on the device, and whoever signs in next on it
-// must not find them there, so signing out clears that copy — which needs
-// the connection, or changes made offline and not yet sent would go with
-// it. Firestore cannot be used again in the same page after it is cleared,
-// hence the reload.
+// must not find them there, so signing out has the copy cleared at the
+// next start (see _persistence), and starts it. That needs the connection:
+// changes made offline and not yet sent would go with the copy, so they
+// are sent first. The page being left draws nothing more — no sign-in
+// screen for someone to use before the reload.
+let _leaving = false;
 async function signOut() {
   window.Utils.requireOnline();
+  if (_persistent) {
+    await _withTimeout(fs.waitForPendingWrites(), 5000).catch(() => {});
+    try { localStorage.setItem(CLEAR_KEY, '1'); } catch (_) {}
+    _leaving = true;
+  }
   if (_fbUser) _writeCachedProfile(_fbUser.uid, null);
-  await auth.signOut();
-  if (!_persistent) return;
   try {
-    await fs.waitForPendingWrites();
-    await fs.terminate();
-    await fs.clearPersistence();
-    // What db.js noted about the copy went with it.
-    Object.keys(localStorage).filter(k => k.startsWith('talmaci.songsSynced:')).forEach(k => localStorage.removeItem(k));
-  } catch (_) { /* another tab still has it open; it is left */ }
-  location.reload();
+    await auth.signOut();
+  } catch (err) {
+    _leaving = false;
+    try { localStorage.removeItem(CLEAR_KEY); } catch (_) {}
+    throw err;
+  }
+  if (_leaving) location.reload();
 }
 
 async function refreshProfile() {
