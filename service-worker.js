@@ -12,6 +12,9 @@
  * own bytes change, so editing styles.css/app.js/etc. alone never
  * refreshes what's cached. Network-first fixes that: online users always
  * get the latest deploy, offline users still get the last-seen version.
+ * The app's own scripts and stylesheet are now the exception: their URLs
+ * carry the release (?v=), so it is the page that decides which release
+ * runs, and the stored copy of each is served first — see the fetch handler.
  *
  * The network attempt is raced against a timeout (see NETWORK_TIMEOUT_MS
  * below) rather than awaited outright. A phone waking from a long sleep
@@ -25,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v109';
+const CACHE_NAME = 'talmaci-shell-v110';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -160,6 +163,19 @@ self.addEventListener('fetch', (event) => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE_NAME).then(c => c.put(req, copy)); }
       return res;
     })));
+    return;
+  }
+
+  // An app file of one release (?v=, see index.html): its stored copy is
+  // that release's file, so it comes first, and the network only when there
+  // is none. Network-first would break the release apart: GitHub Pages
+  // ignores the query and answers every ?v= with the newest file, so a page
+  // of the last release — served from the cache when it missed its window
+  // on a slow start — ran the new release's code. For the same reason only
+  // install stores these, never this handler: a newer file must not be
+  // stored under an older release's URL.
+  if (/[?&]v=\d/.test(new URL(req.url).search) && (path.includes('/js/') || path.endsWith('/styles.css'))) {
+    event.respondWith(caches.match(req).then(hit => hit || fetch(req, { cache: 'no-store' })));
     return;
   }
 
