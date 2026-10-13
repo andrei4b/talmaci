@@ -444,6 +444,16 @@ function _renderJoinGroup(root) {
   ]));
 }
 
+// The release this page is running, read off the ?v= of its own script —
+// the number bumped with every deploy (see index.html). Shown in the
+// account menu, so a phone still running an older release, which an app
+// left open in the background does until it is restarted, can be told.
+const RELEASE = (() => {
+  const s = document.querySelector('script[src*="js/app.js"]');
+  const m = s && s.src.match(/[?&]v=(\d+)/);
+  return m ? m[1] : '';
+})();
+
 function openAccountMenu() {
   const user = window.Auth.currentUser();
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
@@ -491,6 +501,8 @@ function openAccountMenu() {
       }
     }
   }, menuLabel(icons.logout, 'Deconectează-te')));
+
+  if (RELEASE) items.push(el('div', { class: 'sheet__version' }, ['Versiunea ' + RELEASE]));
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
   openSheet(overlay);
