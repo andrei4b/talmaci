@@ -94,8 +94,15 @@ function render(host) {
     host.appendChild(_loadingOrError(host));
     return;
   }
-  if (_view === 'search') _renderSearch(host);
-  else _renderReader(host);
+  if (_view === 'search') {
+    // Back on the tab with search still open: leaving the tab dropped the
+    // search's history entry (see App's _switchTab), so put it back, or
+    // back would skip past the search to the Text tab.
+    if (!(history.state && history.state.talmaciBibleSearch)) {
+      history.pushState({ ...history.state, talmaciBibleSearch: true }, '', location.hash);
+    }
+    _renderSearch(host);
+  } else _renderReader(host);
 }
 
 function _loadingOrError(host) {
@@ -245,7 +252,7 @@ function _buildReaderTopbar(host) {
         // A pushed entry, not just a state flip — otherwise hardware back
         // has nothing of ours to land on and falls through to whatever
         // was open before the Biblie tab entirely.
-        history.pushState({ talmaciBibleSearch: true }, '', location.hash);
+        history.pushState({ ...history.state, talmaciBibleSearch: true }, '', location.hash);
         _view = 'search';
         render(host);
       }
@@ -625,6 +632,7 @@ function _highlight(text, folded, needle) {
 // while a stale 'search' _view is sitting around from an earlier visit
 // (switching tabs never touches _view, by design — see the file header).
 window.addEventListener('popstate', () => {
+  if (window.App.isLeavingInnerPage()) return;
   if (_view === 'search' && location.hash === '#/biblie') {
     _view = 'read';
     render(_lastHost);

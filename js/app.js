@@ -88,6 +88,7 @@ async function boot() {
     _resetUserData();
   });
   window.Auth.onChange(_renderCurrentScreen);
+  _anchorOnText();
   window.addEventListener('hashchange', _renderCurrentScreen);
   window.addEventListener('offline', () => toast('Ai rămas fără internet. Melodiile deschise deja, rimele și Biblia merg în continuare.'));
   window.addEventListener('online', _backOnline);
@@ -190,40 +191,62 @@ let _currentRoute = null;
 
 /* Switching tabs REPLACES the current history entry instead of pushing a
  * new one. Tabs are places, not steps: pushing them made the hardware back
- * button walk back through every tab you had glanced at, so opening a
- * song, looking something up in Rime and returning to Text left back going
- * to Rime rather than up to the song list.
+ * button walk back through every tab you had glanced at.
  *
- * With replacement the stack only ever holds real steps — the list, then
- * the song you opened — so back means the same thing whichever tab you
- * happen to be looking at. This is how tab bars behave in native apps.
+ * Except when leaving Text. Text is the first tab, the one the app opens
+ * on, so going from it to any other tab — by the bar or by looking a word
+ * up — pushes an entry that remembers where in Text you were: the list, a
+ * song, the journal. Moving on between the other tabs from there replaces
+ * as usual, carrying that memory along, so back from any of them returns
+ * to Text, to the very place you left; and returning to Text through the
+ * bar steps back rather than replacing, which would leave it in the
+ * history twice. A cold start on another tab gets the same entry under it
+ * (see _anchorOnText).
  *
- * Except when leaving a song. Going from a song to any other tab — by the
- * bar or by looking a word up — is a step away from the song, and back
- * should undo it rather than drop you at the list, so that one pushes an
- * entry that remembers the song. Moving on between the other tabs from
- * there replaces as usual, carrying that memory along, so back from
- * wherever you end up still returns to the song; and returning to the song
- * through the bar's Text tab steps back rather than replacing, which would
- * leave the song in the history twice.
+ * A tab's own inner page — the Bible search — is a step of its own, so
+ * back closes it first. Leaving the tab from there drops it: its entry is
+ * popped before the switch, or back from the next tab would land on it.
  *
  * replaceState and pushState fire neither hashchange nor popstate, so the
  * render has to be called directly; and the existing state object is
  * carried over, because it records how the entry underneath was reached
  * and replacing the URL does not change that. */
+let _leavingInnerPage = false;
+
 function _switchTab(route) {
   const here = location.hash || '#/';
   if (here === route) return;
-  if (history.state && history.state.talmaciFromSong === route) {
+  const st = history.state;
+  if (st && st.talmaciBibleSearch) {
+    _leavingInnerPage = true;
+    window.addEventListener('popstate', () => { _leavingInnerPage = false; _switchTab(route); }, { once: true });
     history.back();
     return;
   }
-  if (here.startsWith('#/song/')) {
-    history.pushState({ talmaciFromSong: here }, '', route);
+  if (st && st.talmaciFromText === route) {
+    history.back();
+    return;
+  }
+  if (_tabForHash(here) === 'text') {
+    history.pushState({ talmaciFromText: here }, '', route);
   } else {
-    history.replaceState(history.state, '', route);
+    history.replaceState(st, '', route);
   }
   _renderCurrentScreen();
+}
+
+// Whether the pop under way is _switchTab dropping an inner page, which
+// that page must not answer by redrawing itself.
+function isLeavingInnerPage() { return _leavingInnerPage; }
+
+/* Opened straight onto another tab — a link, or a reload there — the
+ * entry below is not Text but whatever came before the app, so back would
+ * leave it. Put Text under it, the way the bar would have got there. */
+function _anchorOnText() {
+  const here = location.hash || '#/';
+  if (_tabForHash(here) === 'text' || (history.state && history.state.talmaciFromText)) return;
+  history.replaceState(null, '', '#/');
+  history.pushState({ talmaciFromText: '#/' }, '', here);
 }
 
 /* Another tab, by id, the way its button in the bar would open it — or one
@@ -630,7 +653,7 @@ async function _setMemberRole(btn, member, nextRole, overlay) {
   }
 }
 
-window.App = { boot, openAccountMenu, goUpToList, openTab };
+window.App = { boot, openAccountMenu, goUpToList, openTab, isLeavingInnerPage };
 boot();
 
 })();
