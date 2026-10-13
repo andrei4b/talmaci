@@ -9,6 +9,7 @@ rules_version = '2';
 //
 // Data model:
 //   /users/{uid}      { email, displayName, role: 'admin'|'user', groupId, createdAt }
+//                     (the super-admin is not a role here — see isSuperAdmin)
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /groups/{groupId}/activity/{entryId} { action, by, byName, songId, songTitle, ..., at }
 //   /invites/{code}   { groupId, createdBy, createdAt }
@@ -63,8 +64,16 @@ service cloud.firestore {
     function myGroup() {
       return myProfile().groupId;
     }
+    // The app owner, known by their Google account rather than by anything
+    // stored in a profile, so no write to Firestore can ever grant it. Only
+    // they invite people and decide who is an admin, and they have every
+    // admin power over songs too.
+    function isSuperAdmin() {
+      return request.auth.token.email == 'andrei4.bulzan@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
     function isAdmin() {
-      return myProfile().role == 'admin';
+      return isSuperAdmin() || myProfile().role == 'admin';
     }
     function unchanged(field) {
       return request.resource.data[field] == resource.data[field];
@@ -88,8 +97,8 @@ service cloud.firestore {
         );
 
       // Two updates are allowed, and nothing else about a profile can ever
-      // change. An existing admin flips a group member's role...
-      allow update: if isSignedIn() && isAdmin()
+      // change. The super-admin flips a group member's role...
+      allow update: if isSignedIn() && isSuperAdmin()
         && resource.data.groupId == myGroup()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
         && request.resource.data.role in ['admin', 'user'];
@@ -145,7 +154,7 @@ service cloud.firestore {
       // Readable by any signed-in user so a brand-new profile-less user can
       // redeem a code before they belong to any group.
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isAdmin()
+      allow create: if isSignedIn() && isSuperAdmin()
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.groupId == myGroup();
       allow update, delete: if false;

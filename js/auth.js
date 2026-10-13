@@ -232,7 +232,14 @@ function currentUser() {
   };
 }
 
-function isAdmin() { return !!(_profile && _profile.role === 'admin'); }
+// The app owner: the only one who invites people and decides who is an
+// admin, and an admin over songs as well. Known by their Google account, as
+// in firestore.rules (isSuperAdmin), which is what actually enforces it.
+const SUPER_ADMIN_EMAIL = 'andrei4.bulzan@gmail.com';
+function isSuperAdmin() {
+  return !!(_fbUser && _fbUser.emailVerified && _fbUser.email === SUPER_ADMIN_EMAIL);
+}
+function isAdmin() { return isSuperAdmin() || !!(_profile && _profile.role === 'admin'); }
 function currentGroupId() { return _profile ? _profile.groupId : null; }
 
 async function signInWithGoogle() {
@@ -296,10 +303,10 @@ async function redeemInvite(code) {
   await refreshProfile();
 }
 
-// Admin-only: mint a short, human-typable invite code for the current group.
+// Super-admin only: mint a short, human-typable invite code for the current group.
 async function createInvite() {
   window.Utils.requireOnline();
-  if (!isAdmin()) throw new Error('Only admins can create invites');
+  if (!isSuperAdmin()) throw new Error('Only the super-admin can create invites');
   const code = _genInviteCode();
   await fs.collection('invites').doc(code).set({
     groupId: currentGroupId(),
@@ -317,8 +324,8 @@ function _genInviteCode() {
   return s;
 }
 
-// Admin-only: every profile in the current group, for a future "Manage
-// members" / promote-to-admin screen.
+// Every profile in the current group: the super-admin's "Gestionează
+// membrii" sheet, and the names shown beside songs (groupMembers).
 async function listGroupMembers() {
   const groupId = currentGroupId();
   if (!groupId) return [];
@@ -367,17 +374,17 @@ function shortName(member) {
   return name || (member.email || '').split('@')[0] || 'Cineva';
 }
 
-// Admin-only: flip another (or your own) member's role. The Firestore rule
-// only allows this update to touch the role field.
+// Super-admin only: flip a member's role. The Firestore rule only allows
+// this update to touch the role field.
 async function setMemberRole(uid, role) {
   window.Utils.requireOnline();
-  if (!isAdmin()) throw new Error('Only admins can change roles');
+  if (!isSuperAdmin()) throw new Error('Only the super-admin can change roles');
   await fs.collection('users').doc(uid).update({ role });
   if (uid === _fbUser.uid) await refreshProfile();
 }
 
 window.Auth = {
-  ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence, profileFailed, profileError,
+  ready, onChange, currentUser, isAdmin, isSuperAdmin, currentGroupId, isPersistent, persistence, profileFailed, profileError,
   signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
   listGroupMembers, setMemberRole, groupMembers, knownMembers, shortName

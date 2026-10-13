@@ -494,7 +494,7 @@ function openAccountMenu() {
     }, menuLabel(icons.refresh, 'Reîmprospătează'))
   ];
 
-  if (window.Auth.isAdmin()) {
+  if (window.Auth.isSuperAdmin()) {
     items.push(el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: async () => {
@@ -581,58 +581,22 @@ async function _openManageMembers() {
   }
   members.forEach(m => {
     const isAdminRole = m.role === 'admin';
+    // The super-admin's own row: their powers come from their account, not
+    // this role, so there is nothing to flip.
+    const roleBtn = m.uid === me.uid
+      ? el('span', { class: 'btn member-row__role-btn member-row__role-btn--admin member-row__role-btn--fixed' }, ['Super-admin'])
+      : el('button', {
+          class: 'btn member-row__role-btn' + (isAdminRole ? ' member-row__role-btn--admin' : ''),
+          onclick: (e) => _setMemberRole(e.currentTarget, m, isAdminRole ? 'user' : 'admin', overlay)
+        }, [isAdminRole ? 'Admin' : 'Membru']);
     listEl.appendChild(el('div', { class: 'member-row' }, [
       el('div', { class: 'member-row__info' }, [
         el('div', { class: 'member-row__name' }, [m.displayName || m.email || m.uid]),
         el('div', { class: 'member-row__meta' }, [m.email || ''])
       ]),
-      el('button', {
-        class: 'btn member-row__role-btn' + (isAdminRole ? ' member-row__role-btn--admin' : ''),
-        onclick: (e) => _toggleMemberRole(e.currentTarget, m, members, me, overlay)
-      }, [isAdminRole ? 'Admin' : 'Membru'])
+      roleBtn
     ]));
   });
-}
-
-async function _toggleMemberRole(btn, member, members, me, overlay) {
-  const nextRole = member.role === 'admin' ? 'user' : 'admin';
-
-  if (member.uid === me.uid && nextRole === 'user') {
-    const hasOtherAdmin = members.some(x => x.uid !== me.uid && x.role === 'admin');
-    if (!hasOtherAdmin) {
-      toast('Ești singurul admin — fă pe altcineva admin mai întâi.', { kind: 'error' });
-      return;
-    }
-    closeSheet(overlay);
-    _confirmSelfDemote(member);
-    return;
-  }
-
-  await _setMemberRole(btn, member, nextRole, overlay);
-}
-
-function _confirmSelfDemote(member) {
-  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
-  overlay.appendChild(el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Renunți la rolul de admin?']),
-    el('p', { class: 'sheet__text' }, ['Nu vei mai putea genera coduri de invitație sau gestiona membrii, până când altcineva te face din nou admin.']),
-    el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => { closeSheet(overlay); _openManageMembers(); } }, ['Anulează']),
-      el('button', {
-        class: 'btn btn--danger-solid',
-        onclick: async () => {
-          try {
-            await window.Auth.setMemberRole(member.uid, 'user');
-            closeSheet(overlay);
-            _openManageMembers();
-          } catch (err) {
-            toast(err.message, { kind: 'error' });
-          }
-        }
-      }, ['Renunță'])
-    ])
-  ]));
-  openSheet(overlay);
 }
 
 async function _setMemberRole(btn, member, nextRole, overlay) {

@@ -195,10 +195,13 @@ dragging the handle beside each one in the **Versiuni** sheet.
   sees and can edit all of that group's songs. There's no self-serve way to
   create a new group — the app owner creates each group by hand, enforced
   by `firestore.rules` denying `/groups` writes outright.
-- **Admin**: can generate invite codes and (once that screen is built)
-  promote/demote members. Unlike worship-setlist, songs are **not**
-  admin-gated — any group member can add, edit, or delete songs, since
-  translation is collaborative team work.
+- **Super-admin**: the app owner's Google account (andrei4.bulzan@gmail.com,
+  hard-coded in `firestore.rules` and `js/auth.js`). Only they can generate
+  invite codes and promote/demote members (**Gestionează membrii**), and
+  they have every admin power over songs too. It is not stored in a
+  profile, so nothing written to Firestore can grant it.
+- **Admin**: may edit or delete any shared song or version, and delete
+  any observation, not just their own.
 - All of this is enforced server-side in `firestore.rules`, not just hidden
   in the UI.
 

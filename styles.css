@@ -865,6 +865,7 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
 .member-row__meta { font-size: 0.85rem; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
+.member-row__role-btn--fixed { cursor: default; pointer-events: none; }
 
 /* The layer that outlives a render, holding the Sinonime frame. Ordered
    after .shell rather than placed after it: moving it in the DOM would
