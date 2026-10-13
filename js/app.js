@@ -521,14 +521,13 @@ function openAccountMenu() {
 
   items.push(el('button', {
     class: 'btn btn--wide btn--menu',
-    onclick: async () => {
-      try {
-        await window.Auth.signOut();
-        closeSheet(overlay);
-      } catch (err) {
-        toast(failText('Nu te-am putut deconecta', err), { kind: 'error' });
-      }
-    }
+    // The sheet is closed first, and signing out waits until it has: closing
+    // steps history back, and a history step taken while the reload that
+    // ends signing out is under way cancels that reload — which left the
+    // page as it was, signed out underneath.
+    onclick: () => closeSheetThen(overlay, () => {
+      window.Auth.signOut().catch(err => toast(failText('Nu te-am putut deconecta', err), { kind: 'error' }));
+    })
   }, menuLabel(icons.logout, 'Deconectează-te')));
 
   if (RELEASE) items.push(el('div', { class: 'sheet__version' }, ['Versiunea ' + RELEASE]));

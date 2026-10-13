@@ -264,7 +264,11 @@ async function signOut() {
     try { localStorage.removeItem(CLEAR_KEY); } catch (_) {}
     throw err;
   }
-  if (_leaving) location.reload();
+  if (!_leaving) return;
+  location.reload();
+  // Never settles: nothing after this may run in the page being left, and a
+  // caller that went on to step history would cancel the reload.
+  return new Promise(() => {});
 }
 
 async function refreshProfile() {
