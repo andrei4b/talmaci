@@ -497,7 +497,7 @@ button.text-tab__head { cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: 26px;
+  min-height: 28px;
   margin-bottom: 6px;
 }
 .text-tab__headrow .text-tab__head { flex: 1; min-width: 0; margin-bottom: 0; }
@@ -716,8 +716,8 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
 .notes-btn { position: relative; }
 .notes-btn--head {
   flex-shrink: 0;
-  width: 28px;
-  height: 26px;
+  width: 30px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -729,7 +729,8 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
   cursor: pointer;
 }
 .notes-btn--head:hover { background: var(--color-border); }
-.notes-btn--head svg { width: 17px; height: 17px; }
+.notes-btn--head svg { width: 20px; height: 20px; }
+.version-switcher__nav.notes-btn svg { width: 20px; height: 20px; }
 .notes-btn--unread::after {
   content: '';
   position: absolute;
