@@ -18,7 +18,7 @@
  * follows nearly everywhere.
  */
 (function () {
-const { el } = window.Utils;
+const { el, isNetworkError, offlineNotice, OFFLINE_HINT } = window.Utils;
 
 const BASE = './data/biblic/';
 const BOOKS = ['Gen', 'Exod', 'Lev', 'Num', 'Deut', 'Josh', 'Judg', 'Ruth', '1Sam', '2Sam',
@@ -171,10 +171,15 @@ async function _run(body) {
   } catch (err) {
     if (_query !== q) return;
     body.innerHTML = '';
-    body.appendChild(el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Nu am putut încărca dicționarul.']),
-      el('p', { class: 'empty-state__hint' }, [err.message || String(err)])
-    ]));
+    body.appendChild(isNetworkError(err)
+      ? offlineNotice({
+        hint: 'Fără internet se deschid doar articolele citite deja. ' + OFFLINE_HINT,
+        retry: () => { if (_query === q) _run(body); }
+      })
+      : el('div', { class: 'empty-state' }, [
+        el('p', {}, ['Nu am putut încărca dicționarul.']),
+        el('p', { class: 'empty-state__hint' }, [err.message || String(err)])
+      ]));
     return;
   }
   if (_query !== q) return;

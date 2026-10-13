@@ -30,6 +30,7 @@ const icons = {
   history: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>`,
   // A flag — a song's status, in its menu.
   flag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>`,
+  offline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M14.4 10.1A10 10 0 0 1 19 12.9"/><path d="M1.5 9.3a15 15 0 0 1 4.3-2.8"/><path d="M10.7 5.1A15 15 0 0 1 22.5 9.3"/><path d="M12 20h.01"/></svg>`,
   logout: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>`
 };
 
@@ -199,7 +200,59 @@ function menuLabel(icon, text) {
   return [el('span', { class: 'menu-ico', html: icon, 'aria-hidden': 'true' }), el('span', {}, [text])];
 }
 
+/* ---- no connection ----
+ * Firestore, the Cloud Functions and dexonline need the network. The app
+ * itself, the Bible and the rhyme index do not: the service worker keeps
+ * them. navigator.onLine is only believed when it says offline — "online"
+ * means a network is attached, not that it reaches anything — so a request
+ * that failed for want of a connection is also told by its error. */
+const OFFLINE_HINT = 'Rimele și Biblia merg și fără internet.';
+
+function isOffline() { return navigator.onLine === false; }
+
+// Thrown before a request that cannot succeed. Firestore would otherwise
+// wait: a read gives up only after about ten seconds, and a write is held
+// until the connection is back, leaving whatever awaits it hanging.
+function requireOnline() {
+  if (!isOffline()) return;
+  const err = new Error('Nu ai conexiune la internet.');
+  err.code = 'offline';
+  throw err;
+}
+
+function isNetworkError(err) {
+  if (isOffline()) return true;
+  const code = String((err && err.code) || '');
+  return code === 'offline' || code === 'unavailable' || code === 'functions/unavailable' ||
+    /failed to fetch|networkerror|load failed|network.request.failed|client is offline/i.test((err && err.message) || '');
+}
+
+// "Nu am putut salva textul: …", with the reason in words when it is the
+// connection rather than the SDK's English.
+function failText(what, err) {
+  return what + ': ' + (isNetworkError(err) ? 'nu ai conexiune la internet.' : ((err && err.message) || String(err)));
+}
+
+/* What a screen shows in place of what it could not load. With `retry`,
+ * that is run again when the connection comes back, if the notice is still
+ * on screen, and offered as a button for when the browser never notices
+ * that it went (a network that is attached but reaches nothing). */
+function offlineNotice(opts) {
+  const o = opts || {};
+  const node = el('div', { class: 'empty-state offline' }, [
+    el('span', { class: 'offline__icon', html: icons.offline, 'aria-hidden': 'true' }),
+    el('p', {}, [o.text || 'Nu ai conexiune la internet.']),
+    el('p', { class: 'empty-state__hint' }, [o.hint || OFFLINE_HINT]),
+    o.retry ? el('button', { class: 'btn', onclick: () => o.retry() }, ['Încearcă din nou']) : null
+  ]);
+  if (o.retry) {
+    window.addEventListener('online', () => { if (node.isConnected) o.retry(); }, { once: true });
+  }
+  return node;
+}
+
 window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
-                 songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers };
+                 songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
+                 OFFLINE_HINT, isOffline, requireOnline, isNetworkError, failText, offlineNotice };
 
 })();

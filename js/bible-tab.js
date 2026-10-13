@@ -11,7 +11,7 @@
  * to the same page instead of resetting to Geneza 1.
  */
 (function () {
-const { el, toast, copyToClipboard } = window.Utils;
+const { el, toast, copyToClipboard, isNetworkError, offlineNotice } = window.Utils;
 
 const DATA_URL = './data/bible-cornilescu.json';
 // The RCCV export lists books in the standard order; the Old Testament
@@ -69,7 +69,7 @@ function load() {
   _promise = fetch(DATA_URL)
     .then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(data => { _books = data.books; _state = 'ready'; })
-    .catch(err => { _state = 'error'; _error = err.message; throw err; });
+    .catch(err => { _state = 'error'; _error = err; throw err; });
   return _promise;
 }
 
@@ -100,8 +100,16 @@ function render(host) {
 
 function _loadingOrError(host) {
   if (_state === 'error') {
+    // Kept on the device after its first download, as with the rhyme index.
+    if (isNetworkError(_error)) {
+      return offlineNotice({
+        text: 'Biblia nu a apucat să se descarce.',
+        hint: 'Se descarcă o singură dată, cu internet; după aceea merge și fără.',
+        retry: () => { _promise = null; load().then(() => render(host), () => render(host)); }
+      });
+    }
     return el('div', { class: 'empty-state' }, [
-      el('p', {}, ['Nu am putut încărca Biblia: ' + _error]),
+      el('p', {}, ['Nu am putut încărca Biblia: ' + _error.message]),
       el('button', { class: 'btn', onclick: () => { _promise = null; load().then(() => render(host)); } }, ['Încearcă din nou'])
     ]);
   }

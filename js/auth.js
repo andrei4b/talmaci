@@ -72,6 +72,9 @@ async function _loadProfile() {
   if (!_fbUser) { _profile = null; return; }
   const uid = _fbUser.uid;
   const hasCache = !!_readCachedProfile(uid);
+  // Offline there is no point holding the boot spinner through two
+  // attempts that cannot succeed.
+  if (hasCache && navigator.onLine === false) { _profile = _readCachedProfile(uid); return; }
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const get = fs.collection('users').doc(uid).get();
@@ -111,6 +114,7 @@ function isAdmin() { return !!(_profile && _profile.role === 'admin'); }
 function currentGroupId() { return _profile ? _profile.groupId : null; }
 
 async function signInWithGoogle() {
+  window.Utils.requireOnline();
   const provider = new firebase.auth.GoogleAuthProvider();
   await auth.signInWithPopup(provider);
   // onAuthStateChanged handles profile load + notify.
@@ -129,6 +133,7 @@ async function refreshProfile() {
 
 // Redeem an invite code -> join its group as a regular user.
 async function redeemInvite(code) {
+  window.Utils.requireOnline();
   if (!_fbUser) throw new Error('Not signed in');
   const trimmed = String(code || '').trim().toUpperCase();
   if (!trimmed) throw new Error('Enter an invite code');
@@ -147,6 +152,7 @@ async function redeemInvite(code) {
 
 // Admin-only: mint a short, human-typable invite code for the current group.
 async function createInvite() {
+  window.Utils.requireOnline();
   if (!isAdmin()) throw new Error('Only admins can create invites');
   const code = _genInviteCode();
   await fs.collection('invites').doc(code).set({
@@ -168,6 +174,7 @@ function _genInviteCode() {
 // Admin-only: every profile in the current group, for a future "Manage
 // members" / promote-to-admin screen.
 async function listGroupMembers() {
+  window.Utils.requireOnline();
   const groupId = currentGroupId();
   if (!groupId) return [];
   const snap = await fs.collection('users').where('groupId', '==', groupId).get();
@@ -203,6 +210,7 @@ function shortName(member) {
 // Admin-only: flip another (or your own) member's role. The Firestore rule
 // only allows this update to touch the role field.
 async function setMemberRole(uid, role) {
+  window.Utils.requireOnline();
   if (!isAdmin()) throw new Error('Only admins can change roles');
   await fs.collection('users').doc(uid).update({ role });
   if (uid === _fbUser.uid) await refreshProfile();

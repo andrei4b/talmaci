@@ -10,7 +10,7 @@
  * so glancing at the lyrics does not throw away a search.
  */
 (function () {
-const { el, toast } = window.Utils;
+const { el, toast, isNetworkError, offlineNotice } = window.Utils;
 
 let _rimeQuery = '';
 let _rimeSyll = 0;        // 0 = any
@@ -131,10 +131,19 @@ async function _runRimeSearch(wrap) {
     try {
       await window.Rhyme.load((p) => { pct.textContent = Math.round(p * 100) + '%'; });
     } catch (err) {
+      if ((_rimeQuery || '').trim() !== q) return;
       body.innerHTML = '';
-      body.appendChild(el('div', { class: 'empty-state' }, [
-        'Nu am putut încărca dicționarul: ' + window.Rhyme.errorMessage()
-      ]));
+      // Kept on the device after its first download, so this is only a
+      // device that has never had it — opened offline before it finished.
+      body.appendChild(isNetworkError(err)
+        ? offlineNotice({
+          text: 'Dicționarul de rime nu a apucat să se descarce.',
+          hint: 'Se descarcă o singură dată, cu internet; după aceea merge și fără.',
+          retry: () => _runRimeSearch(wrap)
+        })
+        : el('div', { class: 'empty-state' }, [
+          'Nu am putut încărca dicționarul: ' + window.Rhyme.errorMessage()
+        ]));
       return;
     }
     if ((_rimeQuery || '').trim() !== q) return;   // query changed while loading

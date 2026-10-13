@@ -18,7 +18,7 @@
  * finds the same word and the same scroll position.
  */
 (function () {
-const { el, toast } = window.Utils;
+const { el, toast, isNetworkError, offlineNotice, OFFLINE_HINT } = window.Utils;
 
 const WEB_URL = 'https://www.merriam-webster.com/dictionary/';
 const AUDIO_URL = 'https://media.merriam-webster.com/audio/prons/en/us/mp3/';
@@ -87,6 +87,7 @@ function _paintUsage() {
 }
 
 function _refreshUsage() {
+  if (window.Utils.isOffline()) return;
   if (_usage && Date.now() - _usage.at < USAGE_MAX_AGE) return;
   firebase.functions().httpsCallable('defineEnglish')({ usage: true })
     .then(res => _setUsage(res.data))
@@ -167,6 +168,7 @@ async function _run(body) {
   if (!entries) {
     body.appendChild(el('div', { class: 'loading-state' }, [el('div', { class: 'spinner' })]));
     try {
+      window.Utils.requireOnline();
       const fn = firebase.functions().httpsCallable('defineEnglish');
       const res = await fn({ word: q });
       entries = res.data.entries || [];
@@ -176,10 +178,15 @@ async function _run(body) {
     } catch (err) {
       if (_query !== q) return;
       body.innerHTML = '';
-      body.appendChild(el('div', { class: 'empty-state' }, [
-        el('p', {}, ['Nu am putut căuta cuvântul.']),
-        el('p', { class: 'empty-state__hint' }, [err.message || String(err)])
-      ]));
+      body.appendChild(isNetworkError(err)
+        ? offlineNotice({
+          hint: 'Fără internet se deschid doar cuvintele căutate deja în ultimele 30 de zile. ' + OFFLINE_HINT,
+          retry: () => { if (_query === q) _run(body); }
+        })
+        : el('div', { class: 'empty-state' }, [
+          el('p', {}, ['Nu am putut căuta cuvântul.']),
+          el('p', { class: 'empty-state__hint' }, [err.message || String(err)])
+        ]));
       return;
     }
     if (_query !== q) return;   // another word was asked for meanwhile

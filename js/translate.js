@@ -3,6 +3,7 @@
 (function () {
 
 async function translate(text) {
+  window.Utils.requireOnline();
   const fn = firebase.functions().httpsCallable('translateText');
   const res = await fn({ text });
   return res.data.translatedText;

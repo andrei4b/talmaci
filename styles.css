@@ -251,6 +251,13 @@ a { color: inherit; text-decoration: none; }
 }
 .empty-state__hint { font-size: 0.85rem; opacity: 0.8; }
 
+/* No connection, in place of what could not load. */
+.offline { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.offline p { margin: 0; }
+.offline__icon { display: block; width: 36px; height: 36px; margin-bottom: 8px; opacity: 0.7; }
+.offline__icon svg { width: 100%; height: 100%; }
+.offline .btn { margin-top: 16px; }
+
 /* Loading state — spinner (+ optional text), used for boot, sign-in
    buttons, and any async list/detail fetch. */
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -395,6 +402,11 @@ a { color: inherit; text-decoration: none; }
 .gate__subtitle {
   color: var(--color-text-muted);
   margin: 8px 0 24px;
+}
+.gate__offline {
+  margin: -8px 0 20px;
+  font-size: 0.9rem;
+  color: var(--color-danger);
 }
 
 /* Tabs — fixed bottom bar, like worship-setlist's .tabbar */

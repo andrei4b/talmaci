@@ -37,7 +37,7 @@
  * entry's time forward instead of adding another. Kept in memory only, so
  * a reload starts a new entry, which is fine. */
 (function () {
-const { el, toast, icons, isShared, statusLabel, openSheet, closeSheet } = window.Utils;
+const { el, toast, icons, isShared, statusLabel, openSheet, closeSheet, isNetworkError, failText, offlineNotice } = window.Utils;
 
 const COALESCE_MS = 15 * 60 * 1000;
 // How often a coalesced entry's time is moved forward at most — saves come
@@ -94,6 +94,7 @@ function _write(groupId, user, song, action, extra, at) {
 }
 
 async function _list(groupId, after) {
+  window.Utils.requireOnline();
   let q = _ref(groupId).orderBy('at', 'desc');
   if (after) q = q.startAfter(after);
   const snap = await q.limit(PAGE_SIZE).get();
@@ -107,6 +108,7 @@ async function _list(groupId, after) {
 // here: adding orderBy('at') to it would need a composite index created by
 // hand, and a song's own log stays small enough to fetch whole.
 async function _listForSong(groupId, songId) {
+  window.Utils.requireOnline();
   const snap = await _ref(groupId).where('songId', '==', songId).get();
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
 }
@@ -202,7 +204,9 @@ async function render(root) {
   } catch (err) {
     if (gen !== _gen) return;
     wrap.innerHTML = '';
-    wrap.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut încărca jurnalul: ' + err.message]));
+    wrap.appendChild(isNetworkError(err)
+      ? offlineNotice({ text: 'Jurnalul nu se poate încărca fără internet.', retry: () => render(root) })
+      : el('div', { class: 'empty-state' }, ['Nu am putut încărca jurnalul: ' + err.message]));
     return;
   }
   if (gen !== _gen) return;
@@ -233,7 +237,7 @@ async function render(root) {
         last = next.last;
         if (!last) more.remove();
       } catch (err) {
-        toast('Nu am putut încărca: ' + err.message, { kind: 'error' });
+        toast(failText('Nu am putut încărca', err), { kind: 'error' });
       }
       more.disabled = false;
     });
@@ -259,7 +263,9 @@ async function openForSong(song) {
     ]);
   } catch (err) {
     body.innerHTML = '';
-    body.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut încărca jurnalul: ' + err.message]));
+    body.appendChild(isNetworkError(err)
+      ? offlineNotice({ text: 'Jurnalul nu se poate încărca fără internet.' })
+      : el('div', { class: 'empty-state' }, ['Nu am putut încărca jurnalul: ' + err.message]));
     return;
   }
   body.innerHTML = '';

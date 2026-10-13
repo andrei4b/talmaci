@@ -1,6 +1,7 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
-const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons } = window.Utils;
+const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
+        isOffline, failText, OFFLINE_HINT } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
 // accessory bar (the key/card/location icon row) ----
@@ -67,6 +68,8 @@ async function boot() {
   });
   window.Auth.onChange(_renderCurrentScreen);
   window.addEventListener('hashchange', _renderCurrentScreen);
+  window.addEventListener('offline', () => toast('Ai rămas fără internet. ' + OFFLINE_HINT));
+  window.addEventListener('online', _backOnline);
   _renderCurrentScreen();
   // The Bible (~4 MB) and the rhyme index (~5.7 MB): fetch and parse them
   // while the user is busy elsewhere so opening either tab never waits.
@@ -74,6 +77,18 @@ async function boot() {
   const warm = () => { window.BibleTab.preload(); window.Rhyme.preload(); };
   if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 5000 });
   else setTimeout(warm, 2000);
+}
+
+/* Each screen that could not load retries on its own (see
+ * Utils.offlineNotice); only the sign-in gates are redrawn from here. A
+ * member whose profile could not be read at all — offline, on a device
+ * that had never stored it — is on the join screen by mistake, and reading
+ * it again puts them back in the app. */
+function _backOnline() {
+  toast('Conexiunea a revenit.');
+  const user = window.Auth.currentUser();
+  if (user && !user.groupId) window.Auth.refreshProfile();
+  else if (!user) _renderCurrentScreen();
 }
 
 function _resetUserData() {
@@ -362,6 +377,7 @@ function _renderSignIn(root) {
     el('div', { class: 'gate__card' }, [
       el('h1', { class: 'gate__title' }, ['Tălmaci']),
       el('p', { class: 'gate__subtitle' }, ['Atelier de versuri']),
+      isOffline() ? el('p', { class: 'gate__offline' }, ['Nu ai conexiune la internet. Te poți conecta când revine.']) : null,
       el('button', {
         class: 'btn btn--primary btn--wide',
         onclick: async (e) => {
@@ -373,7 +389,7 @@ function _renderSignIn(root) {
             // On success, Auth.onChange re-renders the whole screen, so
             // this button gets replaced — no need to reset it here.
           } catch (err) {
-            toast('Autentificarea a eșuat: ' + err.message, { kind: 'error' });
+            toast(failText('Autentificarea a eșuat', err), { kind: 'error' });
             _resetButtonLoading(btn, 'Continuă cu Google');
           }
         }
@@ -403,6 +419,7 @@ function _renderJoinGroup(root) {
     el('div', { class: 'gate__card' }, [
       el('h1', { class: 'gate__title' }, ['Aproape gata']),
       el('p', { class: 'gate__subtitle' }, ['Introdu codul de invitație primit de la echipa ta.']),
+      isOffline() ? el('p', { class: 'gate__offline' }, ['Nu ai conexiune la internet. Dacă ești deja în echipă, aplicația se deschide când revine.']) : null,
       el('label', { class: 'field' }, [codeInput]),
       el('button', {
         class: 'btn btn--primary btn--wide',
@@ -504,7 +521,7 @@ async function _openManageMembers() {
     members = await window.Auth.listGroupMembers();
   } catch (err) {
     listEl.innerHTML = '';
-    listEl.appendChild(el('div', { class: 'empty-state' }, ['Nu am putut încărca membrii: ' + err.message]));
+    listEl.appendChild(el('div', { class: 'empty-state' }, [failText('Nu am putut încărca membrii', err)]));
     return;
   }
 

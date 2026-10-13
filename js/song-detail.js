@@ -12,7 +12,8 @@
  * db.js's versions subcollection. */
 (function () {
 const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal,
-        isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers } = window.Utils;
+        isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
+        isNetworkError, failText, offlineNotice } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -185,8 +186,16 @@ async function render(root, songId) {
     _activeVersionId = rememberedStillExists ? remembered
       : (_versions.length ? _versions[_versions.length - 1].id : null);
   } catch (err) {
-    toast('Nu am putut încărca melodia: ' + err.message, { kind: 'error' });
     _song = null;
+    if (isNetworkError(err)) {
+      root.querySelector('.topbar__title').textContent = 'Fără internet';
+      root.querySelector('.loading-state').replaceWith(offlineNotice({
+        text: 'Melodia nu se poate deschide fără internet.',
+        retry: () => render(root, songId)
+      }));
+      return;
+    }
+    toast(failText('Nu am putut încărca melodia', err), { kind: 'error' });
   }
 
   if (!_song) {
@@ -359,7 +368,7 @@ function _openNotes(version) {
             draw();
           } catch (err) {
             del.disabled = false;
-            toast('Nu am putut șterge observația: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut șterge observația', err), { kind: 'error' });
           }
         }
       }) : null;
@@ -394,7 +403,7 @@ function _openNotes(version) {
       _markNotesSeen(version.id);
       list.lastChild.scrollIntoView({ block: 'nearest' });
     } catch (err) {
-      toast('Nu am putut adăuga observația: ' + err.message, { kind: 'error' });
+      toast(failText('Nu am putut adăuga observația', err), { kind: 'error' });
     }
     addBtn.disabled = false;
   }
@@ -958,7 +967,7 @@ function _renderTextTab(content) {
     history: _originalHistory,
     canEdit: _canEditSong(),
     write: (t) => { _song.originalText = t; },
-    save: _saveOriginalText
+    save: (t) => _saveOriginalText(t)
   });
   let current = versionDoc;
   const syncButtons = () => {
@@ -1638,31 +1647,69 @@ function _refreshTextTab(content) {
   _renderTextTab(content);
 }
 
-async function _saveVersionText(versionId, history, text) {
+/* Text that could not be saved for want of a connection, kept on the page
+ * and saved once the connection is back — only the latest of each text, by
+ * song and version. It lives no longer than the page does, so leaving the
+ * app with any of it unsaved asks first. Every other change needs the
+ * connection there and then, and says so when it is not. */
+const _unsaved = new Map();
+let _toldUnsaved = false;
+
+function _keepUnsaved(key, retry) {
+  _unsaved.set(key, retry);
+  if (_toldUnsaved) return;
+  _toldUnsaved = true;
+  toast('Fără internet: textul se salvează când revine conexiunea. Nu închide aplicația.', { kind: 'error' });
+}
+
+window.addEventListener('online', () => {
+  _toldUnsaved = false;
+  const retries = [..._unsaved.values()];
+  _unsaved.clear();
+  retries.forEach(f => f());
+});
+window.addEventListener('beforeunload', (e) => {
+  if (!_unsaved.size) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+// The song is passed along rather than read from _song when it is saved
+// again later, by which time another song may be open.
+async function _saveVersionText(versionId, history, text, song = _song) {
   if (!versionId) return;
+  const key = song.id + '/' + versionId;
   try {
-    await window.Db.updateVersion(_song.id, versionId, { text });
+    await window.Db.updateVersion(song.id, versionId, { text });
+    _unsaved.delete(key);
     const version = _versions.find(v => v.id === versionId);
-    window.Activity.log(_song, 'version_text', { versionTitle: version ? version.title : '' }, versionId);
+    window.Activity.log(song, 'version_text', { versionTitle: version ? version.title : '' }, versionId);
     // The version's text is kept current as it is typed (see the Text
     // tab), so it is not set back here to whatever this save carried.
     history.last = text;
     history.pending = false;
   } catch (err) {
-    toast('Nu am putut salva textul: ' + err.message, { kind: 'error' });
+    if (isNetworkError(err)) _keepUnsaved(key, () => _saveVersionText(versionId, history, text, song));
+    else toast(failText('Nu am putut salva textul', err), { kind: 'error' });
   }
 }
 
 // The original text, edited in place on the Text tab. The song list keeps
 // its own copy for the snippet under each title, so it is told as well.
-async function _saveOriginalText(text) {
+async function _saveOriginalText(text, song = _song) {
+  const key = song.id + '/original';
   try {
-    await window.Db.updateSong(_song.id, { originalText: text });
-    window.Songs.noteUpdated(_song.id, { originalText: text });
-    window.Activity.log(_song, 'original_text', null, 'original');
-    if (_originalHistory) { _originalHistory.last = text; _originalHistory.pending = false; }
+    await window.Db.updateSong(song.id, { originalText: text });
+    _unsaved.delete(key);
+    window.Songs.noteUpdated(song.id, { originalText: text });
+    window.Activity.log(song, 'original_text', null, 'original');
+    if (_originalHistory && _originalHistorySongId === song.id) {
+      _originalHistory.last = text;
+      _originalHistory.pending = false;
+    }
   } catch (err) {
-    toast('Nu am putut salva originalul: ' + err.message, { kind: 'error' });
+    if (isNetworkError(err)) _keepUnsaved(key, () => _saveOriginalText(text, song));
+    else toast(failText('Nu am putut salva originalul', err), { kind: 'error' });
   }
 }
 
@@ -1741,7 +1788,7 @@ function _confirmDeleteVersion(content, version) {
               _openVersionList(content);
             });
           } catch (err) {
-            toast('Nu am putut șterge versiunea: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut șterge versiunea', err), { kind: 'error' });
           }
         }
       }, ['Șterge'])
@@ -1782,7 +1829,7 @@ function _openAddVersion(content) {
             closeSheet(overlay);
             _refreshTextTab(content);
           } catch (err) {
-            toast('Nu am putut crea versiunea: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut crea versiunea', err), { kind: 'error' });
           }
         }
       }, ['Creează'])
@@ -1816,7 +1863,7 @@ function _openRenameVersion(content, version) {
               _openVersionList(content);
             });
           } catch (err) {
-            toast('Nu am putut redenumi versiunea: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut redenumi versiunea', err), { kind: 'error' });
           }
         }
       }, ['Salvează'])
@@ -1956,7 +2003,7 @@ function _openStatusSheet() {
       closeSheet(overlay);
     } catch (err) {
       saveBtn.disabled = false;
-      toast('Nu am putut salva starea: ' + err.message, { kind: 'error' });
+      toast(failText('Nu am putut salva starea', err), { kind: 'error' });
     }
   });
 
@@ -2005,7 +2052,7 @@ function _confirmDeleteSong() {
             window.Songs.noteDeleted(_song.id);
             closeSheetThen(overlay, () => { location.hash = '#/'; });
           } catch (err) {
-            toast('Nu am putut șterge melodia: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut șterge melodia', err), { kind: 'error' });
           }
         }
       }, ['Șterge'])
@@ -2036,7 +2083,7 @@ async function _refreshSong(root) {
     _loadNotes();
     toast('Actualizat.');
   } catch (err) {
-    toast('Nu am putut actualiza: ' + err.message, { kind: 'error' });
+    toast(failText('Nu am putut actualiza', err), { kind: 'error' });
   }
 }
 
@@ -2073,7 +2120,7 @@ function _openEditSong(root) {
             window.Songs.noteUpdated(_song.id, patch);
             closeSheetThen(overlay, () => _renderShell(root));
           } catch (err) {
-            toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut salva melodia', err), { kind: 'error' });
           }
         }
       }, ['Salvează'])
@@ -2094,12 +2141,14 @@ async function _generateMotAMot(root) {
     _renderShell(root);
     toast('Traducere Mot-a-mot generată.');
   } catch (err) {
-    toast('Nu am putut genera traducerea: ' + err.message, { kind: 'error' });
+    toast(failText('Nu am putut genera traducerea', err), { kind: 'error' });
   }
 }
 
 // Drops the open song so the next account never sees it (see Songs.reset).
 function reset() {
+  // Another account's text is not saved as this one.
+  _unsaved.clear();
   _song = null;
   _versions = [];
   _activeVersionId = null;

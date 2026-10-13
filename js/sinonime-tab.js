@@ -15,7 +15,7 @@
  * site, and it carries their attribution and their donate link with it.
  */
 (function () {
-const { el } = window.Utils;
+const { el, isOffline, offlineNotice } = window.Utils;
 
 const SOURCE_URL = 'https://dexonline.ro/source/sinonime';
 const WORD_URL = 'https://dexonline.ro/definitie-sinonime/';
@@ -25,6 +25,10 @@ const WORD_URL = 'https://dexonline.ro/definitie-sinonime/';
 const HOME_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/><path d="M9.5 21v-6h5v6"/></svg>`;
 
 let _frame = null;
+// In the frame's place while there is no connection, which would otherwise
+// show the browser's own error page inside it. The frame it stands for is
+// put in once the connection is back, still unloaded until then.
+let _notice = null;
 
 /* A fresh element rather than reassigning src on the live one. Navigating a
  * frame already in the page pushes onto the joint session history, which
@@ -54,8 +58,26 @@ function show(word) {
 }
 
 function _replaceFrame(next) {
-  if (_frame && _frame.parentNode) _frame.replaceWith(next);
+  const shown = _notice || _frame;
   _frame = next;
+  if (shown && shown.parentNode) _mount(shown.parentNode, shown);
+}
+
+// The frame into the layer, or the notice when offline, in place of
+// whichever of the two is there.
+function _mount(host, shown) {
+  let next = _frame;
+  if (isOffline()) {
+    _notice = offlineNotice({
+      text: 'Dicționarul de sinonime are nevoie de internet.',
+      retry: () => { if (_notice && _notice.parentNode) _mount(_notice.parentNode, _notice); }
+    });
+    next = _notice;
+  } else {
+    _notice = null;
+  }
+  if (shown) shown.replaceWith(next);
+  else host.appendChild(next);
 }
 
 // Offered to the shell, which puts it in the topbar beside the account menu.
@@ -74,8 +96,14 @@ function render(host) {
   // Only when it is not already there. appendChild on a node that is
   // already a child MOVES it, and a moved iframe is an unmounted one as far
   // as the browser is concerned — it reloads, losing the page you were on.
-  // That is the whole reason the layer outlives the render.
-  if (_frame.parentNode !== host) host.appendChild(_frame);
+  // That is the whole reason the layer outlives the render. A frame that
+  // is there stays even offline: the page it has loaded can still be read.
+  if (_frame.parentNode === host) return _frame;
+  if (_notice && _notice.parentNode === host) {
+    if (!isOffline()) _mount(host, _notice);
+  } else {
+    _mount(host, null);
+  }
   return _frame;
 }
 

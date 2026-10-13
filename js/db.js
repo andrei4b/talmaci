@@ -237,10 +237,14 @@ async function markSeen(uid, songId, versionId, at) {
   await _seenRef(uid, songId).set({ [versionId]: at }, { merge: true });
 }
 
-window.Db = {
+// Every call fails at once when there is no connection, rather than
+// waiting on Firestore — see Utils.requireOnline.
+const _online = (fn) => async (...args) => { window.Utils.requireOnline(); return fn(...args); };
+
+window.Db = Object.fromEntries(Object.entries({
   listSongs, getSong, getGroup, addSong, updateSong, deleteSong, setSongStatus, setWorking,
   listVersions, addVersion, updateVersion, deleteVersion,
   listNotes, addNote, deleteNote, getSeen, markSeen
-};
+}).map(([name, fn]) => [name, _online(fn)]));
 
 })();

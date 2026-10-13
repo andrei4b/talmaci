@@ -1,7 +1,7 @@
 /* songs.js — main page: the song list (search, add, navigate to detail). */
 (function () {
 const { $, el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, normalizeUrl, isShared,
-        songStatus, statusLabel, songWorkers } = window.Utils;
+        songStatus, statusLabel, songWorkers, isNetworkError, failText, offlineNotice } = window.Utils;
 
 const CHEVRON_DOWN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
 // A drawn plus rather than the "+" character — text glyphs sit off-center
@@ -94,7 +94,8 @@ async function _loadGroupName() {
     const group = await window.Db.getGroup(window.Auth.currentGroupId());
     name = (group && group.name) || 'Grup';
   } catch (_) {
-    name = 'Grup';
+    // Not kept: offline, the next visit to the list asks again.
+    return;
   }
   if (gen !== _gen) return;
   _groupName = name;
@@ -123,7 +124,7 @@ function _openScopeSheet() {
 }
 
 async function _loadSongs() {
-  if (!_listWrap) return;
+  if (!_listWrap) return false;
   _listWrap.innerHTML = '';
   _listWrap.appendChild(el('div', { class: 'loading-state' }, [
     el('div', { class: 'spinner' }),
@@ -132,18 +133,33 @@ async function _loadSongs() {
   const gen = _gen;
   try {
     const songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
-    if (gen !== _gen) return;
+    if (gen !== _gen) return false;
     _songs = songs;
     _loaded = true;
   } catch (err) {
-    if (gen !== _gen) return;
-    toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
+    if (gen !== _gen) return false;
+    if (_loaded) {
+      // A refresh that failed: the list already there stays.
+      toast(failText('Nu am putut reîmprospăta', err), { kind: 'error' });
+      _renderList(_listWrap);
+      return false;
+    }
+    // Left unloaded — a later tab switch retries the fetch instead of
+    // settling permanently on an empty list until someone thinks to use
+    // "Reîmprospătează".
     _songs = [];
-    // Left false on failure — a later tab switch retries the fetch instead
-    // of settling permanently on an empty list until someone thinks to
-    // use "Reîmprospătează".
+    if (isNetworkError(err)) {
+      _listWrap.innerHTML = '';
+      _listWrap.appendChild(offlineNotice({
+        text: 'Melodiile nu se pot încărca fără internet.',
+        retry: () => { _loadSongs(); if (!_groupName) _loadGroupName(); }
+      }));
+      return false;
+    }
+    toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
   }
   _renderList(_listWrap);
+  return _loaded;
 }
 
 // Re-fetches from Firestore — there are no live listeners for another
@@ -151,8 +167,7 @@ async function _loadSongs() {
 // "Reîmprospătează") is the only way to pick those up now that a plain
 // tab switch no longer does.
 async function refresh() {
-  await _loadSongs();
-  toast('Actualizat.');
+  if (await _loadSongs()) toast('Actualizat.');
 }
 
 function _renderList(listWrap) {
@@ -329,7 +344,7 @@ function _openAddSong() {
             window.Activity.log({ id, title, shared }, 'song_created');
             closeSheetThen(overlay, () => { location.hash = `#/song/${id}`; });
           } catch (err) {
-            toast('Nu am putut salva melodia: ' + err.message, { kind: 'error' });
+            toast(failText('Nu am putut salva melodia', err), { kind: 'error' });
           }
         }
       }, ['Salvează'])
