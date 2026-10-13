@@ -332,6 +332,13 @@ async function listGroupMembers() {
  * Refetched only when the group changes, i.e. on another account. A failed
  * fetch is not kept, so the next caller tries again. */
 let _members = null;   // { groupId, promise } | null
+// The last list that came in, kept even when the promise above is dropped
+// to be asked again, so a sheet can put names on what it draws at once
+// instead of first showing the names stored with each entry.
+let _known = null;     // { groupId, members } | null
+function knownMembers() {
+  return _known && _known.groupId === currentGroupId() ? _known.members : [];
+}
 function groupMembers() {
   const groupId = currentGroupId();
   if (!_members || _members.groupId !== groupId) {
@@ -341,6 +348,7 @@ function groupMembers() {
     const offline = window.Utils.isOffline();
     entry.promise = listGroupMembers().then(members => {
       if (offline && _members === entry) _members = null;
+      if (members.length) _known = { groupId, members };
       return members;
     }, () => {
       if (_members === entry) _members = null;
@@ -372,7 +380,7 @@ window.Auth = {
   ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence, profileFailed, profileError,
   signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
-  listGroupMembers, setMemberRole, groupMembers, shortName
+  listGroupMembers, setMemberRole, groupMembers, knownMembers, shortName
 };
 
 })();

@@ -263,6 +263,9 @@ function _hasNotes() {
 
 async function _loadNotes() {
   const song = _song;
+  // The names to put on the notes and on who is working, in hand before
+  // either sheet is opened.
+  window.Auth.groupMembers();
   _notes = new Map();
   _seen = {};
   if (!_hasNotes()) return;
@@ -322,6 +325,11 @@ function _markNotesSeen(versionId) {
   window.Db.markSeen(window.Auth.currentUser().uid, _song.id, versionId, at).catch(() => {});
 }
 
+// uid -> short name of everyone in the group, as far as is known yet.
+function _memberNames(members) {
+  return new Map((members || window.Auth.knownMembers()).map(m => [m.uid, window.Auth.shortName(m)]));
+}
+
 function _openNotes(version) {
   const song = _song;
   const me = window.Auth.currentUser().uid;
@@ -334,7 +342,10 @@ function _openNotes(version) {
     placeholder: 'O observație pentru echipă…'
   });
   const addBtn = el('button', { class: 'btn btn--primary' }, ['Adaugă']);
-  let names = new Map();
+  // Current names from the start: the name stored with a note is its
+  // author's when it was written, and drawing that first showed an old
+  // name for a moment whenever the author had changed theirs since.
+  let names = _memberNames();
 
   // Its author, an admin, or whoever may delete the version or the song.
   const canDelete = (n) => n.by === me || window.Auth.isAdmin()
@@ -349,7 +360,7 @@ function _openNotes(version) {
     }
     const now = Date.now();
     notes.forEach(n => {
-      const who = n.by === me ? 'Tu' : (names.get(n.by) || n.byName || 'Cineva');
+      const who = n.by === me ? 'Tu' : (names.get(n.by) || window.Auth.shortName({ displayName: n.byName }));
       // Two taps to delete: the first only asks.
       const del = canDelete(n) ? el('button', {
         class: 'note__delete',
@@ -436,7 +447,7 @@ function _openNotes(version) {
   Promise.all([window.Db.listNotes(song.id, version.id), window.Auth.groupMembers()])
     .then(([notes, members]) => {
       if (_song !== song) return;
-      names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+      names = _memberNames(members);
       _notes.set(version.id, notes);
       if (overlay.isConnected) { draw(); _markNotesSeen(version.id); }
       else _syncNoteDots();
@@ -1959,7 +1970,8 @@ function _openStatusSheet() {
   const statusRow = el('div', { class: 'pill-row' });
   const workersText = el('p', { class: 'sheet__text' });
   const workBtn = el('button', { class: 'btn btn--wide' });
-  let names = null;   // uid -> short name, once the members are in
+  // uid -> short name, once the members are in — at once if already known.
+  let names = window.Auth.knownMembers().length ? _memberNames() : null;
 
   // The choices in the sheet, starting from the song as it is.
   const wasWorking = songWorkers(_song).includes(me);
@@ -2020,7 +2032,7 @@ function _openStatusSheet() {
   openSheet(overlay);
 
   window.Auth.groupMembers().then(members => {
-    names = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
+    names = _memberNames(members);
     if (overlay.isConnected) paint();
   });
 }
