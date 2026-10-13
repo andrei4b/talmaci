@@ -113,7 +113,7 @@ function _renderCurrentScreen() {
   const user = window.Auth.currentUser();
 
   if (!user) return _renderSignIn(root);
-  if (!user.groupId) return _renderJoinGroup(root);
+  if (!user.groupId) return window.Auth.profileFailed() ? _renderProfileFailed(root) : _renderJoinGroup(root);
   return _renderRoute(root);
 }
 
@@ -410,6 +410,32 @@ function _setButtonLoading(btn, kind, label) {
 function _resetButtonLoading(btn, label) {
   btn.disabled = false;
   btn.textContent = label;
+}
+
+// The profile could not be read at all — not the same as there being
+// none, which is what the join screen is for (see _loadProfile).
+function _renderProfileFailed(root) {
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'gate' }, [
+    el('div', { class: 'gate__card' }, [
+      el('h1', { class: 'gate__title' }, ['Nu am putut încărca contul']),
+      el('p', { class: 'gate__subtitle' }, [isOffline()
+        ? 'Nu ai conexiune la internet. Contul se încarcă singur când revine.'
+        : 'Verifică conexiunea și încearcă din nou.']),
+      el('button', {
+        class: 'btn btn--primary btn--wide',
+        onclick: (e) => {
+          _setButtonLoading(e.currentTarget, 'primary', 'Încearcă din nou');
+          // Re-renders through Auth.onChange, replacing this button.
+          window.Auth.refreshProfile();
+        }
+      }, ['Încearcă din nou']),
+      el('button', {
+        class: 'btn btn--text',
+        onclick: () => window.Auth.signOut().catch(err => toast(failText('Nu te-am putut deconecta', err), { kind: 'error' }))
+      }, ['Deconectează-te'])
+    ])
+  ]));
 }
 
 function _renderJoinGroup(root) {

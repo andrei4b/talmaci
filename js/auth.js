@@ -82,27 +82,47 @@ function _withTimeout(promise, ms) {
   ]);
 }
 
+/* Whether this account is in a group is decided only by a read from the
+ * server that finds no profile. Asked the usual way, Firestore may answer
+ * from the device's copy (see below) whenever it believes itself offline,
+ * and a missing profile there proves nothing. And a read that fails proves
+ * nothing either: right after a sign-in, Firestore may still be switching
+ * accounts, and a new account on this device has no stored profile to fall
+ * back to (signing out removes it). Either used to land a member on the
+ * join screen; now a failure is reported as one, with a way to try again. */
+let _profileFailed = false;
+
 async function _loadProfile() {
+  _profileFailed = false;
   if (!_fbUser) { _profile = null; return; }
-  const uid = _fbUser.uid;
+  const user = _fbUser;
+  const uid = user.uid;
   const hasCache = !!_readCachedProfile(uid);
-  // Offline there is no point holding the boot spinner through two
-  // attempts that cannot succeed.
+  // Offline there is no point holding the boot spinner through attempts
+  // that cannot succeed.
   if (hasCache && navigator.onLine === false) { _profile = _readCachedProfile(uid); return; }
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const waits = [1000, 2500];
+  for (let attempt = 0; ; attempt++) {
     try {
-      const get = fs.collection('users').doc(uid).get();
+      const get = fs.collection('users').doc(uid).get({ source: 'server' });
       const snap = await (hasCache ? _withTimeout(get, PROFILE_FETCH_TIMEOUT_MS) : get);
+      if (_fbUser !== user) return;   // another account signed in meanwhile
       _profile = snap.exists ? snap.data() : null;
       _writeCachedProfile(uid, _profile);
       return;
     } catch (_) {
-      if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+      if (attempt >= waits.length) break;
+      await new Promise(r => setTimeout(r, waits[attempt]));
+      if (_fbUser !== user) return;
     }
   }
-  // Both attempts failed — fall back to the last profile we saw.
+  // Every attempt failed — fall back to the last profile we saw, and when
+  // there is none, say so rather than take it for no profile at all.
   _profile = _readCachedProfile(uid);
+  _profileFailed = !_profile;
 }
+
+function profileFailed() { return _profileFailed; }
 
 /* A member's name and email, as everyone else sees them, are copied into
  * their profile from their Google account when they join. Firebase does not
@@ -284,7 +304,7 @@ async function setMemberRole(uid, role) {
 }
 
 window.Auth = {
-  ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence,
+  ready, onChange, currentUser, isAdmin, currentGroupId, isPersistent, persistence, profileFailed,
   signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
   listGroupMembers, setMemberRole, groupMembers, shortName
