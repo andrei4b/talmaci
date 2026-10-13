@@ -432,6 +432,12 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
   z-index: 10;
 }
+/* While the keyboard is up, where the page shrinks above it (see
+   interactive-widget in index.html), the bar and the button over it would
+   ride on top of the keyboard. Elsewhere they are behind it anyway. */
+.keyboard-open .tab-bar,
+.keyboard-open .fab { display: none; }
+.keyboard-open .persist { margin-bottom: 0; }
 .tab-bar__tab {
   flex: 1;
   border: none;
@@ -1277,7 +1283,7 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
   /* Fixed elements sit on the layout viewport, whose bottom is behind the
      on-screen keyboard while it's open; lift by the keyboard's height (less
      any pan the browser left in place) so the toast stays visible above it. */
-  bottom: calc(24px + max(0px, var(--keyboard-inset, 0px) - var(--vv-top, 0px)));
+  bottom: calc(24px + max(0px, var(--keyboard-cover, 0px) - var(--vv-top, 0px)));
   transform: translate(-50%, 12px);
   opacity: 0;
   transition: opacity 0.2s, transform 0.2s;

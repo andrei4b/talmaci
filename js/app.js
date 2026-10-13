@@ -9,21 +9,33 @@ const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, closeSh
 // fixed-position elements stay sized to the full layout viewport by
 // default. Mirror the visual viewport into CSS vars so .sheet-overlay/.sheet
 // track it instead, keeping their buttons above both.
+// The page's height with the keyboard closed, at the current width (a turn
+// of the phone starts it over).
+let _fullHeight = 0, _fullHeightWidth = 0;
+
 function syncViewportInsets() {
   const vv = window.visualViewport;
   const root = document.documentElement.style;
   const vvh = vv ? vv.height : window.innerHeight;
   root.setProperty('--vvh', vvh + 'px');
   root.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
-  // Roughly the keyboard's own height (0 when it's closed). .shell caps
-  // itself to --vvh so it stops running behind the keyboard, but anything
-  // inside it that pads its bottom edge to clear the fixed tab bar (which
-  // is itself now sitting behind the keyboard, not at the bottom of the
-  // shrunk visible area) would otherwise leave that same gap of dead space
-  // above the keyboard instead of using it. window.innerHeight rather than
-  // a vh unit for the "full" side of this subtraction, for the same
-  // reliability reason #app itself avoids vh — see its own comment.
-  root.setProperty('--keyboard-inset', Math.max(0, window.innerHeight - vvh) + 'px');
+  if (window.innerWidth !== _fullHeightWidth) { _fullHeightWidth = window.innerWidth; _fullHeight = 0; }
+  _fullHeight = Math.max(_fullHeight, window.innerHeight);
+  // The keyboard's height (0 when it's closed). Measured against the
+  // tallest the page has been rather than window.innerHeight: on Android
+  // the page shrinks along with the keyboard (interactive-widget in
+  // index.html), where elsewhere only the visual viewport does. Less than
+  // a keyboard is the browser's own toolbar coming and going, not one.
+  // Anything that pads its bottom edge to clear the fixed tab bar — hidden
+  // or behind the keyboard by then — subtracts this, rather than leaving
+  // that same gap of dead space above the keyboard.
+  const kb = _fullHeight - vvh;
+  root.setProperty('--keyboard-inset', (kb > 120 ? kb : 0) + 'px');
+  document.documentElement.classList.toggle('keyboard-open', kb > 120);
+  // How much of the layout viewport the keyboard covers: what something
+  // fixed to its bottom has to rise by to stay in sight. 0 where the page
+  // shrinks with the keyboard.
+  root.setProperty('--keyboard-cover', Math.max(0, window.innerHeight - vvh) + 'px');
   if (vv && vv.offsetTop > 0) requestAnimationFrame(unpanViewport);
 }
 
