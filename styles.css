@@ -826,6 +826,27 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
 .version-row__icon svg { width: 16px; height: 16px; }
 .version-row__icon--danger { color: var(--color-danger); }
 .version-row__icon:disabled { opacity: 0.3; cursor: default; }
+/* Held to drag the row into another place — see _dragVersionRow. Wider
+ * than it looks, for a thumb, and touch-action: none so a drag on it
+ * moves the row rather than scrolling the sheet. */
+.version-row__handle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 40px;
+  margin-right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.version-row__handle svg { width: 18px; height: 18px; }
+.version-row--dragging { position: relative; z-index: 1; }
+.version-row--dragging .version-row__handle { cursor: grabbing; color: var(--color-accent); }
+.version-row--dragging .version-row__title { border-color: var(--color-accent); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
 
 /* Manage members sheet */
 .member-list { display: flex; flex-direction: column; gap: 8px; }

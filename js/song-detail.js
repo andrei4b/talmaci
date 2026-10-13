@@ -11,13 +11,15 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal,
+const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
-  delete: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`
+  delete: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`,
+  // Six dots — something to take hold of and drag.
+  drag: `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>`
 };
 
 // Two stacked pairs of lines — the original over its translation.
@@ -53,9 +55,9 @@ let _activeVersionId = null;
 
 // Remembers which version was last viewed, per song, per device — a
 // personal UI preference, not shared team data, so this is localStorage
-// rather than Firestore. Falls back to the most recently created version
-// (Db.listVersions returns them createdAt-ascending) if nothing's
-// remembered, or if the remembered one no longer exists.
+// rather than Firestore. Falls back to the last version in the list —
+// unless they have been arranged, the most recently created — if
+// nothing's remembered, or if the remembered one no longer exists.
 function _rememberedVersionKey(songId) {
   return `talmaci:lastVersion:${songId}`;
 }
@@ -165,7 +167,7 @@ async function render(root, songId) {
 
   try {
     _song = await window.Db.getSong(songId);
-    _versions = _song ? await window.Db.listVersions(songId) : [];
+    _versions = _song ? orderVersions(_song, await window.Db.listVersions(songId)) : [];
 
     // One-time migration: a song saved before versions existed may still
     // carry its translation in the legacy translatedText field. Turn it
@@ -1732,7 +1734,13 @@ function _openVersionList(content) {
     // for everyone else rather than hidden, so it's clear the option
     // exists but isn't available to you.
     const editable = _canEditVersion(v);
-    return el('div', { class: 'version-row' }, [
+    return el('div', { class: 'version-row', 'data-id': v.id }, [
+      _versions.length > 1 ? el('span', {
+        class: 'version-row__handle',
+        'aria-hidden': 'true',
+        html: ROW_ICONS.drag,
+        onpointerdown: (e) => _dragVersionRow(e, content)
+      }) : null,
       el('button', {
         class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
         onclick: () => { _activeVersionId = v.id; _rememberVersion(_song.id, v.id); closeSheet(overlay); _refreshTextTab(content); }
@@ -1770,6 +1778,67 @@ function _openVersionList(content) {
     }, ['+ Adaugă versiune'])
   ]));
   openSheet(overlay);
+}
+
+/* Drags a row of the version sheet by its handle. The row follows the
+ * finger, and the others make way as it passes their middle; let go, and
+ * the order the rows are in is the versions' order, saved on the song for
+ * the whole group (see Db.setVersionOrder). Pointer capture keeps the
+ * moves coming to the handle wherever the finger goes, and the handle's
+ * touch-action keeps the sheet from scrolling under it instead. */
+function _dragVersionRow(e, content) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  const handle = e.currentTarget;
+  const row = handle.closest('.version-row');
+  const list = row.parentNode;
+  const grab = e.clientY - row.getBoundingClientRect().top;
+  handle.setPointerCapture(e.pointerId);
+  row.classList.add('version-row--dragging');
+
+  const middle = (r) => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; };
+  const move = (ev) => {
+    const y = ev.clientY;
+    let next = row.nextElementSibling;
+    while (next && y > middle(next)) { list.insertBefore(next, row); next = row.nextElementSibling; }
+    let prev = row.previousElementSibling;
+    while (prev && y < middle(prev)) { list.insertBefore(row, prev); prev = row.previousElementSibling; }
+    row.style.transform = '';
+    row.style.transform = `translateY(${y - grab - row.getBoundingClientRect().top}px)`;
+  };
+  const end = () => {
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', end);
+    handle.removeEventListener('pointercancel', end);
+    row.style.transform = '';
+    row.classList.remove('version-row--dragging');
+    const ids = Array.from(list.children, r => r.dataset.id);
+    if (ids.every((id, i) => id === _versions[i].id)) return;
+    _saveVersionOrder(content, list, ids);
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
+// Shown in the new order at once; if it can't be saved, the rows go back
+// to where they were.
+async function _saveVersionOrder(content, list, ids) {
+  const song = _song;
+  const before = _versions;
+  const byId = new Map(before.map(v => [v.id, v]));
+  _versions = ids.map(id => byId.get(id));
+  _refreshTextTab(content);
+  try {
+    await window.Db.setVersionOrder(song.id, ids);
+    song.versionOrder = ids;
+  } catch (err) {
+    if (_song !== song) return;
+    _versions = before;
+    _refreshTextTab(content);
+    before.forEach(v => { const r = list.querySelector(`[data-id="${v.id}"]`); if (r) list.appendChild(r); });
+    toast(failText('Nu am putut schimba ordinea versiunilor', err), { kind: 'error' });
+  }
 }
 
 function _confirmDeleteVersion(content, version) {
@@ -2086,7 +2155,7 @@ async function _refreshSong(root) {
     }
     _song = refreshed;
     window.Songs.noteUpdated(_song.id, refreshed);
-    _versions = await window.Db.listVersions(_song.id);
+    _versions = orderVersions(_song, await window.Db.listVersions(_song.id));
     if (!_versions.find(v => v.id === _activeVersionId)) {
       _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
     }

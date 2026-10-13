@@ -65,6 +65,17 @@ function statusLabel(id) {
 function songWorkers(song) {
   return Array.isArray(song && song.workers) ? song.workers : [];
 }
+// A song's versions in the order they were last arranged in, given them
+// oldest first as Db.listVersions brings them. Those the arrangement does
+// not name — made since, or before anyone arranged them — keep that order
+// after the rest; ids in it of versions since deleted are just skipped.
+function orderVersions(song, versions) {
+  const order = Array.isArray(song && song.versionOrder) ? song.versionOrder : [];
+  const rank = (v) => { const i = order.indexOf(v.id); return i < 0 ? order.length : i; };
+  return versions.map((v, i) => ({ v, i }))
+    .sort((a, b) => rank(a.v) - rank(b.v) || a.i - b.i)
+    .map(x => x.v);
+}
 
 function $(sel, root) { return (root || document).querySelector(sel); }
 function $all(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
@@ -252,7 +263,7 @@ function offlineNotice(opts) {
 }
 
 window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
-                 songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
+                 songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers, orderVersions,
                  OFFLINE_HINT, isOffline, requireOnline, isNetworkError, failText, offlineNotice };
 
 })();

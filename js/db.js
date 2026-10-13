@@ -38,6 +38,15 @@
  *                               // everything else here, any group member
  *                               // may change on a shared song — see
  *                               // setSongStatus and firestore.rules.
+ *     versionOrder: versionId[],
+ *                               // the order the versions are shown in, as
+ *                               // last arranged in the version sheet;
+ *                               // absent until someone does. A version
+ *                               // missing from it (made since) comes after
+ *                               // the ones in it, oldest first — see
+ *                               // Utils.orderVersions. Like status, any
+ *                               // group member may change it on a shared
+ *                               // song — see setVersionOrder.
  *     demoUrl: string,          // optional link to a recording of the song;
  *                               // '' or absent when there is none. Always
  *                               // saved through Utils.normalizeUrl, so it
@@ -182,6 +191,13 @@ async function setWorking(songId, uid, working) {
   });
 }
 
+// The versions' order, which like status is the group's to arrange, so
+// it is written on its own and without touching updatedAt for the same
+// reason — firestore.rules allows exactly this field.
+async function setVersionOrder(songId, versionIds) {
+  await fs().collection('songs').doc(songId).update({ versionOrder: versionIds });
+}
+
 function _versionsRef(songId) {
   return fs().collection('songs').doc(songId).collection('versions');
 }
@@ -290,7 +306,7 @@ window.Db = {
   listSongs, getSong, getGroup, listVersions, listNotes, getSeen,
   setVersionText, setOriginalText,
   ...Object.fromEntries(Object.entries({
-    addSong, updateSong, deleteSong, setSongStatus, setWorking,
+    addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
     addVersion, updateVersion, deleteVersion, addNote, deleteNote, markSeen
   }).map(([name, fn]) => [name, _online(fn)]))
 };

@@ -184,6 +184,9 @@ allows exactly those fields, so **paste the updated rules into the
 Firebase console** (Firestore → Rules → Publish) for this to work for
 members who did not create the song.
 
+The same goes for the order of a song's versions, which anyone arranges by
+dragging the handle beside each one in the **Versiuni** sheet.
+
 ## Groups & roles
 
 - **Sign-in** is Google-only. A brand-new sign-in with no profile lands on
