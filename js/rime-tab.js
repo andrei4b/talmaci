@@ -176,16 +176,18 @@ async function _runRimeSearch(wrap) {
   const total = res.total || 0;
 
   // Show the actual division with the stressed syllable highlighted
-  // ("cru-ce", "mân-tu-i-re") — more legible at a glance than describing it
-  // as "2 silabe · accent pe silaba 1".
+  // ("cru·ce", "mân·tu·i·re") — more legible at a glance than describing it
+  // as "2 silabe · accent pe silaba 1". Set like the English dictionary's
+  // headword, dots between syllables included.
   const parts = a.syllableParts && a.syllableParts.length ? a.syllableParts : [a.word];
-  const line = el('div', { class: 'rime__analysis' });
+  const word = el('span', { class: 'rime__hw' });
   parts.forEach((p, i) => {
-    if (i) line.appendChild(el('span', { class: 'rime__syl-sep' }, ['-']));
-    line.appendChild(el('span', {
+    if (i) word.appendChild(el('span', { class: 'rime__syl-sep' }, ['·']));
+    word.appendChild(el('span', {
       class: 'rime__syl' + (i === a.stressIndex ? ' rime__syl--stressed' : '')
     }, [p]));
   });
+  const line = el('div', { class: 'rime__analysis' }, [word]);
   line.appendChild(el('span', { class: 'rime__meta' }, [
     (a.attested ? '' : ' · accent estimat') +
     (total ? ' · ' + total + (total === 1 ? ' rezultat' : ' rezultate') : '')

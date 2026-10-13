@@ -963,18 +963,23 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
    results scroll under them. */
 .rime__body { flex: 1; min-height: 0; overflow-y: auto; }
 .rime__analysis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   font-size: 0.85rem;
   color: var(--color-text-muted);
   padding: 2px 0 10px;
 }
-.rime__syl { font-weight: 600; color: var(--color-text); }
+/* The divided word, set as the English dictionary's headword (.en__hw). */
+.rime__hw { font-family: var(--font-heading); font-size: 1.4rem; font-weight: 600; margin-right: 8px; }
+.rime__syl { color: var(--color-text); }
 /* The stressed syllable, marked visually rather than described in words. */
 .rime__syl--stressed {
   color: var(--color-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.rime__syl-sep { color: var(--color-text-muted); margin: 0 1px; }
+.rime__syl-sep { color: var(--color-text-muted); margin: 0 2px; }
 .rime__meta { color: var(--color-text-muted); }
 .rime__results { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; }
 .rime__word {
