@@ -86,12 +86,19 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)))
         );
 
-      // The only allowed update: an existing admin flips another group
-      // member's role. Nothing else about a profile can ever change.
+      // Two updates are allowed, and nothing else about a profile can ever
+      // change. An existing admin flips a group member's role...
       allow update: if isSignedIn() && isAdmin()
         && resource.data.groupId == myGroup()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
         && request.resource.data.role in ['admin', 'user'];
+
+      // ...and a member brings their own name and email in line with their
+      // Google account, which the app does on each start (see auth.js).
+      allow update: if isSignedIn() && userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email'])
+        && request.resource.data.displayName is string
+        && request.resource.data.email is string;
 
       allow delete: if false;
 

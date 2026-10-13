@@ -104,9 +104,41 @@ async function _loadProfile() {
   _profile = _readCachedProfile(uid);
 }
 
+/* A member's name and email, as everyone else sees them, are copied into
+ * their profile from their Google account when they join. Firebase does not
+ * follow a later change to either on its own: it refreshes the Google
+ * details only at a sign-in, and only among the provider's own (providerData),
+ * not the user's top-level name. So on each start, what Google last gave is
+ * written where the app reads it — the profile, and the user's own name,
+ * which this member's notes and activity are signed with. Best-effort: on a
+ * failure the old name simply stays until the next start. */
+function _googleIdentity() {
+  const g = (_fbUser.providerData || []).find(p => p && p.providerId === 'google.com') || {};
+  return { displayName: g.displayName || _fbUser.displayName || '', email: g.email || _fbUser.email || '' };
+}
+
+async function _syncIdentity() {
+  if (!_fbUser || !_profile || navigator.onLine === false) return;
+  const user = _fbUser;
+  const { displayName, email } = _googleIdentity();
+  if (displayName && displayName !== user.displayName) user.updateProfile({ displayName }).catch(() => {});
+  const patch = {};
+  if (displayName && displayName !== _profile.displayName) patch.displayName = displayName;
+  if (email && email !== _profile.email) patch.email = email;
+  if (!Object.keys(patch).length) return;
+  try {
+    await fs.collection('users').doc(user.uid).update(patch);
+    if (_fbUser !== user || !_profile) return;
+    Object.assign(_profile, patch);
+    _writeCachedProfile(user.uid, _profile);
+    _members = null;   // the group's list held this member under the old name
+  } catch (_) { /* rules not published yet, or offline after all */ }
+}
+
 auth.onAuthStateChanged(async (user) => {
   _fbUser = user;
   await _loadProfile();
+  _syncIdentity();
   if (!_settledOnce) { _settledOnce = true; _readyResolve(); }
   _notify();
 });
