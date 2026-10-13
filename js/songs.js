@@ -30,7 +30,7 @@ let _groupName = '';
 let _scopeBtnEl = null;
 let _listWrap = null;
 // uid -> short name of everyone in the group, for who is working on what.
-// Loaded once, after the list first draws; the list redraws when it lands.
+// Loaded once, with the list's first load, so it first draws with names.
 let _memberNames = null;
 // Bumped by reset(). A fetch that was already in flight for the previous
 // account must not write its result into the next account's list.
@@ -74,11 +74,9 @@ async function render(root) {
     onclick: () => _openAddSong()
   }));
 
-  // Fire-and-forget: doesn't hold up the tab's first paint the way
-  // awaiting it here would, and it only ever needs to run once.
-  if (!_groupName) _loadGroupName();
-
   if (_loaded) {
+    // Not got on the first load (offline): asked again, painted on arrival.
+    if (!_groupName) _loadGroupName().then(_repaintScopeButton);
     // A tab switch or a "back" from a song, not a first visit — redraw
     // from the cache instead of hitting Firestore again, and land back
     // where the list was scrolled to instead of resetting to the top.
@@ -90,7 +88,11 @@ async function render(root) {
 }
 
 function _renderScopeButton() {
-  _scopeBtnEl = el('button', { class: 'scope-btn', onclick: _openScopeSheet }, [
+  // Before the first load is in, the group's name is not known: the button
+  // keeps its place but shows nothing, rather than "Grup" turning into the
+  // name a second later.
+  const pending = !_loaded && !_offline && _scope === 'group' && !_groupName;
+  _scopeBtnEl = el('button', { class: 'scope-btn' + (pending ? ' scope-btn--pending' : ''), onclick: _openScopeSheet }, [
     el('span', { class: 'scope-btn__label' }, [_scope === 'personal' ? 'Personal' : (_groupName || 'Grup')]),
     el('span', { html: CHEVRON_DOWN_ICON, 'aria-hidden': 'true' })
   ]);
@@ -109,11 +111,10 @@ async function _loadGroupName() {
   }
   if (gen !== _gen) return;
   _groupName = name;
-  // Only worth repainting if the button is still showing the group option
-  // (and still mounted at all — a tab switch in the meantime leaves
-  // _scopeBtnEl pointing at a detached node, and replaceWith on that is
-  // harmless but pointless).
-  if (_scope === 'group' && _scopeBtnEl) _scopeBtnEl.replaceWith(_renderScopeButton());
+}
+
+function _repaintScopeButton() {
+  if (_scopeBtnEl && _scopeBtnEl.isConnected) _scopeBtnEl.replaceWith(_renderScopeButton());
 }
 
 function _openScopeSheet() {
@@ -146,8 +147,15 @@ async function _loadSongs(quiet) {
   }
   const gen = _gen;
   const offline = isOffline();
+  // The group's name and the members' names are read alongside the songs
+  // and the list is drawn once all are in, so nothing on it changes after.
+  const extras = Promise.all([
+    _groupName ? null : _loadGroupName(),
+    _loadMemberNames()
+  ]);
   try {
     const songs = await window.Db.listSongs(window.Auth.currentGroupId(), window.Auth.currentUser().uid);
+    await extras;
     if (gen !== _gen) return false;
     _songs = songs;
     _loaded = true;
@@ -155,6 +163,7 @@ async function _loadSongs(quiet) {
     _fromDevice = offline;
     if (!offline) _keepAllOnDevice(songs, gen);
   } catch (err) {
+    await extras;
     if (gen !== _gen) return false;
     if (_loaded) {
       // A refresh that failed: the list already there stays.
@@ -170,6 +179,7 @@ async function _loadSongs(quiet) {
     if (!_offline) toast('Nu am putut încărca melodiile: ' + err.message, { kind: 'error' });
   }
   const top = _listScrollTop;
+  _repaintScopeButton();
   _renderList(_listWrap);
   if (quiet) _listWrap.scrollTop = top;
   return _loaded;
@@ -213,7 +223,7 @@ function _renderList(listWrap) {
     listWrap.appendChild(offlineNotice({
       text: 'Lista de melodii nu a fost încărcată încă pe acest dispozitiv.',
       hint: 'Se încarcă o dată cu internet; după aceea se deschide și fără. Rimele și Biblia merg oricând.',
-      retry: () => { _loadSongs(); if (!_groupName) _loadGroupName(); }
+      retry: () => _loadSongs()
     }));
     return;
   }
@@ -256,7 +266,12 @@ function _renderList(listWrap) {
     ]));
   });
   listWrap.appendChild(ul);
-  if (_scope !== 'personal') _loadMemberNames();
+  // Not got with the first load (offline): asked again, redrawn on arrival.
+  if (_scope !== 'personal' && !_memberNames) {
+    _loadMemberNames().then(() => {
+      if (_memberNames && _listWrap && _listWrap.isConnected) _renderList(_listWrap);
+    });
+  }
 }
 
 /* Under a song: where it stands and who is on it. A draft says nothing —
@@ -272,7 +287,7 @@ function _renderSongMeta(song) {
     meta.appendChild(el('span', { class: 'status-chip status-chip--' + status }, [statusLabel(status)]));
   }
   if (workers.length) {
-    // Names arrive once the members are loaded; until then, a count.
+    // A count only when the members could not be read (offline).
     const names = _memberNames
       ? workers.map(uid => _memberNames.get(uid) || 'Cineva').join(', ')
       : workers.length + (workers.length === 1 ? ' persoană' : ' persoane');
@@ -281,13 +296,13 @@ function _renderSongMeta(song) {
   return meta;
 }
 
+// Never throws; on a failed read the names stay unknown, to be asked again.
 async function _loadMemberNames() {
   if (_memberNames) return;
   const gen = _gen;
   const members = await window.Auth.groupMembers();
-  if (gen !== _gen || _memberNames) return;
+  if (gen !== _gen || _memberNames || !members.length) return;
   _memberNames = new Map(members.map(m => [m.uid, window.Auth.shortName(m)]));
-  if (_listWrap && _listWrap.isConnected) _renderList(_listWrap);
 }
 
 // Called from song-detail.js after it changes a song directly, so the
