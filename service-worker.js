@@ -214,9 +214,10 @@ self.addEventListener('fetch', (event) => {
  * joining (see js/push.js and functions/index.js). Firebase Cloud
  * Messaging delivers them as data only, { data: {...} }, and they are
  * shown here. Every push is shown: Safari takes the permission away from
- * a site whose pushes show nothing. The sender's tag makes a new one of
- * the same kind replace the last rather than pile up; an observation's
- * carries its versionId, and tapping it opens that version's. */
+ * a site whose pushes show nothing. A tag from the sender would make a
+ * new one replace the last, but none is sent any more: on a Mac the
+ * replacement comes in silently. An observation's carries its versionId,
+ * and tapping it opens that version's. */
 self.addEventListener('push', (event) => {
   let d = {};
   try { d = (event.data && event.data.json() || {}).data || {}; } catch (_) {}

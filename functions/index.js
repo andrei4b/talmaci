@@ -182,8 +182,7 @@ function _recipients(song, by) {
 }
 
 /* `data` is what the service worker shows: title, body, songId, and
- * versionId for an observation (which opens them), tag to replace an
- * earlier notification of the same kind. All strings, as FCM requires. */
+ * versionId for an observation (which opens them). All strings, as FCM requires. */
 async function _send(where, recipients, data) {
   const db = admin.firestore();
   if (!recipients.length) { logger.info('Nobody to notify', where); return; }
@@ -266,13 +265,13 @@ exports.notifySongActivity = onDocumentCreated(
     let recipients = _recipients(song, e.by);
     const text = e.action === 'version_text' || e.action === 'original_text';
     if (text) recipients = await _dueForText(e.songId, recipients, Date.now());
-    const data = { title: song.title || e.songTitle || 'Fără titlu', body, songId: e.songId,
-      tag: `${text ? 'text' : e.action}:${e.songId}` };
+    // No tag, so none replaces another: on a Mac, Chrome swaps a tagged
+    // one in silently, and a second status change in a row went unseen.
+    const data = { title: song.title || e.songTitle || 'Fără titlu', body, songId: e.songId };
     if (e.action === 'note_added' && e.versionId) {
       const said = await _noteText(e).catch(() => '');
       if (said) data.body = `${_firstName(e)} la „${e.versionTitle || 'o versiune'}”: ${said}`;
       data.versionId = e.versionId;
-      data.tag = `notes:${e.songId}:${e.versionId}`;
     }
     await _send(where, recipients, data);
   }
