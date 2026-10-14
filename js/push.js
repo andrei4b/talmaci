@@ -19,8 +19,15 @@
  *
  * Whether this device has them on is remembered in localStorage, per
  * member, with the token it was given. Firebase may hand out a new token
- * from time to time; each start compares and stores the new one. */
+ * from time to time; each start compares and stores the new one.
+ *
+ * They are also offered (see offer) when a member marks themselves as
+ * working on a shared song, the moment they start to matter: our own sheet
+ * first, and the browser's prompt only from its button. The browser's
+ * prompt, once refused, can never be shown again, and one shown unasked
+ * is refused far more often — Chrome goes on to hide a site's prompts. */
 (function () {
+const { el, toast, openSheet, closeSheet, failText } = window.Utils;
 
 // The key pair's public half, from Firebase console → Project settings →
 // Cloud Messaging → Web Push certificates. Public, like the rest of the
@@ -28,6 +35,18 @@
 function _vapidKey() { return window.FIREBASE_VAPID_KEY || ''; }
 
 const KEY_PREFIX = 'talmaci.pushToken:';
+// When the offer was last answered "Nu acum" on this device, per member,
+// or 'off' once they turned them off in the menu, after which it is never
+// made again: the menu is where they will look for them.
+const ASKED_PREFIX = 'talmaci.pushAsked:';
+const ASK_AGAIN_MS = 30 * 24 * 3600 * 1000;
+
+function _asked(uid) {
+  try { return localStorage.getItem(ASKED_PREFIX + uid) || ''; } catch (_) { return ''; }
+}
+function _setAsked(uid, value) {
+  try { localStorage.setItem(ASKED_PREFIX + uid, value); } catch (_) {}
+}
 
 function _stored(uid) {
   try { return localStorage.getItem(KEY_PREFIX + uid) || ''; } catch (_) { return ''; }
@@ -94,6 +113,7 @@ async function disable() {
   const token = _stored(user.uid);
   if (token) await _devicesRef(user.uid).doc(token).delete();
   _store(user.uid, '');
+  _setAsked(user.uid, 'off');
   try { await firebase.messaging().deleteToken(); } catch (_) { /* gone already */ }
 }
 
@@ -134,6 +154,52 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-window.Push = { configured, supported, needsInstall, isOn, enable, disable, refresh, forget };
+/* After a member marks themselves as working on a shared song. Nothing
+ * when they are on here already, when the browser has them blocked (it
+ * would not ask), or when the offer was answered lately. */
+function offer() {
+  const user = window.Auth.currentUser();
+  if (!user || !configured() || isOn()) return;
+  const asked = _asked(user.uid);
+  if (asked === 'off' || (asked && Date.now() - Number(asked) < ASK_AGAIN_MS)) return;
+  const install = needsInstall();
+  if (!install && (!supported() || Notification.permission === 'denied')) return;
+
+  const later = () => { _setAsked(user.uid, String(Date.now())); closeSheet(overlay); };
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) later(); } });
+  const actions = install
+    ? [el('button', { class: 'btn btn--primary', onclick: later }, ['Am înțeles'])]
+    : [
+        el('button', { class: 'btn', onclick: later }, ['Nu acum']),
+        el('button', {
+          class: 'btn btn--primary',
+          onclick: async (e) => {
+            e.currentTarget.disabled = true;
+            try {
+              await enable();
+              closeSheet(overlay);
+              toast('Notificările sunt pornite pe acest dispozitiv.');
+            } catch (err) {
+              // Refused at the browser's prompt, which will not ask again:
+              // neither does this. Closed without an answer, or a failure
+              // after it, it is asked again later, like "Nu acum".
+              _setAsked(user.uid, Notification.permission === 'denied' ? 'off' : String(Date.now()));
+              closeSheet(overlay);
+              toast(failText('Nu am putut porni notificările', err), { kind: 'error' });
+            }
+          }
+        }, ['Activează'])
+      ];
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Vrei să afli când cineva lasă o observație?']),
+    el('p', { class: 'sheet__text' }, [install
+      ? 'Pe iPhone, notificările merg doar din aplicația adăugată pe ecranul principal: Partajează → Adaugă pe ecranul principal. Apoi le pornești din meniul contului.'
+      : 'Îți trimitem o notificare când cineva lasă o observație la o melodie la care lucrezi. Le poți opri oricând din meniul contului.']),
+    el('div', { class: 'sheet__actions' }, actions)
+  ]));
+  openSheet(overlay);
+}
+
+window.Push = { configured, supported, needsInstall, isOn, enable, disable, refresh, forget, offer };
 
 })();

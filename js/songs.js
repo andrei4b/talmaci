@@ -402,7 +402,12 @@ function _openAddSong() {
             // from the song this opens next.
             _songs.push({ id, title, kind, originalText, shared, demoUrl, workers, groupId, createdBy, createdAt: now, updatedAt: now });
             window.Activity.log({ id, title, shared }, 'song_created');
-            closeSheetThen(overlay, () => { location.hash = `#/song/${id}`; });
+            closeSheetThen(overlay, () => {
+              // Once the song's route has been taken, so the offer's sheet
+              // comes after it in history rather than in its way.
+              if (working && shared) window.addEventListener('hashchange', () => setTimeout(() => window.Push.offer()), { once: true });
+              location.hash = `#/song/${id}`;
+            });
           } catch (err) {
             toast(failText('Nu am putut salva melodia', err), { kind: 'error' });
           }

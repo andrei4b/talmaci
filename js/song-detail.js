@@ -2098,7 +2098,9 @@ function _openStatusSheet() {
         _note({ workers: working ? [...others, me] : others });
         window.Activity.log(_song, 'working', { working });
       }
-      closeSheet(overlay);
+      // Just joined a shared song: the moment notifications start to matter.
+      if (workingChanged && working && isShared(_song)) closeSheetThen(overlay, () => window.Push.offer());
+      else closeSheet(overlay);
     } catch (err) {
       saveBtn.disabled = false;
       toast(failText('Nu am putut salva starea', err), { kind: 'error' });
