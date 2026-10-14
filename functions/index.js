@@ -32,6 +32,7 @@
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const logger = require('firebase-functions/logger');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Translate } = require('@google-cloud/translate').v2;
@@ -169,14 +170,17 @@ exports.notifyObservation = onDocumentCreated(
     if (song.shared === false) return;
 
     const recipients = (Array.isArray(song.workers) ? song.workers : []).filter(uid => uid && uid !== note.by);
-    if (!recipients.length) return;
+    // What each run did, for when a notification someone expected never
+    // came: `firebase functions:log --only notifyObservation`.
+    const where = { songId, versionId, by: note.by, workers: song.workers || [] };
+    if (!recipients.length) { logger.info('Nobody to notify', where); return; }
 
     // [{ uid, ref, token }] for every device of every recipient.
     const devices = (await Promise.all(recipients.map(uid =>
       db.collection('users').doc(uid).collection('devices').get()
         .then(snap => snap.docs.map(d => ({ ref: d.ref, token: d.data().token || d.id })))
     ))).flat();
-    if (!devices.length) return;
+    if (!devices.length) { logger.info('No devices for', { ...where, recipients }); return; }
 
     const versionTitle = (versionSnap.exists && versionSnap.data().title) || 'o versiune';
     const text = String(note.text || '').replace(/\s+/g, ' ').trim();
@@ -187,6 +191,8 @@ exports.notifyObservation = onDocumentCreated(
       data: { title: song.title || 'Fără titlu', body, songId, versionId },
       webpush: { headers: { Urgency: 'high', TTL: String(3 * 24 * 3600) } }
     });
+    logger.info('Sent', { ...where, recipients, devices: devices.map(d => d.ref.path.split('/')[1]),
+      sent: res.successCount, failed: res.responses.filter(r => !r.success).map(r => r.error && r.error.code) });
     await Promise.all(res.responses.map((r, i) =>
       !r.success && r.error && DEAD_TOKEN.has(r.error.code) ? devices[i].ref.delete().catch(() => {}) : null
     ));
