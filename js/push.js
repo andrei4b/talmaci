@@ -196,7 +196,7 @@ function offer() {
     el('h2', { class: 'sheet__title' }, ['Vrei să afli ce se schimbă la melodiile tale?']),
     el('p', { class: 'sheet__text' }, [install
       ? 'Pe iPhone, notificările merg doar din aplicația adăugată pe ecranul principal: Partajează → Adaugă pe ecranul principal. Apoi le pornești din meniul contului.'
-      : 'Îți trimitem o notificare când, la o melodie la care lucrezi, cineva lasă o observație, adaugă o versiune, schimbă starea, i se alătură sau editează textul (editările, cel mult o dată pe oră). Le poți opri oricând din meniul contului.']),
+      : 'Îți trimitem o notificare când, la o melodie la care lucrezi, cineva lasă o observație, îți răspunde sau îți dă o inimă, adaugă o versiune, schimbă starea, i se alătură sau editează textul (editările, cel mult o dată pe oră). Le poți opri oricând din meniul contului.']),
     el('div', { class: 'sheet__actions' }, actions)
   ]));
   openSheet(overlay);

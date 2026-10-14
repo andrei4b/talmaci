@@ -30,9 +30,12 @@
  * new versions, status changes, someone joining — and replies to an
  * observation, to the others in its thread. See below.
  *
+ * notifyNoteHeart: a notification to an observation's author when someone
+ * else gives it a heart. See the end of this file.
+ *
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
 const logger = require('firebase-functions/logger');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
@@ -298,5 +301,72 @@ exports.notifySongActivity = onDocumentCreated(
       data.versionId = e.versionId;
     }
     await _send(where, recipients, data);
+  }
+);
+
+/* A heart given to an observation tells its author, and nobody else:
+ * never for one's own heart, nor for one taken back. A heart is not in
+ * the activity log — it is no change to the song — so this watches the
+ * observations themselves, and returns straight away for any other
+ * change to one (marking it done).
+ *
+ * Tapping a heart off and on again, or several people giving theirs in a
+ * row, tells the author once: at most once every HEART_EVERY_MS per
+ * observation, kept in pushThrottle/heart_{noteId} { at }, which no rule
+ * lets a browser read or write. Hearts given meanwhile are not told
+ * later; the count is there when the author opens the observations. */
+const HEART_EVERY_MS = 10 * 60 * 1000;
+
+async function _dueForHeart(noteId, now) {
+  const db = admin.firestore();
+  return db.runTransaction(async (t) => {
+    const ref = db.collection('pushThrottle').doc('heart_' + noteId);
+    const snap = await t.get(ref);
+    if (snap.exists && now - (snap.data().at || 0) < HEART_EVERY_MS) return false;
+    t.set(ref, { at: now });
+    return true;
+  }).catch(() => false);
+}
+
+// What to call the verse an observation is on, as the app does
+// (Threads.label in js/threads.js), or '' for one on the whole version.
+function _verseLabel(anchor) {
+  if (!anchor) return '';
+  if (anchor.name) return anchor.name;
+  const first = (String(anchor.quote || '').split('\n').find(l => l.trim()) || '').trim();
+  return first ? '„' + (first.length > 32 ? first.slice(0, 31).trimEnd() + '…' : first) + '”' : '';
+}
+
+exports.notifyNoteHeart = onDocumentUpdated(
+  { document: 'songs/{songId}/versions/{versionId}/notes/{noteId}', region: REGION },
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const note = event.data.after.data() || {};
+    const had = new Set(before.hearts || []);
+    const given = (note.hearts || []).filter(uid => uid && !had.has(uid) && uid !== note.by);
+    if (!given.length || !note.by) return;
+    const { songId, versionId, noteId } = event.params;
+    const song = await _song(songId);
+    if (!song) return;
+    if (!(await _dueForHeart(noteId, Date.now()))) {
+      logger.info('Heart not told, told recently', { songId, noteId, by: given });
+      return;
+    }
+    const db = admin.firestore();
+    const [giver, version] = await Promise.all([
+      db.collection('users').doc(given[0]).get(),
+      db.collection('songs').doc(songId).collection('versions').doc(versionId).get()
+    ]);
+    const who = _firstName({ byName: giver.exists ? giver.data().displayName : '' });
+    const section = _verseLabel(note.anchor);
+    const where = `„${(version.exists && version.data().title) || 'o versiune'}”` + (section ? ` (${section})` : '');
+    const text = String(note.text || '').replace(/\s+/g, ' ').trim();
+    const said = text.length > 120 ? text.slice(0, 119) + '…' : text;
+    await _send({ kind: 'heart', songId, by: given[0] }, [note.by], {
+      title: song.title || 'Fără titlu',
+      body: `${who} a dat o inimă observației tale la ${where}` + (said ? `: ${said}` : ''),
+      songId,
+      versionId
+    });
   }
 );
