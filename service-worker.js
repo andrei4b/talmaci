@@ -28,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v125';
+const CACHE_NAME = 'talmaci-shell-v126';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -81,7 +81,8 @@ const CDN_FILES = [
   'https://www.gstatic.com/firebasejs/11.1.0/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/11.1.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore-compat.js',
-  'https://www.gstatic.com/firebasejs/11.1.0/firebase-functions-compat.js'
+  'https://www.gstatic.com/firebasejs/11.1.0/firebase-functions-compat.js',
+  'https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging-compat.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -206,4 +207,40 @@ self.addEventListener('fetch', (event) => {
       .then(res => res || caches.match(req).then(hit => hit || networkFetch))
       .then(res => res || Response.error())
   );
+});
+
+/* Notifications — an observation left on a version of a song this member
+ * is working on (see js/push.js and notifyObservation in
+ * functions/index.js). Firebase Cloud Messaging delivers them as data
+ * only, { data: {...} }, and they are shown here. Every push is shown:
+ * Safari takes the permission away from a site whose pushes show nothing.
+ * One notification per version, so a run of observations on it replaces
+ * the last one rather than piling up. */
+self.addEventListener('push', (event) => {
+  let d = {};
+  try { d = (event.data && event.data.json() || {}).data || {}; } catch (_) {}
+  const title = d.title || 'Tălmaci';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: d.body || 'O observație nouă.',
+    icon: './icons/icon-192.png',
+    tag: d.songId && d.versionId ? `notes:${d.songId}:${d.versionId}` : undefined,
+    renotify: !!(d.songId && d.versionId),
+    data: { hash: d.songId ? `#/song/${encodeURIComponent(d.songId)}/notes/${encodeURIComponent(d.versionId || '')}` : '#/' }
+  }));
+});
+
+// To the song, with the version's observations open: in a window of the
+// app already open, if there is one, without loading it again.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const hash = (event.notification.data && event.notification.data.hash) || '#/';
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const win = wins.find(w => w.url.startsWith(self.registration.scope));
+    if (win) {
+      win.postMessage({ type: 'talmaci-open', hash });
+      return win.focus();
+    }
+    return self.clients.openWindow(new URL('./' + hash, self.registration.scope).href);
+  })());
 });

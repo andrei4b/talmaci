@@ -3,7 +3,7 @@
   "description": "Server-side proxy for the Google Cloud Translation API — no key to manage, authenticates via the function's own service account.",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "scripts": {

@@ -96,7 +96,7 @@ async function boot() {
   // The Bible (~4 MB) and the rhyme index (~5.7 MB): fetch and parse them
   // while the user is busy elsewhere so opening either tab never waits.
   // Idle-time so it can't delay first paint.
-  const warm = () => { window.BibleTab.preload(); window.Rhyme.preload(); };
+  const warm = () => { window.BibleTab.preload(); window.Rhyme.preload(); window.Push.refresh(); };
   if (window.requestIdleCallback) requestIdleCallback(warm, { timeout: 5000 });
   else setTimeout(warm, 2000);
 }
@@ -307,6 +307,16 @@ function _tabForHash(hash) {
 }
 
 function _renderRoute(root) {
+  // A song with one version's observations to open — where a tapped
+  // notification leads (see service-worker.js). Only on the way in: the
+  // address becomes the song's own, so back, a reload or a tab switch
+  // return to the song without opening them again.
+  let openNotesFor = null;
+  const notes = (location.hash || '').match(/^#\/song\/([^/]+)\/notes\/([^/]*)$/);
+  if (notes) {
+    history.replaceState(history.state, '', '#/song/' + notes[1]);
+    openNotesFor = decodeURIComponent(notes[2]);
+  }
   const hash = location.hash || '#/';
   const tab = _tabForHash(hash);
   if (hash !== _currentRoute) { _prevRoute = _currentRoute; _currentRoute = hash; }
@@ -334,7 +344,7 @@ function _renderRoute(root) {
 
   if (tab === 'text') {
     const songMatch = hash.match(/^#\/song\/(.+)$/);
-    if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]));
+    if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]), openNotesFor);
     else if (hash === '#/jurnal') window.Activity.render(content);
     else window.Songs.render(content);
   } else if (tab === 'rime') {
@@ -562,13 +572,17 @@ function openAccountMenu() {
     onclick: () => closeSheetThen(overlay, () => { location.hash = '#/jurnal'; })
   }, menuLabel(icons.history, 'Jurnal de activitate')));
 
+  const push = _pushItem(overlay);
+  if (push) items.push(push);
+
   items.push(el('button', {
     class: 'btn btn--wide btn--menu',
     // The sheet is closed first, and signing out waits until it has: closing
     // steps history back, and a history step taken while the reload that
     // ends signing out is under way cancels that reload — which left the
     // page as it was, signed out underneath.
-    onclick: () => closeSheetThen(overlay, () => {
+    onclick: () => closeSheetThen(overlay, async () => {
+      if (!isOffline()) await window.Push.forget();
       window.Auth.signOut().catch(err => toast(failText('Nu te-am putut deconecta', err), { kind: 'error' }));
     })
   }, menuLabel(icons.logout, 'Deconectează-te')));
@@ -577,6 +591,43 @@ function openAccountMenu() {
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
   openSheet(overlay);
+}
+
+/* Notifications on this device for observations on the songs you are
+ * working on — see push.js. Left out where the app is not set up for them,
+ * or this browser can never have them; on an iPhone in a Safari tab, it
+ * says how to get them instead. */
+function _pushItem(overlay) {
+  const Push = window.Push;
+  if (!Push.configured()) return null;
+  if (!Push.supported()) {
+    if (!Push.needsInstall()) return null;
+    return el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => toast('Pe iPhone, notificările merg doar din aplicația adăugată pe ecranul principal: Partajează → Adaugă pe ecranul principal.')
+    }, menuLabel(icons.bellOff, 'Notificări oprite'));
+  }
+  const on = Push.isOn();
+  return el('button', {
+    class: 'btn btn--wide btn--menu',
+    onclick: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        if (on) {
+          await Push.disable();
+          toast('Notificările sunt oprite pe acest dispozitiv.');
+        } else {
+          await Push.enable();
+          toast('Vei primi o notificare când cineva lasă o observație la o melodie la care lucrezi.');
+        }
+        closeSheet(overlay);
+      } catch (err) {
+        btn.disabled = false;
+        toast(failText(on ? 'Nu am putut opri notificările' : 'Nu am putut porni notificările', err), { kind: 'error' });
+      }
+    }
+  }, menuLabel(on ? icons.bell : icons.bellOff, on ? 'Notificări pornite' : 'Notificări oprite'));
 }
 
 function _openInviteCode(code) {

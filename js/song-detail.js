@@ -138,13 +138,17 @@ WIDE.addEventListener('change', () => {
   if (_song && _shellRoot && _shellRoot.isConnected) _renderShell(_shellRoot);
 });
 
-async function render(root, songId) {
+/* `openNotesFor`, a version id, opens that version's observations once
+ * the song is on screen — from a tapped notification. */
+async function render(root, songId, openNotesFor) {
   if (_song && _song.id === songId) {
     // A tab switch back, or a "back" from Rime/Sinonime/Biblie — not a
     // real navigation. Redraw from what's already loaded instead of
     // hitting Firestore again; "Reîmprospătează" in the kebab menu is
     // there for when a fresh copy is actually wanted.
+    _showNotesFor(openNotesFor);
     _renderShell(root);
+    _openNotesFor(openNotesFor);
     return;
   }
   _originalScrollTop = 0;
@@ -183,7 +187,7 @@ async function render(root, songId) {
         createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now }];
     }
 
-    const remembered = _recallVersion(songId);
+    const remembered = _versions.some(v => v.id === openNotesFor) ? openNotesFor : _recallVersion(songId);
     const rememberedStillExists = remembered && _versions.some(v => v.id === remembered);
     _activeVersionId = rememberedStillExists ? remembered
       : (_versions.length ? _versions[_versions.length - 1].id : null);
@@ -206,8 +210,22 @@ async function render(root, songId) {
     return;
   }
 
+  _showNotesFor(openNotesFor);
   _renderShell(root);
   _loadNotes();
+  _openNotesFor(openNotesFor);
+}
+
+// Brings the version up whose observations a notification is about.
+function _showNotesFor(versionId) {
+  if (!_versions.some(v => v.id === versionId)) return;
+  _activeVersionId = versionId;
+  _rememberVersion(_song.id, versionId);
+}
+
+function _openNotesFor(versionId) {
+  const version = _versions.find(v => v.id === versionId);
+  if (version && _hasNotes()) _openNotes(version);
 }
 
 function _renderShell(root) {

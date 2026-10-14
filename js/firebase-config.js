@@ -14,3 +14,9 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "741806141674",
   appId: "1:741806141674:web:dc0c141968b89735dce793"
 };
+
+// The public half of the Web Push key pair, for notifications (see
+// js/push.js): Firebase console → Project settings → Cloud Messaging → Web
+// Push certificates → Generate key pair. Public too. While empty, the app
+// offers no notifications.
+window.FIREBASE_VAPID_KEY = 'BCSci_oQnmnJazj2dDPWOAiVbdlaEX-udrzKMH_U8Y34WPu06tK1IcOd4mztzjSi2XSTZAHj9DcVAsgSCgiuvgk';

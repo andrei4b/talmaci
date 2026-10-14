@@ -25,8 +25,13 @@
  * day. It is kept as a secret:
  *   firebase functions:secrets:set MW_COLLEGIATE_KEY
  *
+ * notifyObservation: sends a notification when someone leaves an
+ * observation on a version of a song, to the devices of everyone working
+ * on that song but its author. See below.
+ *
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { Translate } = require('@google-cloud/translate').v2;
@@ -133,3 +138,57 @@ exports.defineEnglish = onCall({ secrets: [MW_COLLEGIATE_KEY] }, async (request)
     limit: MW_DAILY_LIMIT
   };
 });
+
+/* A new observation on a version → a notification to each member on the
+ * song's `workers` but the one who left it, on every device where they
+ * turned them on (users/{uid}/devices, see js/push.js). Nothing for a
+ * personal song, which has no team; the rules let nobody leave one there.
+ *
+ * Data only, shown by the app's own service worker. A token Firebase says
+ * is no longer valid (the app uninstalled, its data cleared, permission
+ * taken back) is removed, so it is not tried again.
+ *
+ * In europe-west1 because the database is in eur3, and a Firestore trigger
+ * has to run in a region its database's location can reach. */
+const DEAD_TOKEN = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token'
+]);
+
+exports.notifyObservation = onDocumentCreated(
+  { document: 'songs/{songId}/versions/{versionId}/notes/{noteId}', region: 'europe-west1' },
+  async (event) => {
+    const note = event.data && event.data.data();
+    if (!note) return;
+    const { songId, versionId } = event.params;
+    const db = admin.firestore();
+    const songRef = db.collection('songs').doc(songId);
+    const [songSnap, versionSnap] = await Promise.all([songRef.get(), songRef.collection('versions').doc(versionId).get()]);
+    if (!songSnap.exists) return;
+    const song = songSnap.data();
+    if (song.shared === false) return;
+
+    const recipients = (Array.isArray(song.workers) ? song.workers : []).filter(uid => uid && uid !== note.by);
+    if (!recipients.length) return;
+
+    // [{ uid, ref, token }] for every device of every recipient.
+    const devices = (await Promise.all(recipients.map(uid =>
+      db.collection('users').doc(uid).collection('devices').get()
+        .then(snap => snap.docs.map(d => ({ ref: d.ref, token: d.data().token || d.id })))
+    ))).flat();
+    if (!devices.length) return;
+
+    const versionTitle = (versionSnap.exists && versionSnap.data().title) || 'o versiune';
+    const text = String(note.text || '').replace(/\s+/g, ' ').trim();
+    const body = `${note.byName || 'Cineva'} la „${versionTitle}”: ` + (text.length > 160 ? text.slice(0, 159) + '…' : text);
+
+    const res = await admin.messaging().sendEachForMulticast({
+      tokens: devices.map(d => d.token),
+      data: { title: song.title || 'Fără titlu', body, songId, versionId },
+      webpush: { headers: { Urgency: 'high', TTL: String(3 * 24 * 3600) } }
+    });
+    await Promise.all(res.responses.map((r, i) =>
+      !r.success && r.error && DEAD_TOKEN.has(r.error.code) ? devices[i].ref.delete().catch(() => {}) : null
+    ));
+  }
+);

@@ -117,6 +117,16 @@ service cloud.firestore {
       match /seen/{songId} {
         allow read, write: if isSignedIn() && userId == request.auth.uid;
       }
+
+      // The devices where this member turned notifications on, by their
+      // messaging token (see js/push.js). Their own business too; the Cloud
+      // Function that sends the notifications reads them past the rules.
+      match /devices/{token} {
+        allow read, delete: if isSignedIn() && userId == request.auth.uid;
+        allow create, update: if isSignedIn() && userId == request.auth.uid
+          && request.resource.data.token == token
+          && request.resource.data.at is number;
+      }
     }
 
     match /groups/{groupId} {
