@@ -1592,18 +1592,6 @@ function _renderVersesView(ctx) {
     const n = Math.max(on + (orig.editable ? 1 : 0), on,
       ...trs.map(s => s.spans.length + (s.editable ? 1 : 0)));
 
-    const off = trs.filter(s => s.spans.length && s.spans.length !== on);
-    const strofe = (k) => `${k} ${k === 1 ? 'strofă' : 'strofe'}`;
-    if (off.length) {
-      list.appendChild(el('p', { class: 'verses__note' }, [
-        `Originalul are ${strofe(on)}, ` +
-        (grid ? off.map(s => `${s.title} ${s.spans.length}`).join(', ')
-              : `traducerea ${off[0].spans.length}`) +
-        '. De la prima diferență, perechile pot fi decalate — ' +
-        'verifică rândurile goale dintre strofe.'
-      ]));
-    }
-
     // Who is in which column, kept in view while the rows scroll by.
     if (grid) {
       const row = el('div', { class: 'verses__heads' }, [
