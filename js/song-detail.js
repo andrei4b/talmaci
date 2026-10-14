@@ -626,6 +626,25 @@ function _wordAtCaret(ta) {
   return a < b ? text.slice(a, b) : null;
 }
 
+/* A box the reader may not change but may still put the caret in, to
+ * look a word up. `readonly` would not do: a phone draws no caret in it.
+ * So the box stays editable to the browser, with no on-screen keyboard,
+ * and any edit — a hardware key, a paste, a drop — is refused before it
+ * lands, or put back if it lands anyway, before any other handler sees it. */
+function _viewOnly(ta) {
+  ta.inputMode = 'none';
+  ta.spellcheck = false;
+  // Taken again on focus: a redraw may have set new text since.
+  let kept = ta.value;
+  ta.addEventListener('focus', () => { kept = ta.value; });
+  ta.addEventListener('beforeinput', (e) => e.preventDefault());
+  ta.addEventListener('input', (e) => {
+    e.stopImmediatePropagation();
+    if (ta.value !== kept) ta.value = kept;
+  }, true);
+  return ta;
+}
+
 /* Rime or Sinonime for the word at the caret, without retyping it — or,
  * in the original, its English definition or Bible dictionary entry. One button for all of them
  * keeps the row under the text short; the sheet it opens names the word,
@@ -966,7 +985,6 @@ function _renderTextTab(content) {
     'aria-label': 'Caută cuvântul',
     title: 'Caută cuvântul',
     html: LOOKUP_ICON,
-    disabled: !active || !canEdit,
     onmousedown: keepFocus
   });
 
@@ -1066,7 +1084,6 @@ function _renderTextTab(content) {
   const activate = (version, doc) => {
     _makeActive(version);
     currentBtn.textContent = version.title || 'Fără titlu';
-    lookupBtn.disabled = !doc.canEdit;
     focusDoc(doc);
   };
 
@@ -1120,15 +1137,15 @@ function _renderWholeView(ctx) {
     const translation = el('textarea', {
       class: 'field__input text-tab__translation',
       placeholder: placeholderFor(version, doc.canEdit),
-      // Someone else's version is read-only rather than disabled, as the
+      // Someone else's version is view-only rather than disabled, as the
       // original is: not dimmed, and still focusable, so its verse can be
-      // picked out across the columns. Only the empty box of a song with
-      // no version yet is disabled.
-      readonly: !doc.canEdit,
+      // picked out across the columns and a word in it looked up. Only the
+      // empty box of a song with no version yet is disabled.
       disabled: !version,
       oninput: () => { doc.typed(translation.value); strip(); }
     });
     translation.value = doc.text;
+    if (version && !doc.canEdit) _viewOnly(translation);
     translation.addEventListener('scroll', () => scroll.set(translation.scrollTop));
     // Redraws the formatted section marks; set once the editor is mounted.
     let repaint = () => {};
@@ -1179,17 +1196,17 @@ function _renderWholeView(ctx) {
   let originalEl = null, originalMirror = null, repaintOriginal = () => {};
   if (!original) {
     // The original, edited in place — the same editor as the translation,
-    // in the reference panel's colours. Read-only rather than disabled for
-    // someone who may not change the song: still selectable and copyable,
-    // and not dimmed, since it is what everyone translates from.
+    // in the reference panel's colours. View-only rather than disabled for
+    // someone who may not change the song: still selectable, copyable and
+    // looked up in, and not dimmed, since it is what everyone translates from.
     const doc = ctx.original;
     originalEl = el('textarea', {
       class: 'field__input text-tab__translation text-tab__source',
       placeholder: doc.canEdit ? 'Textul original…' + SECTION_HINT : '',
-      readonly: !doc.canEdit,
       oninput: () => { doc.typed(originalEl.value); originalStrip(); }
     });
     originalEl.value = doc.text;
+    if (!doc.canEdit) _viewOnly(originalEl);
     originalEl.addEventListener('scroll', () => { _originalScrollTop = originalEl.scrollTop; });
     originalEl.addEventListener('focus', () => { lookupBox = originalEl; ctx.focusDoc(doc); });
     const originalStrip = () => {
@@ -1510,17 +1527,17 @@ function _renderVersesView(ctx) {
   /* The box for verse i of a side, with everything an editor box has:
    * formatted section marks, the "[" strip, undo through the side's own
    * history. Any box can be written in, even far past the side's last
-   * verse — see write. A side that may not be edited is read-only where it
+   * verse — see write. A side that may not be edited is view-only where it
    * has verses, rather than disabled, so it is not dimmed. */
   function verseBox(s, i, value, placeholder, mounted) {
     const ta = el('textarea', {
       class: 'field__input verse__box',
       rows: 1,
       placeholder,
-      readonly: !s.editable && i < s.spans.length,
       disabled: !s.editable && i >= s.spans.length
     });
     ta.value = value;
+    if (!s.editable && i < s.spans.length) _viewOnly(ta);
     const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
     let repaint = () => {};
     ta.repaint = () => repaint();
