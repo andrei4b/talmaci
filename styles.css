@@ -797,6 +797,13 @@ body:has(.verses-wrap--all) .tab-bar { max-width: none; }
 .note__delete--confirm { color: #fff; background: var(--color-danger); }
 .note__text { margin-top: 4px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .note-input { flex-shrink: 0; min-height: 76px; }
+/* Only the list scrolls: the sheet's own scrolling let the sticky buttons
+   sit over the field once the keyboard shrank the sheet. Title, field and
+   buttons keep their place; the list takes whatever height is left. */
+.sheet--notes { overflow: hidden; }
+.sheet--notes > * { flex-shrink: 0; }
+.sheet--notes .note-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.sheet--notes .sheet__actions { position: static; }
 
 /* Version list sheet rows */
 .version-list { display: flex; flex-direction: column; gap: 8px; }

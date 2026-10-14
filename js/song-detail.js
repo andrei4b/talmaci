@@ -445,7 +445,7 @@ function _openNotes(version) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); add(); }
   });
 
-  overlay.appendChild(el('div', { class: 'sheet' }, [
+  overlay.appendChild(el('div', { class: 'sheet sheet--notes' }, [
     el('h2', { class: 'sheet__title sheet__title--row' }, [
       el('span', {}, ['Observații']),
       el('span', { class: 'sheet__title-accent' }, [version.title || 'Fără titlu'])
@@ -459,6 +459,14 @@ function _openNotes(version) {
   ]));
   draw();
   openSheet(overlay);
+  list.scrollTop = list.scrollHeight;
+  // The keyboard shrinks the list, not the field: keep its newest notes,
+  // the ones just above the field, in sight as it does.
+  input.addEventListener('focus', () => {
+    const toBottom = () => { list.scrollTop = list.scrollHeight; };
+    toBottom();
+    setTimeout(toBottom, 300);
+  });
   if (WIDE.matches) input.focus();
   _markNotesSeen(version.id);
 
