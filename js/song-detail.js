@@ -1462,7 +1462,12 @@ function _renderVersesView(ctx) {
   // lyrics needs: past what fits, the rows scroll sideways together.
   const columns = `repeat(${1 + trs.length}, minmax(260px, 1fr))`;
   const heads = [];
-  if (grid) list.style.minWidth = `${(1 + trs.length) * 260 + 4}px`;
+  // Nor wider than a line of lyrics reads well: with few versions, the
+  // rows stay that wide, in the middle.
+  if (grid) {
+    list.style.minWidth = `${(1 + trs.length) * 260 + 4}px`;
+    list.style.maxWidth = `${(1 + trs.length) * 480 + 4}px`;
+  }
 
   /* A stand-in for a verse not written yet, so that one typed further down
    * keeps its place: verses are told apart by position, and a verse typed

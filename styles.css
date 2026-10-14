@@ -495,11 +495,31 @@ a { color: inherit; text-decoration: none; }
 
 /* Every version side by side, on a big screen (see _showingAllVersions):
    the app gives up its phone width for as long as they are on screen, and
-   the columns scroll sideways once there are more than fit. */
-#app:has(.text-tab--all),
-body:has(.text-tab--all) .tab-bar { max-width: none; }
+   the columns scroll sideways once there are more than fit. Only the
+   columns go wide: the topbar, the switcher row and the tab bar keep the
+   width and place they have on every other page. */
+#app:has(.text-tab--all) { max-width: none; }
+#app:has(.text-tab--all, .verses-wrap--all) .topbar {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+/* Inside .tab-content's 20px sides, so the phone width less those. The
+   section strip takes the switcher's place while a mark is typed. */
+#app:has(.text-tab--all, .verses-wrap--all) .version-switcher,
+#app:has(.text-tab--all, .verses-wrap--all) .section-strip {
+  width: 100%;
+  max-width: 680px;
+  margin-inline: auto;
+}
 .text-tab--all { overflow-x: auto; }
-.text-tab--all .text-tab__col { min-width: 280px; }
+.text-tab--all .text-tab__col { min-width: 280px; max-width: 480px; }
+/* No wider than a line of lyrics reads well: with few versions, the
+   columns stay that wide and sit in the middle. Auto margins rather than
+   centring the row, which would push its start out of reach once the
+   columns scroll sideways. */
+.text-tab--all > :first-child { margin-left: auto; }
+.text-tab--all > :last-child { margin-right: auto; }
 .text-tab__head {
   flex-shrink: 0;
   margin-bottom: 6px;
@@ -716,9 +736,10 @@ button.text-tab__head { cursor: pointer; }
    as the window, and the rows scrolling sideways together once the
    columns no longer fit. Each card's columns are set in place from the
    script; here, only the rules between them. */
-#app:has(.verses-wrap--all),
-body:has(.verses-wrap--all) .tab-bar { max-width: none; }
+#app:has(.verses-wrap--all) { max-width: none; }
 .verses-wrap--all { overflow-x: auto; }
+/* Capped from the script at 480px a column, like the whole view's. */
+.verses-wrap--all .verses { margin-inline: auto; }
 .verse--grid > .verse__editor--source { border-right: 0; }
 .verse--grid > :not(:first-child):not(.verses__note) { border-left: 1px solid var(--color-border); }
 .verse--grid > .verse__editor--source + :not(.verses__note) { border-left-color: var(--color-panel-border); }
