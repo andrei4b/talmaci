@@ -50,8 +50,9 @@ let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
 
 /* The team's observations on each version (see db.js), by version id, and
  * when you last read each version's — the two together are what puts the
- * dot on a version's button. Fetched with the song, after it is on screen,
- * and again for one version whenever its observations are opened. */
+ * dot on a version's button. The observations are kept live while the
+ * song is on screen (see _watchNotes); when they were last read is fetched
+ * with the song. */
 let _notes = new Map();
 let _seen = {};
 let _activeVersionId = null;
@@ -284,25 +285,63 @@ function _hasNotes() {
   return !!_song && isShared(_song);
 }
 
+// When you last read the song's observations; they themselves come live.
 async function _loadNotes() {
-  const song = _song;
+  const songId = _song.id;
   // The names to put on the notes and on who is working, in hand before
   // either sheet is opened.
   window.Auth.groupMembers();
-  _notes = new Map();
-  _seen = {};
   if (!_hasNotes()) return;
-  const uid = window.Auth.currentUser().uid;
   try {
-    const [seen, lists] = await Promise.all([
-      window.Db.getSeen(uid, song.id),
-      Promise.all(_versions.map(v => window.Db.listNotes(song.id, v.id)))
-    ]);
-    if (_song !== song) return;
+    const seen = await window.Db.getSeen(window.Auth.currentUser().uid, songId);
+    if (!_song || _song.id !== songId) return;
     _seen = seen;
-    _versions.forEach((v, i) => _notes.set(v.id, lists[i]));
     _syncNoteDots();
-  } catch (_) { /* no dots, and the sheet fetches its own */ }
+  } catch (_) { /* no dots until they are read */ }
+}
+
+/* The open song's observations, live: a listener on each version's, so a
+ * reply, a heart or a thread marked done by someone else shows up by
+ * itself — on the verse buttons, the dots, and in an open sheet (each of
+ * which registers in _noteRedraws while it is up). Kept in step with the
+ * versions whenever the text is drawn, and stopped for another song, or
+ * at the first change after the song has left the screen; coming back to
+ * it draws it again, which starts them anew. */
+let _noteWatch = { songId: null, stops: new Map() };
+const _noteRedraws = new Set();
+
+// Stops the listeners. The song's observations are kept as they were, to
+// be brought up to date when it is drawn again; for another song, or no
+// song at all, `forget` drops them.
+function _unwatchNotes(forget) {
+  _noteWatch.stops.forEach(stop => stop());
+  _noteWatch.stops = new Map();
+  if (forget) _noteWatch.songId = null;
+}
+
+function _watchNotes() {
+  if (!_hasNotes()) { _unwatchNotes(true); _notes = new Map(); _seen = {}; return; }
+  if (_noteWatch.songId !== _song.id) {
+    _unwatchNotes(true);
+    _noteWatch.songId = _song.id;
+    _notes = new Map();
+    _seen = {};
+  }
+  const songId = _song.id;
+  const ids = new Set(_versions.map(v => v.id));
+  for (const [id, stop] of _noteWatch.stops) {
+    if (!ids.has(id)) { stop(); _noteWatch.stops.delete(id); _notes.delete(id); }
+  }
+  _versions.forEach(v => {
+    if (_noteWatch.stops.has(v.id)) return;
+    _noteWatch.stops.set(v.id, window.Db.watchNotes(songId, v.id, (list) => {
+      if (!_song || _song.id !== songId) return;
+      if (!_shellRoot || !_shellRoot.isConnected) { _unwatchNotes(); return; }
+      _notes.set(v.id, list);
+      _syncNoteDots();
+      _noteRedraws.forEach(redraw => redraw(v.id));
+    }));
+  });
 }
 
 /* A version's observations as threads (see threads.js), each found in the
@@ -681,7 +720,9 @@ function _openNotes(version, verseIndex) {
         text, by: user.uid, byName: user.displayName || (user.email || '').split('@')[0] || '',
         anchor, parentId: thread ? thread.id : null
       });
-      _notes.set(version.id, [...(_notes.get(version.id) || []), note]);
+      // Unless the listener has brought it in already.
+      const had = _notes.get(version.id) || [];
+      if (!had.some(x => x.id === note.id)) _notes.set(version.id, [...had, note]);
       const extra = { versionTitle: version.title || '', versionId: version.id, noteId: note.id };
       if (anchor) extra.section = window.Threads.label(anchor);
       if (thread) { extra.reply = true; extra.threadId = thread.id; }
@@ -749,15 +790,23 @@ function _openNotes(version, verseIndex) {
   if (WIDE.matches) input.focus();
   markSeen();
 
-  // What was loaded with the song may be behind: fetch this version's
-  // again, and the names to put on them.
-  Promise.all([window.Db.listNotes(song.id, version.id), window.Auth.groupMembers()])
-    .then(([notes, members]) => {
-      if (_song !== song) return;
+  // Whatever comes in while it is up is drawn straight away, and read: the
+  // list stays where it was, or keeps to the bottom if it was there.
+  const redraw = (versionId) => {
+    if (!overlay.isConnected) { _noteRedraws.delete(redraw); return; }
+    if (versionId !== version.id) return;
+    const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 8;
+    draw();
+    if (atBottom) list.scrollTop = list.scrollHeight;
+    if (shown().some(t => _threadUnread(version.id, t))) markSeen();
+  };
+  _noteRedraws.add(redraw);
+
+  // The names to put on them, as they are now.
+  window.Auth.groupMembers()
+    .then(members => {
       names = _memberNames(members);
-      _notes.set(version.id, notes);
-      if (overlay.isConnected) { draw(); markSeen(); }
-      else _syncNoteDots();
+      if (overlay.isConnected) draw();
     })
     .catch(() => {});
 }
@@ -1222,6 +1271,7 @@ function _editedText({ text, history, canEdit, write, save }) {
 }
 
 function _renderTextTab(content) {
+  _watchNotes();
   const active = _activeVersion();
   const canEdit = _canEditVersion(active);
   _syncUndoState(active);
@@ -2541,6 +2591,9 @@ async function _generateMotAMot(root) {
 
 // Drops the open song so the next account never sees it (see Songs.reset).
 function reset() {
+  _unwatchNotes(true);
+  _notes = new Map();
+  _seen = {};
   _song = null;
   _versions = [];
   _activeVersionId = null;

@@ -278,11 +278,16 @@ function _notesRef(songId, versionId) {
   return _versionsRef(songId).doc(versionId).collection('notes');
 }
 
-// Sorted here rather than by the query, so a read that fails for want of
-// an index can't be what keeps them off screen.
-async function listNotes(songId, versionId) {
-  const snap = await _get(_notesRef(songId, versionId));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.at - b.at);
+/* A version's observations, kept live: `onChange` gets them, sorted by
+ * when they were left, now — from the device's copy first when it has
+ * them — and again after every change to any, until the function returned
+ * is called. Sorted here rather than by the query, so a read that fails
+ * for want of an index can't be what keeps them off screen. */
+function watchNotes(songId, versionId, onChange, onError) {
+  return _notesRef(songId, versionId).onSnapshot(
+    snap => onChange(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.at - b.at)),
+    err => { if (onError) onError(err); }
+  );
 }
 
 async function addNote(songId, versionId, { text, by, byName, anchor, parentId }) {
@@ -331,7 +336,7 @@ async function markSeen(uid, songId, patch) {
 const _online = (fn) => async (...args) => { window.Utils.requireOnline(); return fn(...args); };
 
 window.Db = {
-  listSongs, getSong, getGroup, listVersions, listNotes, getSeen,
+  listSongs, getSong, getGroup, listVersions, watchNotes, getSeen,
   setVersionText, setOriginalText,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
