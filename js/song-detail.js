@@ -429,7 +429,7 @@ function _openNotes(version) {
         text, by: user.uid, byName: user.displayName || (user.email || '').split('@')[0] || ''
       });
       _notes.set(version.id, [...(_notes.get(version.id) || []), note]);
-      window.Activity.log(song, 'note_added', { versionTitle: version.title || '' });
+      window.Activity.log(song, 'note_added', { versionTitle: version.title || '', versionId: version.id, noteId: note.id });
       input.value = '';
       draw();
       _markNotesSeen(version.id);

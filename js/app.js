@@ -593,8 +593,8 @@ function openAccountMenu() {
   openSheet(overlay);
 }
 
-/* Notifications on this device for observations on the songs you are
- * working on — see push.js. Left out where the app is not set up for them,
+/* Notifications on this device about the songs you are working on — see
+ * push.js. Left out where the app is not set up for them,
  * or this browser can never have them; on an iPhone in a Safari tab, it
  * says how to get them instead. */
 function _pushItem(overlay) {
@@ -619,7 +619,7 @@ function _pushItem(overlay) {
           toast('Notificările sunt oprite pe acest dispozitiv.');
         } else {
           await Push.enable();
-          toast('Vei primi o notificare când cineva lasă o observație la o melodie la care lucrezi.');
+          toast('Vei primi notificări despre melodiile la care lucrezi.');
         }
         closeSheet(overlay);
       } catch (err) {

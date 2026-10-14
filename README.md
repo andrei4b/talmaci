@@ -70,13 +70,14 @@ provider enabled) and **Firestore** turned on.
    `/users/{yourUid}` document with `role: "admin"` and `groupId` pointing
    at it.
 
-## Notifications for observations (optional)
+## Notifications (optional)
 
 Anyone working on a song can get a notification, on each device where they
 turn it on from the account menu, when someone else leaves an observation
-on one of its versions. Android and desktop browsers get them as they are;
+on one of its versions, adds a version, changes its status, joins it, or
+edits its text — text edits at most once an hour per song. Android and desktop browsers get them as they are;
 an iPhone or iPad only once the app is added to the Home Screen (iOS 16.4
-or later). See `js/push.js` and `notifyObservation` in `functions/index.js`.
+or later). See `js/push.js` and `functions/index.js`.
 
 1. Firebase console → Project settings → Cloud Messaging → Web Push
    certificates → **Generate key pair**, and put the key into

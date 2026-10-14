@@ -25,9 +25,9 @@
  * day. It is kept as a secret:
  *   firebase functions:secrets:set MW_COLLEGIATE_KEY
  *
- * notifyObservation: sends a notification when someone leaves an
- * observation on a version of a song, to the devices of everyone working
- * on that song but its author. See below.
+ * notifySongActivity: notifications to everyone
+ * working on a song but whoever changed it — observations, text edits,
+ * new versions, status changes, someone joining. See below.
  *
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -140,14 +140,27 @@ exports.defineEnglish = onCall({ secrets: [MW_COLLEGIATE_KEY] }, async (request)
   };
 });
 
-/* A new observation on a version → a notification to each member on the
- * song's `workers` but the one who left it, on every device where they
- * turned them on (users/{uid}/devices, see js/push.js). Nothing for a
- * personal song, which has no team; the rules let nobody leave one there.
+/* Notifications, to the members on a song's `workers` but the one who did
+ * the thing, on every device where they turned them on (users/{uid}/devices,
+ * see js/push.js). Never for a personal song, which has no team.
+ *
+ * All of it from the activity log (js/activity.js), which every change to
+ * a shared song writes an entry to: an observation left, a version's text
+ * or the original edited, a version added, the status changed, someone
+ * else joining the song. The log is written apart from the change itself,
+ * and a write of it that fails is not retried, so neither is the
+ * notification — accepted for having one place that decides them all.
+ *
+ * Text is saved every few seconds, so text edits notify a member at most
+ * once an hour per song (TEXT_EVERY_MS), whoever made them; the log
+ * already folds one person's run of saves into one entry. Everything else
+ * notifies every time.
  *
  * Data only, shown by the app's own service worker. A token Firebase says
  * is no longer valid (the app uninstalled, its data cleared, permission
- * taken back) is removed, so it is not tried again.
+ * taken back) is removed, so it is not tried again. Each run logs what it
+ * did — read with `gcloud logging read`; `firebase functions:log` leaves
+ * runs out.
  *
  * In europe-west1 because the database is in eur3, and a Firestore trigger
  * has to run in a region its database's location can reach. */
@@ -155,46 +168,105 @@ const DEAD_TOKEN = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token'
 ]);
+const REGION = 'europe-west1';
+const TEXT_EVERY_MS = 60 * 60 * 1000;
+const STATUS_LABELS = { draft: 'Ciornă', review: 'În revizie', final: 'Final' };
 
-exports.notifyObservation = onDocumentCreated(
-  { document: 'songs/{songId}/versions/{versionId}/notes/{noteId}', region: 'europe-west1' },
+async function _song(songId) {
+  const snap = await admin.firestore().collection('songs').doc(songId).get();
+  return snap.exists && snap.data().shared !== false ? snap.data() : null;
+}
+
+function _recipients(song, by) {
+  return (Array.isArray(song.workers) ? song.workers : []).filter(uid => uid && uid !== by);
+}
+
+/* `data` is what the service worker shows: title, body, songId, and
+ * versionId for an observation (which opens them), tag to replace an
+ * earlier notification of the same kind. All strings, as FCM requires. */
+async function _send(where, recipients, data) {
+  const db = admin.firestore();
+  if (!recipients.length) { logger.info('Nobody to notify', where); return; }
+  const devices = (await Promise.all(recipients.map(uid =>
+    db.collection('users').doc(uid).collection('devices').get()
+      .then(snap => snap.docs.map(d => ({ ref: d.ref, token: d.data().token || d.id })))
+  ))).flat();
+  if (!devices.length) { logger.info('No devices for', { ...where, recipients }); return; }
+
+  const res = await admin.messaging().sendEachForMulticast({
+    tokens: devices.map(d => d.token),
+    data,
+    webpush: { headers: { Urgency: 'high', TTL: String(3 * 24 * 3600) } }
+  });
+  logger.info('Sent', { ...where, recipients, devices: devices.map(d => d.ref.path.split('/')[1]),
+    sent: res.successCount, failed: res.responses.filter(r => !r.success).map(r => r.error && r.error.code) });
+  await Promise.all(res.responses.map((r, i) =>
+    !r.success && r.error && DEAD_TOKEN.has(r.error.code) ? devices[i].ref.delete().catch(() => {}) : null
+  ));
+}
+
+/* Of `recipients`, those not told of a text edit to this song in the last
+ * hour, marked as told now. One document per member and song,
+ * pushThrottle/{uid}_{songId} { textAt }, which no rule lets a browser
+ * read or write. A transaction, so two edits at once tell nobody twice. */
+async function _dueForText(songId, recipients, now) {
+  const db = admin.firestore();
+  const due = await Promise.all(recipients.map(uid => db.runTransaction(async (t) => {
+    const ref = db.collection('pushThrottle').doc(`${uid}_${songId}`);
+    const snap = await t.get(ref);
+    if (snap.exists && now - (snap.data().textAt || 0) < TEXT_EVERY_MS) return false;
+    t.set(ref, { textAt: now });
+    return true;
+  }).catch(() => false)));
+  return recipients.filter((_, i) => due[i]);
+}
+
+// An observation's text, short enough for a notification.
+async function _noteText(e) {
+  if (!e.versionId || !e.noteId) return '';
+  const snap = await admin.firestore().collection('songs').doc(e.songId)
+    .collection('versions').doc(e.versionId).collection('notes').doc(e.noteId).get();
+  const text = String((snap.exists && snap.data().text) || '').replace(/\s+/g, ' ').trim();
+  return text.length > 160 ? text.slice(0, 159) + '…' : text;
+}
+
+/* What each logged action says, or null for those that do not notify. An
+ * observation's entry names the observation from release 128 on, and its
+ * text is added to it then; one from an older release says only where. */
+function _describe(e) {
+  const who = e.byName || 'Cineva';
+  const v = `„${e.versionTitle || 'o versiune'}”`;
+  switch (e.action) {
+    case 'note_added': return `${who} a lăsat o observație la ${v}`;
+    case 'version_text': return `${who} a editat ${v}`;
+    case 'original_text': return `${who} a editat originalul`;
+    case 'version_added': return `${who} a adăugat ${v}`;
+    case 'status': return `${who} a marcat melodia ca „${STATUS_LABELS[e.status] || e.status}”`;
+    case 'working': return e.working ? `${who} lucrează acum la ea` : null;
+    default: return null;
+  }
+}
+
+exports.notifySongActivity = onDocumentCreated(
+  { document: 'groups/{groupId}/activity/{entryId}', region: REGION },
   async (event) => {
-    const note = event.data && event.data.data();
-    if (!note) return;
-    const { songId, versionId } = event.params;
-    const db = admin.firestore();
-    const songRef = db.collection('songs').doc(songId);
-    const [songSnap, versionSnap] = await Promise.all([songRef.get(), songRef.collection('versions').doc(versionId).get()]);
-    if (!songSnap.exists) return;
-    const song = songSnap.data();
-    if (song.shared === false) return;
-
-    const recipients = (Array.isArray(song.workers) ? song.workers : []).filter(uid => uid && uid !== note.by);
-    // What each run did, for when a notification someone expected never
-    // came: `firebase functions:log --only notifyObservation`.
-    const where = { songId, versionId, by: note.by, workers: song.workers || [] };
-    if (!recipients.length) { logger.info('Nobody to notify', where); return; }
-
-    // [{ uid, ref, token }] for every device of every recipient.
-    const devices = (await Promise.all(recipients.map(uid =>
-      db.collection('users').doc(uid).collection('devices').get()
-        .then(snap => snap.docs.map(d => ({ ref: d.ref, token: d.data().token || d.id })))
-    ))).flat();
-    if (!devices.length) { logger.info('No devices for', { ...where, recipients }); return; }
-
-    const versionTitle = (versionSnap.exists && versionSnap.data().title) || 'o versiune';
-    const text = String(note.text || '').replace(/\s+/g, ' ').trim();
-    const body = `${note.byName || 'Cineva'} la „${versionTitle}”: ` + (text.length > 160 ? text.slice(0, 159) + '…' : text);
-
-    const res = await admin.messaging().sendEachForMulticast({
-      tokens: devices.map(d => d.token),
-      data: { title: song.title || 'Fără titlu', body, songId, versionId },
-      webpush: { headers: { Urgency: 'high', TTL: String(3 * 24 * 3600) } }
-    });
-    logger.info('Sent', { ...where, recipients, devices: devices.map(d => d.ref.path.split('/')[1]),
-      sent: res.successCount, failed: res.responses.filter(r => !r.success).map(r => r.error && r.error.code) });
-    await Promise.all(res.responses.map((r, i) =>
-      !r.success && r.error && DEAD_TOKEN.has(r.error.code) ? devices[i].ref.delete().catch(() => {}) : null
-    ));
+    const e = event.data && event.data.data();
+    const body = e && e.songId && _describe(e);
+    if (!body) return;
+    const song = await _song(e.songId);
+    if (!song) return;
+    const where = { kind: e.action, songId: e.songId, by: e.by, workers: song.workers || [] };
+    let recipients = _recipients(song, e.by);
+    const text = e.action === 'version_text' || e.action === 'original_text';
+    if (text) recipients = await _dueForText(e.songId, recipients, Date.now());
+    const data = { title: song.title || e.songTitle || 'Fără titlu', body, songId: e.songId,
+      tag: `${text ? 'text' : e.action}:${e.songId}` };
+    if (e.action === 'note_added' && e.versionId) {
+      const said = await _noteText(e).catch(() => '');
+      if (said) data.body = `${e.byName || 'Cineva'} la „${e.versionTitle || 'o versiune'}”: ${said}`;
+      data.versionId = e.versionId;
+      data.tag = `notes:${e.songId}:${e.versionId}`;
+    }
+    await _send(where, recipients, data);
   }
 );

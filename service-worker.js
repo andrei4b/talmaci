@@ -28,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v127';
+const CACHE_NAME = 'talmaci-shell-v128';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -209,13 +209,14 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-/* Notifications — an observation left on a version of a song this member
- * is working on (see js/push.js and notifyObservation in
- * functions/index.js). Firebase Cloud Messaging delivers them as data
- * only, { data: {...} }, and they are shown here. Every push is shown:
- * Safari takes the permission away from a site whose pushes show nothing.
- * One notification per version, so a run of observations on it replaces
- * the last one rather than piling up. */
+/* Notifications — about a song this member is working on: an observation
+ * left, its text edited, a version added, its status changed, someone
+ * joining (see js/push.js and functions/index.js). Firebase Cloud
+ * Messaging delivers them as data only, { data: {...} }, and they are
+ * shown here. Every push is shown: Safari takes the permission away from
+ * a site whose pushes show nothing. The sender's tag makes a new one of
+ * the same kind replace the last rather than pile up; an observation's
+ * carries its versionId, and tapping it opens that version's. */
 self.addEventListener('push', (event) => {
   let d = {};
   try { d = (event.data && event.data.json() || {}).data || {}; } catch (_) {}
@@ -223,9 +224,11 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, {
     body: d.body || 'O observație nouă.',
     icon: './icons/icon-192.png',
-    tag: d.songId && d.versionId ? `notes:${d.songId}:${d.versionId}` : undefined,
-    renotify: !!(d.songId && d.versionId),
-    data: { hash: d.songId ? `#/song/${encodeURIComponent(d.songId)}/notes/${encodeURIComponent(d.versionId || '')}` : '#/' }
+    tag: d.tag || undefined,
+    renotify: !!d.tag,
+    data: { hash: !d.songId ? '#/'
+      : d.versionId ? `#/song/${encodeURIComponent(d.songId)}/notes/${encodeURIComponent(d.versionId)}`
+      : `#/song/${encodeURIComponent(d.songId)}` }
   }));
 });
 

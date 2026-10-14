@@ -1,5 +1,6 @@
-/* push.js — notifications on this device when someone leaves an
- * observation on a version of a song you are working on.
+/* push.js — notifications on this device about the songs you are working
+ * on: an observation left, the text edited, a version added, the status
+ * changed, someone joining (see functions/index.js for what is sent).
  *
  * Turned on per device, from the account menu: the browser asks for
  * permission, Firebase Cloud Messaging gives this device a token, and the
@@ -7,8 +8,9 @@
  *   { token, at: number (ms) }
  * The token is the document's id too, so a device that turns them on again
  * writes the same document rather than a second one. The sending is done
- * by a Cloud Function (notifyObservation in functions/index.js), which
- * looks these up for everyone on the song's `workers` but the author.
+ * by a Cloud Function (notifySongActivity in functions/index.js), which
+ * looks these up for everyone on the song's `workers` but whoever made the
+ * change.
  *
  * The messages carry data only, and the app's own service worker shows
  * them (see its 'push' handler) — there is no firebase-messaging-sw.js.
@@ -191,10 +193,10 @@ function offer() {
         }, ['Activează'])
       ];
   overlay.appendChild(el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Vrei să afli când cineva lasă o observație?']),
+    el('h2', { class: 'sheet__title' }, ['Vrei să afli ce se schimbă la melodiile tale?']),
     el('p', { class: 'sheet__text' }, [install
       ? 'Pe iPhone, notificările merg doar din aplicația adăugată pe ecranul principal: Partajează → Adaugă pe ecranul principal. Apoi le pornești din meniul contului.'
-      : 'Îți trimitem o notificare când cineva lasă o observație la o melodie la care lucrezi. Le poți opri oricând din meniul contului.']),
+      : 'Îți trimitem o notificare când, la o melodie la care lucrezi, cineva lasă o observație, adaugă o versiune, schimbă starea, i se alătură sau editează textul (editările, cel mult o dată pe oră). Le poți opri oricând din meniul contului.']),
     el('div', { class: 'sheet__actions' }, actions)
   ]));
   openSheet(overlay);

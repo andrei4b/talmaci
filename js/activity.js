@@ -15,6 +15,10 @@
  *     songTitle: string,    // the title at the time, so an entry for a
  *                           // since-deleted or renamed song still reads
  *     versionTitle?: string,
+ *     versionId?: string,   // for 'note_added', with noteId: which
+ *     noteId?: string,      // observation, so its notification can carry
+ *                           // the text (see functions/index.js); absent
+ *                           // on entries before release 128
  *     status?: string,      // for 'status'
  *     working?: boolean,    // for 'working'
  *     fields?: string[],    // for 'song_edited': which details changed
