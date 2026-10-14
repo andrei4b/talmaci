@@ -230,11 +230,18 @@ async function _noteText(e) {
   return text.length > 160 ? text.slice(0, 159) + '…' : text;
 }
 
+// The author as the app shows a member beside a song (Auth.shortName in
+// js/auth.js): the first name. byName is their whole name, or the part of
+// their email before the @ when they have none, which is kept as it is.
+function _firstName(e) {
+  return String(e.byName || '').trim().split(/\s+/)[0] || 'Cineva';
+}
+
 /* What each logged action says, or null for those that do not notify. An
  * observation's entry names the observation from release 128 on, and its
  * text is added to it then; one from an older release says only where. */
 function _describe(e) {
-  const who = e.byName || 'Cineva';
+  const who = _firstName(e);
   const v = `„${e.versionTitle || 'o versiune'}”`;
   switch (e.action) {
     case 'note_added': return `${who} a lăsat o observație la ${v}`;
@@ -263,7 +270,7 @@ exports.notifySongActivity = onDocumentCreated(
       tag: `${text ? 'text' : e.action}:${e.songId}` };
     if (e.action === 'note_added' && e.versionId) {
       const said = await _noteText(e).catch(() => '');
-      if (said) data.body = `${e.byName || 'Cineva'} la „${e.versionTitle || 'o versiune'}”: ${said}`;
+      if (said) data.body = `${_firstName(e)} la „${e.versionTitle || 'o versiune'}”: ${said}`;
       data.versionId = e.versionId;
       data.tag = `notes:${e.songId}:${e.versionId}`;
     }
