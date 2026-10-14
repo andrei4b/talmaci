@@ -19,6 +19,9 @@
  *     noteId?: string,      // observation, so its notification can carry
  *                           // the text (see functions/index.js); absent
  *                           // on entries before release 128
+ *     section?: string,     // for 'note_added' on a verse: its name
+ *     reply?: boolean,      // for 'note_added' answering another, with
+ *     threadId?: string,    // the thread's first observation (release 133)
  *     status?: string,      // for 'status'
  *     working?: boolean,    // for 'working'
  *     fields?: string[],    // for 'song_edited': which details changed
@@ -152,8 +155,9 @@ const DESCRIBE = {
     return { before: `${a} șters ${v} din`, own: `${a} șters ${v}` };
   },
   note_added: (e, a) => {
-    const v = `„${e.versionTitle || 'o versiune'}”`;
-    return { before: `${a} lăsat o observație la ${v} din`, own: `${a} lăsat o observație la ${v}` };
+    const v = `„${e.versionTitle || 'o versiune'}”` + (e.section ? ` (${e.section})` : '');
+    const what = e.reply ? `${a} răspuns la o observație la ${v}` : `${a} lăsat o observație la ${v}`;
+    return { before: `${what} din`, own: what };
   },
   status: (e, a) => {
     const v = `ca „${statusLabel(e.status)}”`;

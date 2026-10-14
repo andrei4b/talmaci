@@ -32,6 +32,9 @@ const LOOKUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 // A speech bubble — the team's observations on a version.
 const NOTES_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H10l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 8.5h10M7 12.5h6"/></svg>`;
 
+// A heart — given to an observation; filled once it is yours.
+const HEART_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.5s-7.5-4.6-9.6-9.3A5.2 5.2 0 0 1 12 6.6a5.2 5.2 0 0 1 9.6 4.6c-2.1 4.7-9.6 9.3-9.6 9.3z"/></svg>`;
+
 // The sections offered when marking one, in the order a song usually runs.
 // Strofa is left out: it is offered numbered, as the next one due.
 const SECTION_CHOICES = ['Pre-refren', 'Refren', 'Bridge', 'Intro', 'Interludiu', 'Final'];
@@ -302,17 +305,39 @@ async function _loadNotes() {
   } catch (_) { /* no dots, and the sheet fetches its own */ }
 }
 
-// Someone else's observation left since you last read the version's.
-function _hasUnread(versionId) {
+/* A version's observations as threads (see threads.js), each found in the
+ * version's text as it reads now: `loc` is where its verse is, or null for
+ * a thread on the whole version. */
+function _threadsOf(version) {
+  const text = version.text || '';
+  return window.Threads.group(_notes.get(version.id) || []).map(t => {
+    t.loc = t.anchor ? window.Threads.locate(text, t.anchor) : null;
+    return t;
+  });
+}
+
+// When you last read a thread: all of its version's at once, or that one
+// on its own, from its verse — whichever was later.
+function _seenAt(seen, versionId, threadId) {
+  return Math.max(seen[versionId] || 0, seen[versionId + ':' + threadId] || 0);
+}
+
+// Someone else's observation in a thread since you last read it.
+function _threadUnread(versionId, t, seen) {
   const me = window.Auth.currentUser().uid;
-  const seen = _seen[versionId] || 0;
-  return (_notes.get(versionId) || []).some(n => n.by !== me && n.at > seen);
+  const at = _seenAt(seen || _seen, versionId, t.id);
+  return t.notes.some(n => n.by !== me && n.at > at);
+}
+
+function _hasUnread(versionId) {
+  return window.Threads.group(_notes.get(versionId) || []).some(t => _threadUnread(versionId, t));
 }
 
 function _syncNoteDots() {
   document.querySelectorAll('.notes-btn[data-version]').forEach(b => {
     b.classList.toggle('notes-btn--unread', _hasUnread(b.dataset.version));
   });
+  _syncVerseNotes();
 }
 
 /* The button that opens a version's observations: in the row under the
@@ -336,13 +361,57 @@ function _headRow(head, version) {
   return el('div', { class: 'text-tab__headrow' }, [head, _notesButton(version, true)]);
 }
 
-function _markNotesSeen(versionId) {
+/* The verse view's button on each verse of a version, for the
+ * observations on that verse: faint while there are none, with the number
+ * still open once there are, and the dot while any are unread. What each
+ * shows is worked out again from the version's text whenever the
+ * observations change, and soon after the text does. */
+let _verseNoteButtons = [];
+
+function _verseNotesButton(version, index) {
+  const btn = el('button', {
+    class: 'verse-notes',
+    'aria-label': 'Observații la strofă',
+    title: 'Observații la strofă',
+    html: NOTES_ICON,
+    onmousedown: (e) => e.preventDefault(),
+    onclick: () => _openNotes(version, index)
+  });
+  btn.appendChild(el('span', { class: 'verse-notes__count' }));
+  btn._version = version;
+  btn._index = index;
+  _verseNoteButtons.push(btn);
+  return btn;
+}
+
+function _syncVerseNotes() {
+  _verseNoteButtons = _verseNoteButtons.filter(b => b.isConnected);
+  const threads = new Map();
+  _verseNoteButtons.forEach(b => {
+    const v = b._version;
+    if (!threads.has(v.id)) threads.set(v.id, _threadsOf(v));
+    const here = threads.get(v.id).filter(t => t.loc && t.loc.at.includes(b._index));
+    const open = here.filter(t => !t.resolved).length;
+    b.classList.toggle('verse-notes--some', open > 0);
+    b.classList.toggle('verse-notes--unread', here.some(t => _threadUnread(v.id, t)));
+    b.lastChild.textContent = open ? String(open) : '';
+  });
+}
+const _syncVerseNotesSoon = debounce(_syncVerseNotes, 500);
+
+/* Marks a version's observations read — all of them, or only the threads
+ * named, read from their verse. */
+function _markNotesSeen(versionId, threadIds) {
   const list = _notes.get(versionId) || [];
   // Never behind the newest one, in case its writer's clock runs ahead.
   const at = Math.max(Date.now(), ...list.map(n => n.at));
-  _seen[versionId] = at;
+  const patch = {};
+  if (threadIds) threadIds.forEach(id => { patch[versionId + ':' + id] = at; });
+  else patch[versionId] = at;
+  if (!Object.keys(patch).length) return;
+  Object.assign(_seen, patch);
   _syncNoteDots();
-  window.Db.markSeen(window.Auth.currentUser().uid, _song.id, versionId, at).catch(() => {});
+  window.Db.markSeen(window.Auth.currentUser().uid, _song.id, patch).catch(() => {});
 }
 
 // uid -> short name of everyone in the group, as far as is known yet.
@@ -350,90 +419,284 @@ function _memberNames(members) {
   return new Map((members || window.Auth.knownMembers()).map(m => [m.uid, window.Auth.shortName(m)]));
 }
 
-function _openNotes(version) {
+// The start of an observation, for a line that only reminds of it.
+function _excerpt(text, max) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
+}
+
+// "1 mesaj", "3 mesaje", "20 de mesaje".
+function _messages(n) {
+  if (n === 1) return '1 mesaj';
+  return n % 100 === 0 || n % 100 >= 20 ? `${n} de mesaje` : `${n} mesaje`;
+}
+
+/* A version's observations — or, with `verseIndex`, those on one of its
+ * verses, and room to leave one there. Each is a thread: the observation,
+ * the replies to it, and whether it has been dealt with; a thread dealt
+ * with is folded to one line. On the whole version, a thread on a verse
+ * names it, and says when the verse has changed since or is no longer in
+ * the text, with the words it was left on to compare. */
+function _openNotes(version, verseIndex) {
   const song = _song;
   const me = window.Auth.currentUser().uid;
+  const onVerse = verseIndex != null;
+  // What a new observation here remembers of its verse, as it reads now.
+  const anchorNow = () => onVerse ? window.Threads.anchorFor(version.text || '', verseIndex) : null;
+  const verseAnchor = anchorNow();
+  // What had been read before this opened, so what is new stays marked
+  // while the sheet is up.
+  const seenBefore = { ..._seen };
+
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const list = el('ul', { class: 'note-list' });
+  const placeholder = onVerse ? 'O observație despre această strofă…' : 'O observație pentru echipă…';
   const input = el('textarea', {
     class: 'field__input note-input',
     rows: 3,
     maxlength: 4000,
-    placeholder: 'O observație pentru echipă…'
+    placeholder
   });
   const addBtn = el('button', { class: 'btn btn--primary' }, ['Adaugă']);
+  const replyBar = el('div', { class: 'note-reply-to' });
+  replyBar.hidden = true;
   // Current names from the start: the name stored with a note is its
   // author's when it was written, and drawing that first showed an old
   // name for a moment whenever the author had changed theirs since.
   let names = _memberNames();
+  // The thread being answered, if any; the folded threads opened to read;
+  // the threads showing the words they were left on.
+  let replyTo = null;
+  const unfolded = new Set();
+  const quoted = new Set();
 
+  const whoOf = (n) => n.by === me ? 'Tu' : (names.get(n.by) || window.Auth.shortName({ displayName: n.byName }));
   // Its author, an admin, or whoever may delete the version or the song.
   const canDelete = (n) => n.by === me || window.Auth.isAdmin()
     || version.createdBy === me || song.createdBy === me;
 
+  function shown() {
+    const all = _threadsOf(version);
+    return onVerse ? all.filter(t => t.loc && t.loc.at.includes(verseIndex)) : all;
+  }
+
+  function noteItem(n, t, isReply) {
+    // Two taps to delete: the first only asks.
+    const del = canDelete(n) ? el('button', {
+      class: 'note__delete',
+      'aria-label': 'Șterge observația',
+      title: 'Șterge',
+      html: ROW_ICONS.delete,
+      onclick: async () => {
+        if (!del.classList.contains('note__delete--confirm')) {
+          del.classList.add('note__delete--confirm');
+          del.textContent = 'Șterge';
+          return;
+        }
+        del.disabled = true;
+        try {
+          await window.Db.deleteNote(song.id, version.id, n.id);
+          _notes.set(version.id, (_notes.get(version.id) || []).filter(x => x.id !== n.id));
+          draw();
+          _syncNoteDots();
+        } catch (err) {
+          del.disabled = false;
+          toast(failText('Nu am putut șterge observația', err), { kind: 'error' });
+        }
+      }
+    }) : null;
+    const fresh = n.by !== me && n.at > _seenAt(seenBefore, version.id, t.id);
+    return el('div', { class: 'note' + (isReply ? ' note--reply' : '') + (fresh ? ' note--new' : '') }, [
+      el('div', { class: 'note__meta' }, [
+        el('strong', {}, [whoOf(n)]),
+        el('time', {
+          class: 'note__when',
+          datetime: new Date(n.at).toISOString(),
+          title: new Date(n.at).toLocaleString('ro-RO')
+        }, [window.Activity.formatWhen(n.at, Date.now())]),
+        heartButton(n),
+        del
+      ]),
+      el('div', { class: 'note__text' }, [n.text])
+    ]);
+  }
+
+  /* The heart on an observation: yours given or not, and how many there
+   * are, with who gave them on hover. Changed on screen straight away and
+   * put back should the save fail. */
+  function heartButton(n) {
+    const btn = el('button', { class: 'note__heart' });
+    const paint = () => {
+      const hearts = n.hearts || [];
+      const mine = hearts.includes(me);
+      btn.classList.toggle('note__heart--mine', mine);
+      btn.setAttribute('aria-pressed', mine ? 'true' : 'false');
+      btn.setAttribute('aria-label', mine ? 'Retrage inima' : 'Dă o inimă');
+      btn.title = hearts.length
+        ? hearts.map(uid => uid === me ? 'Tu' : (names.get(uid) || 'Cineva')).join(', ')
+        : 'Dă o inimă';
+      btn.innerHTML = HEART_ICON;
+      if (hearts.length) btn.appendChild(el('span', { class: 'note__hearts' }, [String(hearts.length)]));
+    };
+    btn.onclick = async () => {
+      const before = n.hearts || [];
+      const on = !before.includes(me);
+      n.hearts = on ? [...before, me] : before.filter(uid => uid !== me);
+      paint();
+      try {
+        await window.Db.setNoteHeart(song.id, version.id, n.id, me, on);
+      } catch (err) {
+        n.hearts = before;
+        if (btn.isConnected) paint();
+        toast(failText('Nu am putut salva inima', err), { kind: 'error' });
+      }
+    };
+    paint();
+    return btn;
+  }
+
+  // Where a thread on a verse is, above it: the verse's name on the whole
+  // version, and on either, whether the verse has changed since.
+  function whereItem(t, li) {
+    const state = !t.loc.at.length ? 'Nu mai e în text'
+      : t.loc.changed ? 'S-a schimbat între timp' : '';
+    if (onVerse && !state) return;
+    const showing = quoted.has(t.id);
+    li.appendChild(el('div', { class: 'thread__where' }, [
+      onVerse ? null : el('span', { class: 'thread__section' }, [window.Threads.label(t.anchor)]),
+      state ? el('span', { class: 'thread__state' }, [state]) : null,
+      el('button', {
+        class: 'thread__link',
+        onclick: () => { if (showing) quoted.delete(t.id); else quoted.add(t.id); draw(); }
+      }, [showing ? 'Ascunde textul' : state ? 'Textul de atunci' : 'Textul strofei'])
+    ]));
+    if (showing) li.appendChild(el('blockquote', { class: 'thread__quote' }, [t.anchor.quote]));
+  }
+
+  function threadItem(t) {
+    const folded = t.resolved && !unfolded.has(t.id);
+    const li = el('li', { class: 'thread' + (t.resolved ? ' thread--resolved' : '') });
+    if (t.anchor) whereItem(t, li);
+    if (folded) {
+      const first = t.notes[0];
+      li.appendChild(el('button', {
+        class: 'thread__folded',
+        onclick: () => { unfolded.add(t.id); draw(); }
+      }, [
+        el('span', { class: 'thread__done' }, ['Rezolvat']),
+        el('span', { class: 'thread__gist' }, [whoOf(first) + ': ' + _excerpt(first.text, 60)]),
+        el('span', { class: 'thread__count' }, [_messages(t.notes.length)])
+      ]));
+      return li;
+    }
+    if (t.resolved) {
+      const by = t.root.resolvedBy === me ? 'tine' : (names.get(t.root.resolvedBy) || 'cineva');
+      li.appendChild(el('div', { class: 'thread__where' }, [
+        el('span', { class: 'thread__done' }, [`Rezolvat de ${by}`])
+      ]));
+    }
+    if (!t.root) li.appendChild(el('div', { class: 'note note--gone' }, ['Observația a fost ștearsă.']));
+    t.notes.forEach(n => li.appendChild(noteItem(n, t, n !== t.root)));
+    li.appendChild(el('div', { class: 'thread__actions' }, [
+      el('button', { class: 'thread__link', onclick: () => startReply(t) }, ['Răspunde']),
+      t.root ? el('button', { class: 'thread__link', onclick: () => resolve(t, !t.resolved) },
+        [t.resolved ? 'Redeschide' : 'Rezolvat']) : null,
+      t.resolved ? el('button', {
+        class: 'thread__link',
+        onclick: () => { unfolded.delete(t.id); draw(); }
+      }, ['Strânge']) : null
+    ]));
+    return li;
+  }
+
   function draw() {
-    const notes = _notes.get(version.id) || [];
+    const keep = list.scrollTop;
+    const threads = shown();
     list.innerHTML = '';
-    if (!notes.length) {
-      list.appendChild(el('li', { class: 'note-list__empty' }, ['Nicio observație încă.']));
+    if (!threads.length) {
+      list.appendChild(el('li', { class: 'note-list__empty' }, [
+        onVerse ? 'Nicio observație la această strofă.' : 'Nicio observație încă.'
+      ]));
       return;
     }
-    const now = Date.now();
-    notes.forEach(n => {
-      const who = n.by === me ? 'Tu' : (names.get(n.by) || window.Auth.shortName({ displayName: n.byName }));
-      // Two taps to delete: the first only asks.
-      const del = canDelete(n) ? el('button', {
-        class: 'note__delete',
-        'aria-label': 'Șterge observația',
-        title: 'Șterge',
-        html: ROW_ICONS.delete,
-        onclick: async () => {
-          if (!del.classList.contains('note__delete--confirm')) {
-            del.classList.add('note__delete--confirm');
-            del.textContent = 'Șterge';
-            return;
-          }
-          del.disabled = true;
-          try {
-            await window.Db.deleteNote(song.id, version.id, n.id);
-            _notes.set(version.id, (_notes.get(version.id) || []).filter(x => x.id !== n.id));
-            draw();
-          } catch (err) {
-            del.disabled = false;
-            toast(failText('Nu am putut șterge observația', err), { kind: 'error' });
-          }
-        }
-      }) : null;
-      list.appendChild(el('li', { class: 'note' }, [
-        el('div', { class: 'note__meta' }, [
-          el('strong', {}, [who]),
-          el('time', {
-            class: 'note__when',
-            datetime: new Date(n.at).toISOString(),
-            title: new Date(n.at).toLocaleString('ro-RO')
-          }, [window.Activity.formatWhen(n.at, now)]),
-          del
-        ]),
-        el('div', { class: 'note__text' }, [n.text])
-      ]));
-    });
+    threads.forEach(t => list.appendChild(threadItem(t)));
+    list.scrollTop = keep;
+  }
+
+  function markSeen() {
+    if (onVerse) _markNotesSeen(version.id, shown().map(t => t.id));
+    else _markNotesSeen(version.id);
+  }
+
+  function startReply(t) {
+    replyTo = t;
+    const first = t.notes[0];
+    replyBar.innerHTML = '';
+    replyBar.append(
+      el('span', { class: 'note-reply-to__text' }, [
+        'Răspuns pentru ', el('strong', {}, [whoOf(first)]), ': ' + _excerpt(first.text, 50)
+      ]),
+      el('button', {
+        class: 'note-reply-to__close',
+        'aria-label': 'Renunță la răspuns',
+        title: 'Renunță',
+        onmousedown: (e) => e.preventDefault(),
+        onclick: cancelReply
+      }, ['×'])
+    );
+    replyBar.hidden = false;
+    input.placeholder = 'Răspunsul tău…';
+    input.focus();
+  }
+
+  function cancelReply() {
+    replyTo = null;
+    replyBar.hidden = true;
+    input.placeholder = placeholder;
+  }
+
+  async function resolve(t, value) {
+    try {
+      Object.assign(t.root, await window.Db.setNoteResolved(song.id, version.id, t.root.id, value, me));
+      if (value) unfolded.delete(t.id);
+      draw();
+      _syncNoteDots();
+    } catch (err) {
+      toast(failText(value ? 'Nu am putut marca observația ca rezolvată' : 'Nu am putut redeschide observația', err),
+        { kind: 'error' });
+    }
   }
 
   async function add() {
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
     const user = window.Auth.currentUser();
+    const thread = replyTo;
+    // A reply carries its thread's anchor too, so the thread keeps its
+    // verse should its first observation be deleted.
+    const anchor = thread ? thread.anchor : anchorNow();
     addBtn.disabled = true;
     try {
       const note = await window.Db.addNote(song.id, version.id, {
-        text, by: user.uid, byName: user.displayName || (user.email || '').split('@')[0] || ''
+        text, by: user.uid, byName: user.displayName || (user.email || '').split('@')[0] || '',
+        anchor, parentId: thread ? thread.id : null
       });
       _notes.set(version.id, [...(_notes.get(version.id) || []), note]);
-      window.Activity.log(song, 'note_added', { versionTitle: version.title || '', versionId: version.id, noteId: note.id });
+      const extra = { versionTitle: version.title || '', versionId: version.id, noteId: note.id };
+      if (anchor) extra.section = window.Threads.label(anchor);
+      if (thread) { extra.reply = true; extra.threadId = thread.id; }
+      window.Activity.log(song, 'note_added', extra);
+      // Answering a thread that was done opens it again.
+      if (thread && thread.resolved) {
+        window.Db.setNoteResolved(song.id, version.id, thread.root.id, false, user.uid)
+          .then(patch => { Object.assign(thread.root, patch); draw(); _syncNoteDots(); })
+          .catch(() => {});
+      }
       input.value = '';
+      cancelReply();
       draw();
-      _markNotesSeen(version.id);
-      list.lastChild.scrollIntoView({ block: 'nearest' });
+      markSeen();
+      list.scrollTop = list.scrollHeight;
     } catch (err) {
       toast(failText('Nu am putut adăuga observația', err), { kind: 'error' });
     }
@@ -443,14 +706,28 @@ function _openNotes(version) {
   // Enter is a new line; Ctrl/Cmd+Enter sends.
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); add(); }
+    if (e.key === 'Escape' && replyTo) { e.preventDefault(); e.stopPropagation(); cancelReply(); }
   });
+
+  // A verse without a mark is found again by its words and its place
+  // alone; a mark lets its observations follow it through any rewrite.
+  const hint = onVerse && !verseAnchor.key && _canEditVersion(version)
+    ? el('p', { class: 'sheet__text note-hint' }, [
+        'Strofa nu are marcaj. Marcheaz-o ([Refren], [Strofa 2]…) ca observațiile să o urmeze și după ce textul se schimbă.'
+      ])
+    : null;
 
   overlay.appendChild(el('div', { class: 'sheet sheet--notes' }, [
     el('h2', { class: 'sheet__title sheet__title--row' }, [
       el('span', {}, ['Observații']),
       el('span', { class: 'sheet__title-accent' }, [version.title || 'Fără titlu'])
     ]),
+    onVerse ? el('div', { class: 'thread__where note-verse' }, [
+      'La', el('span', { class: 'thread__section' }, [window.Threads.label(verseAnchor)])
+    ]) : null,
+    hint,
     list,
+    replyBar,
     input,
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Închide']),
@@ -461,14 +738,16 @@ function _openNotes(version) {
   openSheet(overlay);
   list.scrollTop = list.scrollHeight;
   // The keyboard shrinks the list, not the field: keep its newest notes,
-  // the ones just above the field, in sight as it does.
+  // the ones just above the field, in sight as it does — unless a reply
+  // was started further up, which should stay where it is.
   input.addEventListener('focus', () => {
+    if (replyTo) return;
     const toBottom = () => { list.scrollTop = list.scrollHeight; };
     toBottom();
     setTimeout(toBottom, 300);
   });
   if (WIDE.matches) input.focus();
-  _markNotesSeen(version.id);
+  markSeen();
 
   // What was loaded with the song may be behind: fetch this version's
   // again, and the names to put on them.
@@ -477,7 +756,7 @@ function _openNotes(version) {
       if (_song !== song) return;
       names = _memberNames(members);
       _notes.set(version.id, notes);
-      if (overlay.isConnected) { draw(); _markNotesSeen(version.id); }
+      if (overlay.isConnected) { draw(); markSeen(); }
       else _syncNoteDots();
     })
     .catch(() => {});
@@ -873,19 +1152,7 @@ function _sectionChoices(text, lineStart, typed, inOriginal) {
  * in the text, so an edit to one can be put back in place without
  * touching the blank lines around it. */
 function _verses(text) {
-  const out = [];
-  let pos = 0, cur = null;
-  for (const line of String(text || '').split('\n')) {
-    const end = pos + line.length;
-    if (line.trim()) {
-      if (cur) cur.end = end;
-      else { cur = { start: pos, end }; out.push(cur); }
-    } else {
-      cur = null;
-    }
-    pos = end + 1;
-  }
-  return out;
+  return window.Threads.verses(text);
 }
 
 // The section a verse opens with, by its Romanian name, if it is marked.
@@ -1452,7 +1719,10 @@ function _linkColumns(panes) {
  * Pairing by position goes wrong from the first verse one side has and the
  * other does not — typically a chorus written out again on one side only.
  * That is shown rather than guessed at: a count of the sides when they
- * differ, and a note on any row whose section marks disagree. */
+ * differ, and a note on any row whose section marks disagree.
+ *
+ * On a shared song each verse a version has written takes observations of
+ * its own, from the button in its corner (see _verseNotesButton). */
 function _renderVersesView(ctx) {
   // One side of the rows: the original or a version. `spans` are the live
   // positions of its verses in its text, shifted as edits change their
@@ -1564,6 +1834,7 @@ function _renderVersesView(ctx) {
       s.doc.typed(write(s, i, ta.value));
       _fitHeight(ta);
       strip();
+      if (!s.inOriginal) _syncVerseNotesSoon();
     });
     ta.addEventListener('focus', () => {
       // The lookup reads from any side: the original's words go to the
@@ -1583,9 +1854,12 @@ function _renderVersesView(ctx) {
 
     s.boxes[i] = ta;
     mounted.push(() => { _fitHeight(ta); repaint = _attachMirror(ta, mirror); });
+    // A version's verse, written already, takes observations of its own.
+    const notesOn = !s.inOriginal && i < s.spans.length && _hasNotes() ? (s.version || _activeVersion()) : null;
     return el('div', {
       class: 'editor verse__editor' + (s.inOriginal ? ' editor--source verse__editor--source' : '')
-    }, [mirror, ta]);
+        + (notesOn ? ' verse__editor--notes' : '')
+    }, [mirror, ta, notesOn ? _verseNotesButton(notesOn, i) : null]);
   }
 
   // In the grid every cell is set in its own column, an empty one too, so
@@ -1676,6 +1950,7 @@ function _renderVersesView(ctx) {
     const keep = wrap.scrollTop;
     draw().forEach(f => f());
     wrap.scrollTop = keep;
+    _syncVerseNotes();
   };
   ctx.setShowHistory(redraw);
   ctx.original.showHistory = redraw;
@@ -1688,6 +1963,7 @@ function _renderVersesView(ctx) {
       pending.forEach(f => f());
       void wrap.offsetHeight;
       wrap.scrollTop = _versesScrollTop;
+      _syncVerseNotes();
     }
   };
 }

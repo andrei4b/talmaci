@@ -68,19 +68,30 @@
  *     updatedAt: number (ms)
  *   }
  *
- * Each version of a shared song has the team's observations on it, plain
- * notes in the order they were left:
+ * Each version of a shared song has the team's observations on it, in the
+ * order they were left — on the whole version, or on one of its verses —
+ * and the replies to them, which make each a thread (see threads.js):
  *   songs/{songId}/versions/{versionId}/notes/{noteId}
  *   {
  *     text: string,
  *     by: uid,
  *     byName: string,            // the author's name when it was written
- *     at: number (ms)
+ *     at: number (ms),
+ *     anchor?: {                 // on a verse: what it was left on, to
+ *       key, name, nth, pos,     // find the verse again after edits —
+ *       quote                    // see Threads.anchorFor; replies carry
+ *     },                         // their thread's too
+ *     parentId?: string,         // a reply: the observation it answers
+ *     resolved?: boolean,        // a thread's first observation only:
+ *     resolvedBy?: uid,          // marked done, and by whom, when
+ *     resolvedAt?: number (ms),
+ *     hearts?: uid[]             // who has given it a heart
  *   }
  * and each member's own record of when they last read a song's, so the
- * button can mark what is new to them on any device:
+ * button can mark what is new to them on any device — a version's as a
+ * whole, or one thread's, read on its own from its verse:
  *   users/{uid}/seen/{songId}
- *   { [versionId]: number (ms) }
+ *   { [versionId]: number (ms), [versionId + ':' + threadId]: number (ms) }
  *
  * The Rime/Sinonime/Biblie tabs have no persisted fields yet — their data
  * model will be added once that functionality is specified. */
@@ -274,8 +285,10 @@ async function listNotes(songId, versionId) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.at - b.at);
 }
 
-async function addNote(songId, versionId, { text, by, byName }) {
+async function addNote(songId, versionId, { text, by, byName, anchor, parentId }) {
   const note = { text, by, byName: byName || '', at: Date.now() };
+  if (anchor) note.anchor = anchor;
+  if (parentId) note.parentId = parentId;
   const ref = await _notesRef(songId, versionId).add(note);
   return { id: ref.id, ...note };
 }
@@ -284,18 +297,33 @@ async function deleteNote(songId, versionId, noteId) {
   await _notesRef(songId, versionId).doc(noteId).delete();
 }
 
+// Gives an observation your heart, or takes it back.
+async function setNoteHeart(songId, versionId, noteId, uid, on) {
+  const FV = firebase.firestore.FieldValue;
+  await _notesRef(songId, versionId).doc(noteId).update({ hearts: on ? FV.arrayUnion(uid) : FV.arrayRemove(uid) });
+}
+
+// Marks a thread done, or not any more — on its first observation.
+async function setNoteResolved(songId, versionId, noteId, resolved, by) {
+  const patch = { resolved, resolvedBy: by, resolvedAt: Date.now() };
+  await _notesRef(songId, versionId).doc(noteId).update(patch);
+  return patch;
+}
+
 function _seenRef(uid, songId) {
   return fs().collection('users').doc(uid).collection('seen').doc(songId);
 }
 
-// { versionId: ms } — when this member last read each version's notes.
+// { versionId: ms, 'versionId:threadId': ms } — when this member last
+// read each version's notes, and threads read on their own.
 async function getSeen(uid, songId) {
   const snap = await _get(_seenRef(uid, songId));
   return snap.exists ? snap.data() : {};
 }
 
-async function markSeen(uid, songId, versionId, at) {
-  await _seenRef(uid, songId).set({ [versionId]: at }, { merge: true });
+// `patch`: those of the same keys read now, with when.
+async function markSeen(uid, songId, patch) {
+  await _seenRef(uid, songId).set(patch, { merge: true });
 }
 
 // Every other write fails at once when there is no connection, rather
@@ -307,7 +335,7 @@ window.Db = {
   setVersionText, setOriginalText,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
-    addVersion, updateVersion, deleteVersion, addNote, deleteNote, markSeen
+    addVersion, updateVersion, deleteVersion, addNote, deleteNote, setNoteResolved, setNoteHeart, markSeen
   }).map(([name, fn]) => [name, _online(fn)]))
 };
 

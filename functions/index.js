@@ -27,7 +27,8 @@
  *
  * notifySongActivity: notifications to everyone
  * working on a song but whoever changed it — observations, text edits,
- * new versions, status changes, someone joining. See below.
+ * new versions, status changes, someone joining — and replies to an
+ * observation, to the others in its thread. See below.
  *
  * See README.md for the full walkthrough. */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
@@ -236,6 +237,26 @@ function _firstName(e) {
   return String(e.byName || '').trim().split(/\s+/)[0] || 'Cineva';
 }
 
+// Where an observation is: its version, and its verse when it is on one.
+function _noteWhere(e) {
+  return `„${e.versionTitle || 'o versiune'}”` + (e.section ? ` (${e.section})` : '');
+}
+
+/* A reply goes to the others in its thread — whoever left an observation
+ * in it — rather than to everyone working on the song. */
+async function _threadPeople(e) {
+  const notes = admin.firestore().collection('songs').doc(e.songId)
+    .collection('versions').doc(e.versionId).collection('notes');
+  const [first, replies] = await Promise.all([
+    notes.doc(e.threadId).get(),
+    notes.where('parentId', '==', e.threadId).get()
+  ]);
+  const people = new Set(replies.docs.map(d => d.data().by));
+  if (first.exists) people.add(first.data().by);
+  people.delete(e.by);
+  return [...people].filter(Boolean);
+}
+
 /* What each logged action says, or null for those that do not notify. An
  * observation's entry names the observation from release 128 on, and its
  * text is added to it then; one from an older release says only where. */
@@ -243,7 +264,9 @@ function _describe(e) {
   const who = _firstName(e);
   const v = `„${e.versionTitle || 'o versiune'}”`;
   switch (e.action) {
-    case 'note_added': return `${who} a lăsat o observație la ${v}`;
+    case 'note_added': return e.reply
+      ? `${who} a răspuns la o observație la ${_noteWhere(e)}`
+      : `${who} a lăsat o observație la ${_noteWhere(e)}`;
     case 'version_text': return `${who} a editat ${v}`;
     case 'original_text': return `${who} a editat originalul`;
     case 'version_added': return `${who} a adăugat ${v}`;
@@ -262,7 +285,8 @@ exports.notifySongActivity = onDocumentCreated(
     const song = await _song(e.songId);
     if (!song) return;
     const where = { kind: e.action, songId: e.songId, by: e.by, workers: song.workers || [] };
-    let recipients = _recipients(song, e.by);
+    const reply = e.action === 'note_added' && e.reply && e.versionId && e.threadId;
+    let recipients = reply ? await _threadPeople(e) : _recipients(song, e.by);
     const text = e.action === 'version_text' || e.action === 'original_text';
     if (text) recipients = await _dueForText(e.songId, recipients, Date.now());
     // No tag, so none replaces another: on a Mac, Chrome swaps a tagged
@@ -270,7 +294,7 @@ exports.notifySongActivity = onDocumentCreated(
     const data = { title: song.title || e.songTitle || 'Fără titlu', body, songId: e.songId };
     if (e.action === 'note_added' && e.versionId) {
       const said = await _noteText(e).catch(() => '');
-      if (said) data.body = `${_firstName(e)} la „${e.versionTitle || 'o versiune'}”: ${said}`;
+      if (said) data.body = `${_firstName(e)}${e.reply ? ' a răspuns' : ''} la ${_noteWhere(e)}: ${said}`;
       data.versionId = e.versionId;
     }
     await _send(where, recipients, data);

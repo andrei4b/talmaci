@@ -15,8 +15,8 @@ rules_version = '2';
 //   /invites/{code}   { groupId, createdBy, createdAt }
 //   /songs/{songId}   { title, originalText, translatedText, groupId, shared, status, workers, versionOrder, demoUrl, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
-//   /songs/{songId}/versions/{versionId}/notes/{noteId} { text, by, byName, at }
-//   /users/{uid}/seen/{songId} { [versionId]: ms }
+//   /songs/{songId}/versions/{versionId}/notes/{noteId} { text, by, byName, at, anchor?, parentId?, resolved?, resolvedBy?, resolvedAt?, hearts? }
+//   /users/{uid}/seen/{songId} { [versionId]: ms, [versionId:threadId]: ms }
 //
 // Any group member can create a song, but editing (rename, original text)
 // or deleting one is limited to whoever created it, or an admin — same
@@ -229,9 +229,14 @@ service cloud.firestore {
         // The team's observations on a version. Any member reads them and,
         // on a shared song only — a personal one has no team to leave them —
         // adds them, in their own name. Reading is not limited the same way
-        // so that deleting a personal song's versions can still list them. Nobody edits one; its author or an
-        // admin deletes it — and so does whoever may delete the version or
-        // the song, which has to clear them out first (see db.js).
+        // so that deleting a personal song's versions can still list them.
+        // One may be on a verse (`anchor`) or answer another (`parentId`),
+        // which makes a thread. Nobody edits one's text; any member marks a
+        // thread done or not, on its first observation, and only that, and
+        // gives any one a heart or takes their own back — only their own. Its
+        // author or an admin deletes one — and so does whoever may delete
+        // the version or the song, which has to clear them out first (see
+        // db.js).
         match /notes/{noteId} {
           function parentVersion() {
             return get(/databases/$(database)/documents/songs/$(songId)/versions/$(versionId)).data;
@@ -242,8 +247,29 @@ service cloud.firestore {
             && request.resource.data.text is string
             && request.resource.data.text.size() > 0
             && request.resource.data.text.size() <= 4000
-            && request.resource.data.at is number;
-          allow update: if false;
+            && request.resource.data.at is number
+            && request.resource.data.get('parentId', '') is string
+            && request.resource.data.get('anchor', {}) is map
+            && request.resource.data.get('anchor', {}).get('quote', '') is string
+            && request.resource.data.get('anchor', {}).get('quote', '').size() <= 4000
+            && !('resolved' in request.resource.data)
+            && !('hearts' in request.resource.data);
+          function heartsChange() {
+            let before = resource.data.get('hearts', []).toSet();
+            let after = request.resource.data.get('hearts', []).toSet();
+            return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hearts'])
+              && request.resource.data.get('hearts', []) is list
+              && after.difference(before).hasOnly([request.auth.uid])
+              && before.difference(after).hasOnly([request.auth.uid]);
+          }
+          allow update: if isSignedIn() && canSeeParent() && isShared(parentSong())
+            && (heartsChange()
+                || (!('parentId' in resource.data)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['resolved', 'resolvedBy', 'resolvedAt'])
+                    && request.resource.data.resolved is bool
+                    && request.resource.data.resolvedBy == request.auth.uid
+                    && request.resource.data.resolvedAt is number));
           allow delete: if isSignedIn() && canSeeParent()
             && (resource.data.by == request.auth.uid
                 || isAdmin()
