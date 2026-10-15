@@ -1417,6 +1417,16 @@ button.text-tab__head { cursor: pointer; }
    even layered with .bible-verse--selected (both can apply at once). */
 .bible-verse--target .bible-verse__text { font-weight: 700; }
 
+/* The commentary link under the last verse: muted and small, like
+   .en__source, so it reads as a pointer away rather than as text. */
+.bible-commentary {
+  align-self: flex-start;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-decoration: underline;
+}
+
 /* The selection count replaces .topbar__title while selecting — a
    contextual action-bar label, not a page heading, so it stays in the
    body font rather than the serif used for "Geneza"/"Rime"/etc.: at that

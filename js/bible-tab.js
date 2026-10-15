@@ -19,6 +19,23 @@ const DATA_URL = './data/bible-cornilescu.json';
 // book picker groups on.
 const OT_COUNT = 39;
 
+// David Guzik's Enduring Word commentary, in English, one page per chapter.
+// Linked to, never copied: Enduring Word asks apps to send readers to its
+// site rather than host the text. Its chapters follow the KJV's numbering,
+// as Cornilescu does; the few it covers together (Joshua 15–17, 18–19,
+// 1 Chronicles 4–8) redirect from each chapter's own address. Same order
+// as the books in the data file.
+const COMMENTARY_URL = 'https://enduringword.com/bible-commentary/';
+const COMMENTARY_SLUGS = ['genesis', 'exodus', 'leviticus', 'numbers', 'deuteronomy', 'joshua',
+  'judges', 'ruth', '1-samuel', '2-samuel', '1-kings', '2-kings', '1-chronicles', '2-chronicles',
+  'ezra', 'nehemiah', 'esther', 'job', 'psalm', 'proverbs', 'ecclesiastes', 'song-of-solomon',
+  'isaiah', 'jeremiah', 'lamentations', 'ezekiel', 'daniel', 'hosea', 'joel', 'amos', 'obadiah',
+  'jonah', 'micah', 'nahum', 'habakkuk', 'zephaniah', 'haggai', 'zechariah', 'malachi',
+  'matthew', 'mark', 'luke', 'john', 'acts', 'romans', '1-corinthians', '2-corinthians',
+  'galatians', 'ephesians', 'philippians', 'colossians', '1-thessalonians', '2-thessalonians',
+  '1-timothy', '2-timothy', 'titus', 'philemon', 'hebrews', 'james', '1-peter', '2-peter',
+  '1-john', '2-john', '3-john', 'jude', 'revelation'];
+
 let _state = 'idle';   // idle | loading | ready | error
 let _error = null;
 let _promise = null;
@@ -156,6 +173,14 @@ function _renderReader(host) {
     _verseEls.set(n, row);
     body.appendChild(row);
   });
+  // At the end of the chapter, like the Merriam-Webster link under an
+  // English entry — read the text first, then what is said about it.
+  body.appendChild(el('a', {
+    class: 'bible-commentary',
+    href: COMMENTARY_URL + COMMENTARY_SLUGS[_bookIdx] + '-' + _chapter + '/',
+    target: '_blank',
+    rel: 'noopener'
+  }, ['Comentariu Enduring Word ↗']));
   body.addEventListener('scroll', () => { _readScrollTop = body.scrollTop; });
   host.appendChild(body);
   if (_pendingVerse) {
