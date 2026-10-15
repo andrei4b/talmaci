@@ -1016,7 +1016,10 @@ button.text-tab__head { cursor: pointer; }
 }
 .note-hint { font-size: 0.85rem; }
 .note-verse { margin-top: -4px; font-size: 0.85rem; color: var(--color-text-muted); }
-.note-input { flex-shrink: 0; min-height: 76px; }
+/* White, unlike the threads' warm cards above it, so the field to write
+   in never reads as one more observation. */
+.note-input { flex-shrink: 0; min-height: 76px; background: var(--color-surface); border-color: #D6CFBF; }
+.note-input:focus { border-color: var(--color-accent); outline: none; box-shadow: 0 0 0 3px rgba(201, 125, 62, 0.15); }
 /* Only the list scrolls: the sheet's own scrolling let the sticky buttons
    sit over the field once the keyboard shrank the sheet. Title, field and
    buttons keep their place; the list takes whatever height is left. */
