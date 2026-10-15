@@ -475,51 +475,25 @@ a { color: inherit; text-decoration: none; }
   padding: 6px 20px max(10px, calc(var(--tabbar-h, 70px) + 10px - var(--keyboard-inset, 0px)));
 }
 
-/* Text tab — the switcher is a shared control below both boxes (not
-   inside either column), so the two columns are plain flex:1 siblings
-   with nothing eating into either one — same height with no spacer
-   hack, and no dead space between them. */
+/* Text tab: the verses, and the switcher row under them. */
 .text-tab-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.text-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.text-tab__col { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.text-tab__translation {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--color-surface);
-  resize: none;
-}
-@media (min-width: 640px) {
-  .text-tab { flex-direction: row; gap: 20px; }
-}
 
-/* Every version side by side, on a big screen (see _showingAllVersions):
+/* Every version side by side, on a big screen (see _showingVerseGrid):
    the app gives up its phone width for as long as they are on screen, and
    the columns scroll sideways once there are more than fit. Only the
    columns go wide: the topbar, the switcher row and the tab bar keep the
    width and place they have on every other page. */
-#app:has(.text-tab--all) { max-width: none; }
-#app:has(.text-tab--all, .verses-wrap--all) .topbar {
+#app:has(.verses-wrap--all) .topbar {
   width: 100%;
   max-width: 720px;
   margin-inline: auto;
 }
-/* Inside .tab-content's 20px sides, so the phone width less those. The
-   section strip takes the switcher's place while a mark is typed. */
-#app:has(.text-tab--all, .verses-wrap--all) .version-switcher,
-#app:has(.text-tab--all, .verses-wrap--all) .section-strip {
+/* Inside .tab-content's 20px sides, so the phone width less those. */
+#app:has(.verses-wrap--all) .version-switcher {
   width: 100%;
   max-width: 680px;
   margin-inline: auto;
 }
-.text-tab--all { overflow-x: auto; }
-.text-tab--all .text-tab__col { min-width: 280px; max-width: 480px; }
-/* No wider than a line of lyrics reads well: with few versions, the
-   columns stay that wide and sit in the middle. Auto margins rather than
-   centring the row, which would push its start out of reach once the
-   columns scroll sideways. */
-.text-tab--all > :first-child { margin-left: auto; }
-.text-tab--all > :last-child { margin-right: auto; }
 .text-tab__head {
   flex-shrink: 0;
   margin-bottom: 6px;
@@ -587,95 +561,52 @@ button.text-tab__head { cursor: pointer; }
 .version-switcher__nav svg { width: 18px; height: 18px; }
 .version-switcher__nav:disabled { opacity: 0.35; cursor: default; }
 
-/* A section mark in the source text ("Chorus", "Verse 2"): set apart
-   from the lyrics so the song's shape reads at a glance. */
-.section-label {
+/* A verse's box: its section mark above it, then the lyrics. */
+.editor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+}
+/* The original: the reference panel's cool tint rather than the
+   translation's white, so the two still read as source and draft. */
+.editor--source { background: var(--color-panel); }
+.editor--source textarea { border-color: var(--color-panel-border); background: transparent; }
+.verse__box { background: transparent; }
+
+/* The section mark ("Chorus", "Strofa 2"), set apart from the lyrics so
+   the song's shape reads at a glance — and tapped to pick another (see
+   _openLabelPicker). Lined up with the text in the box under it. */
+.verse__label {
+  align-self: flex-start;
+  margin: 10px 0 0 9px;
+  padding: 2px 5px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--color-accent);
+  font: inherit;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  cursor: pointer;
 }
-/* The section strip: stands in for the version row while a "[" is being
-   typed at the start of a line. Same height and place as that row, so the
-   text above does not jump; scrolls sideways rather than wrapping. */
-.section-strip {
-  flex-shrink: 0;
-  margin-top: 8px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.section-strip .seg { flex-shrink: 0; }
+.verse__label:hover:not(:disabled) { background: rgba(201, 125, 62, 0.1); }
+.verse__label:disabled { cursor: default; }
+/* The mark an empty box would start with, and the offer of one to a
+   verse that has none: there, but not yet the verse's own. */
+.verse__label--faint { color: var(--color-text-muted); opacity: 0.6; font-weight: 600; }
+/* A stand-in kept for a verse not written yet. */
+.verse__label--stand-in { color: var(--color-text-muted); letter-spacing: 0.2em; }
+.verse__editor--labelled .verse__box { padding-top: 2px; min-height: 0; }
 
-/* The editor: a textarea over a mirror of its own text, which is what
-   lets section marks show formatted while being typed — see
-   _attachMirror. The box's white moves from the textarea to the wrapper,
-   so the mirror behind it shows through; the textarea keeps its border,
-   focus ring, caret and selection and paints its letters transparent.
-   Font and spacing are copied onto the mirror from the textarea at run
-   time, so they are not restated here. */
-.editor {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  background: var(--color-surface);
-  border-radius: var(--radius-sm);
-}
-.editor__mirror {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  border-style: solid;
-  border-color: transparent;
-  color: var(--color-text);
-  pointer-events: none;
-  /* So the verse band (z-index -1) sits behind the text, not the box. */
-  isolation: isolate;
-}
-/* The caret's verse, shaded in every column of the whole view — see
-   _linkColumns. It spans the box's full width, not just the words. */
-.editor__band {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: -1;
-  background: var(--color-highlight);
-  border-left: 2px solid var(--color-highlight-edge);
-}
-/* The chain button only means anything with the columns side by side. */
-@media (max-width: 639px) {
-  .text-tab__link { display: none; }
-}
-.editor textarea {
-  position: relative;
-  background: transparent;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  caret-color: var(--color-text);
-}
-.editor textarea::placeholder {
-  color: var(--color-text-muted);
-  -webkit-text-fill-color: var(--color-text-muted);
-}
-/* The original, edited in place: the reference panel's cool tint rather
-   than the translation's white, so the two still read as source and
-   draft at a glance. */
-.editor--source { background: var(--color-panel); }
-.editor--source textarea { border-color: var(--color-panel-border); }
-
-/* A version you cannot edit: its own letters are transparent like any
-   other, so the dimming a disabled textarea gives its text goes here. */
-.editor:has(textarea:disabled) .editor__mirror { opacity: 0.6; }
-
-/* A topbar icon that toggles, while it is on: the verse view's button. */
-.btn--icon-on { color: var(--color-accent); border-color: var(--color-accent); }
+/* The list of marks to pick from. */
+.label-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg--suggested { border-style: dashed; border-color: var(--color-accent); color: var(--color-accent); }
+.label-picker__other { display: flex; gap: 8px; }
+.label-picker__other .field__input { padding: 8px 12px; }
 
 /* The verse view: each pair of verses is one card — the original on top
    in the reference panel's tint, its translation below in white, joined
@@ -723,10 +654,12 @@ button.text-tab__head { cursor: pointer; }
   background: rgba(201, 125, 62, 0.07);
   color: var(--color-accent);
 }
+/* With no original on a composition, nothing to set beside its verses. */
+.verses__note--empty { padding: 24px 4px; text-align: center; }
 @media (min-width: 640px) {
-  .verse { grid-template-columns: 1fr 1fr; }
-  .verse__editor { grid-column: 2; }
-  .verse__editor--source { grid-column: 1; border-right: 1px solid var(--color-panel-border); }
+  .verses:not(.verses--solo) .verse { grid-template-columns: 1fr 1fr; }
+  .verses:not(.verses--solo) .verse__editor { grid-column: 2; }
+  .verses:not(.verses--solo) .verse__editor--source { grid-column: 1; border-right: 1px solid var(--color-panel-border); }
   .verse__editor--source + .verse__editor { border-top: 0; }
   .verses__note--pair { grid-column: 1 / -1; }
 }

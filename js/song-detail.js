@@ -23,7 +23,6 @@ const ROW_ICONS = {
 };
 
 // Two stacked pairs of lines — the original over its translation.
-const VERSES_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/><path d="M7 6.5h10M7 17.5h7"/></svg>`;
 
 // A magnifier — looks the word at the caret up in Rime, Sinonime or the
 // English dictionary.
@@ -90,53 +89,25 @@ let _undoStateVersionId;
 let _versionHistory = _newHistory('');
 let _originalHistory = null;
 let _originalHistorySongId = null;
-// With every version on screen at once (see _showingAllVersions), each
+// With every version on screen at once (see _showingVerseGrid), each
 // keeps its own history; these are the ones not active right now. Dropped
 // whenever _syncUndoState starts the active version's history afresh.
 let _otherHistories = new Map();
 
-// Scroll position of the original-text panel and the translation box.
-// _translationScrollTop resets inside _syncUndoState, right alongside the
-// undo history, since both are scoped to "which version" the same way;
-// _originalScrollTop is scoped to the song instead (the original doesn't
-// change between versions of the same song) and is reset below, only when
-// render() is actually loading a different song.
-let _originalScrollTop = 0;
-let _translationScrollTop = 0;
+// Scroll position of the verses. Reset inside _syncUndoState, right
+// alongside the undo history, since both are scoped to "which version"
+// the same way.
 let _versesScrollTop = 0;
-// Scroll positions of the version columns, by version id, for the same
-// reason, when every version is on screen; scoped to the song.
-let _columnScrollTops = new Map();
 
-// Which view the Text tab shows a translation in: 'whole' — the original
-// beside the translation, each in one piece — or 'verses', each verse of
-// the original above its verse of the translation. A way of working, not
-// a property of the song, so it is remembered per device for every song.
-const VIEW_KEY = 'talmaci:textView';
-let _view = (() => { try { return localStorage.getItem(VIEW_KEY) || 'whole'; } catch (_) { return 'whole'; } })();
-
-// Whether this song is shown verse by verse. Only a translation that has
-// an original yet can be: a new song has nothing to pair, so it opens in
-// the whole view, where its original is written, whatever was last used.
-function _showingVerses() {
-  return _view === 'verses' && !isOriginal(_song) && !!(_song.originalText || '').trim();
-}
-
-/* On a big screen the whole view shows every version side by side, each
- * its own column after the original, rather than one at a time. The
- * active version is then simply the one last written in: the switcher
- * names it, and undo and the lookup act on it. Resizing across the
- * breakpoint redraws the song page it is on. */
+/* On a big screen every version gets a column of its own — beside the
+ * original, for a translation — so each row lines up the same verse in all
+ * of them; see _renderVersesView. The active version is then simply the
+ * one last written in: the switcher names it, and undo and the lookup act
+ * on it. Resizing across the breakpoint redraws the song page it is on. */
 const WIDE = window.matchMedia('(min-width: 1024px)');
 let _shellRoot = null;
-function _showingAllVersions() {
-  return WIDE.matches && !_showingVerses() && _versions.length > 1;
-}
-/* The verse view's counterpart: on a big screen, every version gets a
- * column of its own beside the original, so each row lines up the same
- * verse in all of them — see _renderVersesView. */
 function _showingVerseGrid() {
-  return WIDE.matches && _showingVerses() && _versions.length > 1;
+  return WIDE.matches && _versions.length > 1;
 }
 WIDE.addEventListener('change', () => {
   if (_song && _shellRoot && _shellRoot.isConnected) _renderShell(_shellRoot);
@@ -158,8 +129,6 @@ async function render(root, songId, openNotesFor, entered) {
     _openNotesFor(openNotesFor);
     return;
   }
-  _originalScrollTop = 0;
-  _columnScrollTops = new Map();
   // Undo starts from the texts as they are read now, the song last open
   // included, as it would for any other.
   _undoStateVersionId = undefined;
@@ -255,23 +224,6 @@ function _renderShell(root) {
       onclick: () => window.App.goUpToList()
     }),
     el('h1', { class: 'topbar__title' }, [_song.title || 'Fără titlu']),
-    // Only a translation has an original to pair its verses with.
-    isOriginal(_song) ? null : el('button', {
-      class: 'btn btn--icon' + (_showingVerses() ? ' btn--icon-on' : ''),
-      'aria-label': 'Pe strofe',
-      'aria-pressed': _showingVerses() ? 'true' : 'false',
-      title: _showingVerses() ? 'Textul întreg' : 'Pe strofe',
-      html: VERSES_ICON,
-      onclick: () => {
-        if (!(_song.originalText || '').trim()) {
-          toast('Scrie mai întâi textul original.');
-          return;
-        }
-        _view = _showingVerses() ? 'whole' : 'verses';
-        try { localStorage.setItem(VIEW_KEY, _view); } catch (_) { /* just not remembered */ }
-        _renderShell(root);
-      }
-    }),
     el('button', {
       class: 'btn btn--icon',
       'aria-label': 'Meniu melodie',
@@ -448,18 +400,19 @@ function _headRow(head, version) {
  * observations change, and soon after the text does. */
 let _verseNoteButtons = [];
 
-function _verseNotesButton(version, index) {
+function _verseNotesButton(version, indexNow) {
   const btn = el('button', {
     class: 'verse-notes',
     'aria-label': 'Observații la strofă',
     title: 'Observații la strofă',
     html: NOTES_ICON,
     onmousedown: (e) => e.preventDefault(),
-    onclick: () => _openNotes(version, index)
+    onclick: () => _openNotes(version, indexNow())
   });
   btn.appendChild(el('span', { class: 'verse-notes__count' }));
   btn._version = version;
-  btn._index = index;
+  // Its verse's index as it is now: a verse written above moves it down.
+  btn._index = indexNow;
   _verseNoteButtons.push(btn);
   return btn;
 }
@@ -470,7 +423,7 @@ function _syncVerseNotes() {
   _verseNoteButtons.forEach(b => {
     const v = b._version;
     if (!threads.has(v.id)) threads.set(v.id, _threadsOf(v));
-    const here = threads.get(v.id).filter(t => t.loc && t.loc.at.includes(b._index));
+    const here = threads.get(v.id).filter(t => t.loc && t.loc.at.includes(b._index()));
     const open = here.filter(t => !t.resolved).length;
     b.classList.toggle('verse-notes--some', open > 0);
     b.classList.toggle('verse-notes--unread', here.some(t => _threadUnread(v.id, t)));
@@ -873,7 +826,6 @@ function _syncUndoState(active) {
   _undoStateVersionId = _activeVersionId;
   _versionHistory = _newHistory(active ? active.text : '');
   _otherHistories = new Map();
-  _translationScrollTop = 0;
   _versesScrollTop = 0;
 }
 
@@ -907,72 +859,6 @@ function _versionDoc(version, history) {
     write: (t) => { if (version) version.text = t; },
     save: (t) => _saveVersionText(version && version.id, history, t)
   });
-}
-
-/* Where an undo or redo actually changed the text.
- *
- * The two versions share a prefix and a suffix; everything between them is
- * what moved. The caret goes at the end of that span in the NEW text, which
- * is where the edit being undone or redone left off — after the character
- * redo just put back, or at the gap undo just opened.
- *
- * Both texts are whole documents rather than recorded edits, so the span
- * has to be recovered by comparison. That also makes it right for edits
- * that are neither pure insertions nor pure deletions. */
-function _changedCaret(oldText, newText) {
-  const max = Math.min(oldText.length, newText.length);
-  let pre = 0;
-  while (pre < max && oldText[pre] === newText[pre]) pre++;
-  let suf = 0;
-  while (suf < max - pre &&
-         oldText[oldText.length - 1 - suf] === newText[newText.length - 1 - suf]) suf++;
-  return newText.length - suf;
-}
-
-/* Put the caret's line on screen if it is not already.
- *
- * Measured by truncating the value at the caret and reading scrollHeight,
- * which is the height of everything above it. Counting "\n" would be
- * cheaper but wrong the moment a line soft-wraps, and these are lyrics in
- * a narrow column on a phone. The truncation is reverted in the same tick,
- * so nothing is painted.
- *
- * Only scrolls when the caret is outside the visible band — an undo you can
- * already see should not make the view jump. */
-function _scrollCaretIntoView(ta, pos) {
-  const full = ta.value;
-  const keptScroll = ta.scrollTop;
-  ta.value = full.slice(0, pos);
-  const caretBottom = ta.scrollHeight;
-  ta.value = full;
-  ta.scrollTop = keptScroll;              // the round trip resets it
-
-  const cs = getComputedStyle(ta);
-  const lineHeight = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4) || 20;
-  const view = ta.clientHeight;
-  const above = caretBottom - lineHeight < ta.scrollTop;
-  const below = caretBottom > ta.scrollTop + view;
-  if (above || below) {
-    ta.scrollTop = Math.max(0, caretBottom - view / 2);
-  }
-}
-
-/* Swap the textarea to another point in its history and show where that
- * changed things. Without this the caret landed at the end of the text and
- * the view stayed put, so on anything longer than a screen an undo looked
- * like nothing had happened. */
-function _applyHistoryText(ta, text) {
-  const caret = _changedCaret(ta.value, text);
-  ta.value = text;
-  // Scroll BEFORE placing the caret. The measurement reassigns .value, and
-  // assigning it drops any selection to the end of the field, so setting
-  // the caret first would silently undo this whole function.
-  _scrollCaretIntoView(ta, caret);
-  // Focus is not taken here. On a phone that would raise the keyboard just
-  // because you tapped undo — the same reason the buttons block mousedown.
-  // The selection is stored either way and is waiting when the field is
-  // next focused.
-  try { ta.setSelectionRange(caret, caret); } catch (e) { /* not focusable yet */ }
 }
 
 /* The word to look up from the editor: the one under the caret, or, when
@@ -1050,194 +936,6 @@ function _openLookup(ta) {
   openSheet(overlay);
 }
 
-/* A text with its section marks set apart from the lyrics, so the shape
- * of the song shows at a glance. Written as they were typed ("Chorus",
- * "Verse 2"), only without their brackets. Lines rawFrom..rawTo are left
- * exactly as typed: the editor's caret is on them, and a caret can only
- * sit in text drawn the way the textarea itself lays it out.
- *
- * Each verse — a run of non-blank lines, as _verses counts them — is
- * wrapped in a span of its own, which changes nothing about where its
- * lines fall but lets the editor find where on the page it is. */
-function _renderMarkedText(text, rawFrom, rawTo) {
-  const nodes = [];
-  let verse = null;
-  String(text || '').split('\n').forEach((line, i) => {
-    const sec = (i >= rawFrom && i <= rawTo) ? null : window.Sections.parse(line);
-    const node = sec ? el('span', { class: 'section-label' }, [sec.text]) : line;
-    if (verse && line.trim()) { verse.append('\n', node); return; }
-    if (i) nodes.push('\n');
-    verse = line.trim() ? el('span', { class: 'editor__verse' }, [node]) : null;
-    nodes.push(verse || node);
-  });
-  return nodes;
-}
-
-// Which line of a text an offset falls on, counting from 0.
-function _lineAt(text, pos) {
-  let n = 0;
-  for (let i = text.indexOf('\n'); i >= 0 && i < pos; i = text.indexOf('\n', i + 1)) n++;
-  return n;
-}
-
-// What the mirror has to share with the textarea for its lines to fall
-// exactly where the textarea's do.
-const MIRROR_METRICS = ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing',
-  'wordSpacing', 'tabSize', 'textIndent', 'paddingTop', 'paddingRight', 'paddingBottom',
-  'paddingLeft', 'borderTopWidth', 'borderBottomWidth', 'borderLeftWidth'];
-
-/* Formatted section marks inside the editor.
- *
- * A textarea cannot style part of its text, so the text is drawn twice: a
- * mirror behind the textarea shows it with the marks formatted, and the
- * textarea on top keeps its caret, selection and keyboard but paints its
- * own glyphs transparent. Everything else stays a plain textarea — undo,
- * autosave, the section strip and the lookup all work on it as before.
- *
- * The two only line up while they share every metric that places a line,
- * so those are copied from the textarea's computed style rather than
- * restated in CSS, along with the width a desktop scrollbar takes. The
- * marks drawn smaller still keep their line's height: a line box is never
- * shorter than its block's own line-height.
- *
- * Returns a repaint to call after any change made without an input event —
- * undo, redo, a picked section. It also carries what the columns of the
- * whole view need to follow one another (see _linkColumns): `band(k)`
- * shades verse k (null for none), and `verses()` is where each verse sits,
- * top to bottom, in the box's own scrolled content. */
-function _attachMirror(ta, mirror) {
-  let rawLines = '';
-  let bandVerse = null;
-  const bandEl = el('div', { class: 'editor__band' });
-
-  // Each verse's span, measured against the mirror's content rather than
-  // the screen, so the result holds however far the box is scrolled.
-  function verses() {
-    const box = mirror.getBoundingClientRect();
-    const origin = box.top + mirror.clientTop - mirror.scrollTop;
-    return [...mirror.querySelectorAll('.editor__verse')].map(v => {
-      const r = v.getBoundingClientRect();
-      return { top: r.top - origin, bottom: r.bottom - origin };
-    });
-  }
-
-  // Draws the band behind the verse it marks; called after every paint,
-  // since a paint replaces everything in the mirror.
-  function placeBand() {
-    const at = bandVerse === null ? null : verses()[bandVerse];
-    if (!at) { bandEl.remove(); return; }
-    bandEl.style.top = (at.top - 4) + 'px';
-    bandEl.style.height = (at.bottom - at.top + 8) + 'px';
-    mirror.appendChild(bandEl);
-  }
-
-  function syncMetrics() {
-    const cs = getComputedStyle(ta);
-    MIRROR_METRICS.forEach(p => { mirror.style[p] = cs[p]; });
-    const bl = parseFloat(cs.borderLeftWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0;
-    const scrollbar = Math.max(0, ta.offsetWidth - ta.clientWidth - bl - br);
-    mirror.style.borderRightWidth = (br + scrollbar) + 'px';
-  }
-
-  function paint(force) {
-    const text = ta.value;
-    const focused = document.activeElement === ta;
-    const from = focused ? _lineAt(text, ta.selectionStart) : -1;
-    const to = focused ? _lineAt(text, ta.selectionEnd) : -1;
-    const key = from + ':' + to;
-    if (!force && key === rawLines) return;
-    rawLines = key;
-    // A trailing newline ends in an empty line that a div would not draw;
-    // the zero-width space gives it its height, as the textarea does.
-    mirror.replaceChildren(..._renderMarkedText(text, from, to), '\u200b');
-    mirror.scrollTop = ta.scrollTop;
-    placeBand();
-  }
-
-  ta.addEventListener('input', () => paint(true));
-  ta.addEventListener('scroll', () => { mirror.scrollTop = ta.scrollTop; });
-  ta.addEventListener('focus', () => paint(false));
-  ta.addEventListener('blur', () => paint(false));
-  // The caret moving to another line changes which line is drawn raw.
-  // The textarea is rebuilt on every render, so the listener retires
-  // itself once its textarea has left the page.
-  const onSelection = () => {
-    if (!ta.isConnected) { document.removeEventListener('selectionchange', onSelection); return; }
-    if (document.activeElement === ta) paint(false);
-  };
-  document.addEventListener('selectionchange', onSelection);
-  if (window.ResizeObserver) new ResizeObserver(() => { syncMetrics(); paint(true); }).observe(ta);
-
-  syncMetrics();
-  paint(true);
-  const repaint = () => paint(true);
-  repaint.band = (k) => {
-    if (k === bandVerse) return;
-    bandVerse = k;
-    placeBand();
-  };
-  repaint.verses = verses;
-  return repaint;
-}
-
-/* Marks a section at the caret's line: "[Refren]" on a line of its own,
- * just above the line the caret is on, or on that line when it is empty.
- * A blank line goes before it, unless one is there already, since that is
- * what separates sections; the caret lands on the line after the mark,
- * ready for the section's first line. */
-function _withSection(text, caret, label) {
-  const lineStart = text.lastIndexOf('\n', caret - 1) + 1;
-  let lineEnd = text.indexOf('\n', caret);
-  if (lineEnd < 0) lineEnd = text.length;
-  const blank = !text.slice(lineStart, lineEnd).trim();
-
-  let head = text.slice(0, lineStart);
-  if (head && !head.endsWith('\n\n')) head += '\n';
-  const tail = blank ? text.slice(lineEnd) : '\n' + text.slice(lineStart);
-  const mark = '[' + label + ']';
-  return {
-    text: head + mark + (tail || '\n'),
-    caret: head.length + mark.length + 1
-  };
-}
-
-/* The section name being typed: a "[" opening the caret's line, and
- * whatever follows it up to the caret. Null otherwise — including once the
- * bracket is closed, so a mark typed out in full is left alone. */
-function _typedSection(ta) {
-  if (ta.selectionStart !== ta.selectionEnd) return null;
-  const text = ta.value, caret = ta.selectionStart;
-  const start = text.lastIndexOf('\n', caret - 1) + 1;
-  const m = /^\[([^\[\]\n]*)$/.exec(text.slice(start, caret));
-  return m ? { start, typed: m[1] } : null;
-}
-
-/* The sections offered for a line, narrowed to what has been typed after
- * the "[". When the source text is marked, the section it has next —
- * counting the marks above this line — comes first, which keeps the
- * translation's structure in step with the original's. The original
- * itself is in English, so it is offered the English names, and nothing
- * to keep in step with. */
-function _sectionChoices(text, lineStart, typed, inOriginal) {
-  const above = window.Sections.list(text.slice(0, lineStart));
-  const verseNo = above.filter(s => s.kind === 'Strofa').length + 1;
-  let suggested = null, choices;
-  if (inOriginal) {
-    choices = ['Verse ' + verseNo, ...SECTION_CHOICES_EN];
-  } else {
-    const fromOriginal = isOriginal(_song) ? [] : window.Sections.list(_song.originalText);
-    const next = fromOriginal[above.length];
-    suggested = next ? window.Sections.romanian(next) : null;
-    choices = ['Strofa ' + verseNo, ...SECTION_CHOICES];
-  }
-
-  const fold = (x) => x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const want = fold(typed.trim());
-  return [...new Set([suggested, ...choices].filter(Boolean))]
-    .filter(l => fold(l).startsWith(want))
-    .map(l => ({ label: l, suggested: l === suggested }));
-}
-
 /* The verses of a text: runs of non-blank lines, each with where it sits
  * in the text, so an edit to one can be put back in place without
  * touching the blank lines around it. */
@@ -1249,6 +947,85 @@ function _verses(text) {
 function _verseKind(text) {
   const sec = window.Sections.parse(String(text).split('\n')[0]);
   return sec ? sec.kind : null;
+}
+
+/* What a verse is marked as, for pairing it with its verse in another
+ * text: its kind and number, or its name when it is not a kind we know.
+ * Null for a verse with no mark, and for a stand-in "[…]", which pairs
+ * as one does. */
+function _pairMark(verse) {
+  const sec = window.Sections.parse(String(verse).split('\n')[0]);
+  if (!sec || sec.text === '…') return null;
+  return sec.kind ? { kind: sec.kind, number: sec.number } : { name: sec.text.toLowerCase() };
+}
+
+const _sameSection = (a, b) => a.kind ? a.kind === b.kind : !b.kind && a.name === b.name;
+// The same section, and not told apart by a number: Verse 2 and Strofa 2,
+// Verse and Strofa 1, but not Verse 1 and Strofa 2.
+const _sameMark = (a, b) => _sameSection(a, b)
+  && (a.number === b.number || a.number == null || b.number == null);
+
+/* The verses of two texts lined up, by their marks: [i, j] for a verse of
+ * each that go together, [i, null] or [null, j] for one with nothing
+ * beside it, in the order the rows read. `a` and `b` are the marks of
+ * each text's verses (see _pairMark).
+ *
+ * A marked verse goes with the verse marked the same on the other side —
+ * Verse 2 with Strofa 2, Chorus with Refren — and if the other side has
+ * that section at all, with nothing else. So a chorus written out three
+ * times in the original and once in the translation leaves the two
+ * repeats beside nothing, and the verses after them stay paired with
+ * their own. Verses with no mark, or whose mark the other side does not
+ * use, pair by position, as they come. Of the ways of pairing them, the
+ * one with the most and best pairs wins; between equals, the one that
+ * pairs earlier. */
+function _pairVerses(a, b) {
+  const has = (marks, m) => marks.some(x => x && _sameMark(x, m));
+  const score = (x, y) => {
+    if (!x && !y) return 4;
+    if (!x) return has(a, y) ? 0 : 2;
+    if (!y) return has(b, x) ? 0 : 2;
+    if (_sameMark(x, y)) return x.number === y.number ? 6 : 5;
+    return has(a, y) || has(b, x) ? 0 : 1;
+  };
+  const n = a.length, m = b.length;
+  const best = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  const pair = (i, j) => { const s = score(a[i], b[j]); return s ? s + best[i + 1][j + 1] : -1; };
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) best[i][j] = Math.max(best[i + 1][j], best[i][j + 1], pair(i, j));
+  }
+  const rows = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && best[i][j] === pair(i, j)) rows.push([i++, j++]);
+    else if (i < n && (j === m || best[i][j] === best[i + 1][j])) rows.push([i++, null]);
+    else rows.push([null, j++]);
+  }
+  return rows;
+}
+
+/* The rows of the verse view: each verse of the original, in order, with
+ * the verse of every version that goes with it, and a version's verse
+ * with none in the original in a row of its own, where it falls among
+ * them. { o: the original's verse or null, t: each version's or null } */
+function _verseRows(orig, versions) {
+  const paired = versions.map(() => new Array(orig.length).fill(null));
+  // A version's unpaired verses, by the original verse they come before.
+  const extra = versions.map(() => Array.from({ length: orig.length + 1 }, () => []));
+  versions.forEach((v, c) => {
+    let next = 0;
+    _pairVerses(orig, v).forEach(([i, j]) => {
+      if (i == null) extra[c][next].push(j);
+      else { next = i + 1; if (j != null) paired[c][i] = j; }
+    });
+  });
+  const rows = [];
+  for (let i = 0; i <= orig.length; i++) {
+    const most = Math.max(0, ...extra.map(e => e[i].length));
+    for (let x = 0; x < most; x++) rows.push({ o: null, t: extra.map(e => e[i][x] ?? null) });
+    if (i < orig.length) rows.push({ o: i, t: paired.map(p => p[i]) });
+  }
+  return rows;
 }
 
 // Grows a verse box to fit its text, so the page scrolls rather than the box.
@@ -1358,18 +1135,18 @@ function _renderTextTab(content) {
   // it instead.
   const switcher = el('div', { class: 'version-switcher' }, [
     currentBtn,
-    _showingAllVersions() || _showingVerseGrid() ? null : _notesButton(active, false),
+    _showingVerseGrid() ? null : _notesButton(active, false),
     lookupBtn,
     undoBtn,
     redoBtn
   ]);
 
   /* ---- the texts being edited ----
-   * Two of them: the version, which both views edit, and the original,
-   * edited in place in the whole view. Each is written onto its record as
-   * it changes, not only once a save comes back, so a re-render in
-   * between — a switch of view, a trip to Rime — starts from what was
-   * typed rather than from the last save.
+   * Two of them: the version, and a translation's original, edited in
+   * place in the verse view. Each is written onto its record as it
+   * changes, not only once a save comes back, so a re-render in between —
+   * a trip to Rime — starts from what was typed rather than from the last
+   * save.
    *
    * Undo and redo act on whichever was focused last, the version unless
    * the original has been. */
@@ -1405,38 +1182,6 @@ function _renderTextTab(content) {
     else toast('Pune cursorul pe un cuvânt.');
   };
 
-  /* ---- the section strip ----
-   * Typing "[" at the start of a line offers the section names in place of
-   * the row under the text, filtered as more is typed. Nothing for it sits
-   * on screen otherwise. Its chips keep focus, like undo/redo, so the
-   * keyboard stays up through the pick. `before` is the part of the whole
-   * text ahead of the box — none of it but in the verse view — which is
-   * what the original's next section is counted against. */
-  const strip = el('div', { class: 'section-strip', hidden: true });
-  function updateStrip(ta, before, onPick, inOriginal) {
-    const t = _typedSection(ta);
-    const choices = t
-      ? _sectionChoices(before + ta.value, before.length + t.start, t.typed, inOriginal)
-      : [];
-    strip.hidden = !choices.length;
-    switcher.hidden = !!choices.length;
-    strip.innerHTML = '';
-    choices.forEach(c => strip.appendChild(el('button', {
-      class: 'seg' + (c.suggested ? ' seg--active' : ''),
-      onmousedown: keepFocus,
-      onclick: () => onPick(t, c.label)
-    }, [c.label])));
-  }
-  function hideStrip() { strip.hidden = true; switcher.hidden = false; }
-  // The typed "[…" comes out — with a "]" the keyboard may have closed it
-  // with — and the caret position it leaves is where the mark goes.
-  function withoutTyped(ta, t) {
-    const v = ta.value;
-    let end = ta.selectionStart;
-    if (v[end] === ']') end++;
-    return v.slice(0, t.start) + v.slice(end);
-  }
-
   // Writing in a version's column, with every version on screen, makes it
   // the active one.
   const activate = (version, doc) => {
@@ -1445,381 +1190,53 @@ function _renderTextTab(content) {
     focusDoc(doc);
   };
 
-  const view = _showingVerses() ? _renderVersesView : _renderWholeView;
-  const body = view({
+  const body = _renderVersesView({
     active, canEdit,
     version: versionDoc, original: originalDoc, focusDoc, activate,
-    updateStrip, hideStrip, withoutTyped,
     setShowHistory: (fn) => { versionDoc.showHistory = fn; },
     setLookupTarget: (fn) => { lookupTarget = fn; }
   });
-
-  // Anything the view adds to the row, after the version button.
-  (body.tools || []).forEach(t => switcher.insertBefore(t, lookupBtn));
-  content.appendChild(el('div', { class: 'text-tab-wrap' }, [body.el, strip, switcher]));
+  content.appendChild(el('div', { class: 'text-tab-wrap' }, [body.el, switcher]));
   body.mounted();
 }
 
-// Shown in an empty original-text box: how to start a section.
-const SECTION_HINT = '\n\nScrie [ la început de rând pentru o secțiune: Strofa, Refren…';
-
-/* The whole text in one box, beside the whole original — or, on a big
- * screen, every version in a box of its own, side by side after it. */
-function _renderWholeView(ctx) {
-  const { active, canEdit } = ctx;
-
-  // A composition is not a translation of anything, so the box must not
-  // ask for one. Everything else the two share, but the words in front of
-  // an empty field are the one place the difference is obvious.
-  const original = isOriginal(_song);
-  const placeholderFor = (version, editable) => {
-    if (!version) return original ? 'Creează o versiune ca să începi.'
-                                   : 'Creează o versiune pentru a începe traducerea.';
-    if (!editable) return 'Doar creatorul sau un admin poate edita această versiune.';
-    // The section hint belongs with the original text only: a translation
-    // follows the original's sections, so it is just noise there.
-    return original ? 'Versurile tale…' + SECTION_HINT : 'Traducerea în română…';
-  };
-
-  // Run once the view is on the page, in order: restoring scroll positions
-  // and attaching mirrors both need the layout.
-  const mounted = [];
-
-  // The box the lookup reads from: whichever was focused last, the
-  // original included, and the active version's until one has been.
-  let lookupBox = null;
-
-  /* The box for one version's text. `onFocus` runs as it gains focus;
-   * `scroll` keeps where it was scrolled to across redraws. */
-  function versionBox(version, doc, onFocus, scroll) {
-    const translation = el('textarea', {
-      class: 'field__input text-tab__translation',
-      placeholder: placeholderFor(version, doc.canEdit),
-      // Someone else's version is view-only rather than disabled, as the
-      // original is: not dimmed, and still focusable, so its verse can be
-      // picked out across the columns and a word in it looked up. Only the
-      // empty box of a song with no version yet is disabled.
-      disabled: !version,
-      oninput: () => { doc.typed(translation.value); strip(); }
-    });
-    translation.value = doc.text;
-    if (version && !doc.canEdit) _viewOnly(translation);
-    translation.addEventListener('scroll', () => scroll.set(translation.scrollTop));
-    // Redraws the formatted section marks; set once the editor is mounted.
-    let repaint = () => {};
-
-    const strip = () => doc.canEdit && ctx.updateStrip(translation, '', (t, label) => {
-      const r = _withSection(ctx.withoutTyped(translation, t), t.start, label);
-      translation.value = r.text;
-      doc.replaced(r.text);
-      _scrollCaretIntoView(translation, r.caret);
-      translation.setSelectionRange(r.caret, r.caret);
-      repaint();
-      strip();
-    });
-    // The caret can leave the line without any typing: arrow keys, a tap.
-    translation.addEventListener('keyup', strip);
-    translation.addEventListener('mouseup', strip);
-    translation.addEventListener('blur', ctx.hideStrip);
-    translation.addEventListener('focus', onFocus);
-    doc.showHistory = (t) => { _applyHistoryText(translation, t); repaint(); };
-
-    const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
-    // Restored after mounting rather than left at the browser's default (0)
-    // — this runs on every render, including a plain tab-switch-back where
-    // nothing about the song actually changed, which is exactly when
-    // jumping back to the top would be most jarring. Reading offsetHeight
-    // first forces the layout that scrollTop's setter otherwise needs and
-    // may not have yet, right after building fresh DOM — without it the
-    // assignment can silently no-op.
-    mounted.push(() => {
-      void translation.offsetHeight;
-      translation.scrollTop = scroll.get();
-      // Only once mounted: it copies the textarea's computed layout.
-      repaint = _attachMirror(translation, mirror);
-    });
-    return {
-      ta: translation,
-      editor: el('div', { class: 'editor' }, [mirror, translation]),
-      get mirror() { return repaint; }
-    };
-  }
-
-  // A composition has no source, so it gets one box instead of two. No
-  // stylesheet change is needed for that: .text-tab__col is flex:1, so a
-  // lone column fills the row at either breakpoint.
-  const cols = [];
-  // Every box on screen, original first, for _linkColumns.
-  const panes = [];
-  let originalEl = null, originalMirror = null, repaintOriginal = () => {};
-  if (!original) {
-    // The original, edited in place — the same editor as the translation,
-    // in the reference panel's colours. View-only rather than disabled for
-    // someone who may not change the song: still selectable, copyable and
-    // looked up in, and not dimmed, since it is what everyone translates from.
-    const doc = ctx.original;
-    originalEl = el('textarea', {
-      class: 'field__input text-tab__translation text-tab__source',
-      placeholder: doc.canEdit ? 'Textul original…' + SECTION_HINT : '',
-      oninput: () => { doc.typed(originalEl.value); originalStrip(); }
-    });
-    originalEl.value = doc.text;
-    if (!doc.canEdit) _viewOnly(originalEl);
-    originalEl.addEventListener('scroll', () => { _originalScrollTop = originalEl.scrollTop; });
-    originalEl.addEventListener('focus', () => { lookupBox = originalEl; ctx.focusDoc(doc); });
-    const originalStrip = () => {
-      if (!doc.canEdit) return;
-      ctx.updateStrip(originalEl, '', (t, label) => {
-        const r = _withSection(ctx.withoutTyped(originalEl, t), t.start, label);
-        originalEl.value = r.text;
-        doc.replaced(r.text);
-        _scrollCaretIntoView(originalEl, r.caret);
-        originalEl.setSelectionRange(r.caret, r.caret);
-        repaintOriginal();
-        originalStrip();
-      }, true);
-    };
-    originalEl.addEventListener('keyup', originalStrip);
-    originalEl.addEventListener('mouseup', originalStrip);
-    originalEl.addEventListener('blur', ctx.hideStrip);
-    doc.showHistory = (t) => { _applyHistoryText(originalEl, t); repaintOriginal(); };
-
-    originalMirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
-    cols.push(el('div', { class: 'text-tab__col' }, [
-      _showingAllVersions() ? _headRow(el('div', { class: 'text-tab__head' }, ['Original']), null) : null,
-      el('div', { class: 'editor editor--source' }, [originalMirror, originalEl])
-    ]));
-    mounted.push(() => {
-      void originalEl.offsetHeight;
-      originalEl.scrollTop = _originalScrollTop;
-      repaintOriginal = _attachMirror(originalEl, originalMirror);
-    });
-    panes.push({ ta: originalEl, get mirror() { return repaintOriginal; } });
-  }
-
-  if (_showingAllVersions()) {
-    // Every version, in the order they were made, named above its box.
-    _versions.forEach(v => {
-      const doc = v.id === _activeVersionId ? ctx.version : _versionDoc(v, _historyFor(v));
-      const head = el('button', {
-        class: 'text-tab__head' + (v.id === _activeVersionId ? ' text-tab__head--active' : ''),
-        onclick: () => box.ta.focus()
-      }, [v.title || 'Fără titlu']);
-      const box = versionBox(v, doc, () => {
-        lookupBox = box.ta;
-        ctx.activate(v, doc);
-        document.querySelectorAll('.text-tab__head--active')
-          .forEach(h => h.classList.remove('text-tab__head--active'));
-        head.classList.add('text-tab__head--active');
-      }, {
-        get: () => _columnScrollTops.get(v.id) || 0,
-        set: (top) => _columnScrollTops.set(v.id, top)
-      });
-      if (v.id === _activeVersionId && !lookupBox) lookupBox = box.ta;
-      panes.push(box);
-      cols.push(el('div', { class: 'text-tab__col' }, [_headRow(head, v), box.editor]));
-    });
-    ctx.setLookupTarget(() => lookupBox);
-  } else {
-    const box = versionBox(active, ctx.version, () => { lookupBox = box.ta; ctx.focusDoc(ctx.version); }, {
-      get: () => _translationScrollTop,
-      set: (top) => { _translationScrollTop = top; }
-    });
-    ctx.setLookupTarget(() => lookupBox || box.ta);
-    panes.push(box);
-    cols.push(el('div', { class: 'text-tab__col' }, [box.editor]));
-  }
-
-  const link = panes.length > 1 ? _linkColumns(panes) : null;
-  return {
-    el: el('div', { class: 'text-tab' + (_showingAllVersions() ? ' text-tab--all' : '') }, cols),
-    tools: link ? [link.button] : [],
-    mounted() { mounted.forEach(fn => fn()); if (link) link.start(); }
-  };
-}
-
-/* The columns of the whole view, kept together.
+/* The Text tab: a song verse by verse. For a translation, each verse of
+ * the original above its verse of the translation — or, on a big screen
+ * with more than one version, beside its verse in every version, one
+ * column each (see _showingVerseGrid), so the rows line the same verse up
+ * across all of them with nothing to scroll in step. A composition has no
+ * original: its verses one under another, or its versions side by side.
  *
- * Wherever the caret is, its verse is shaded — in its own box and, in
- * every other, the verse that goes with it. With the columns linked (the
- * chain button, on by default and remembered on this device), the others
- * also scroll: when the caret moves to another verse, to bring theirs
- * level with it, and as one box is scrolled, to keep the same part of the
- * song in view. Scrolling them by the same amount instead would drift
- * apart within a few verses: a verse is rarely as long in two languages,
- * nor wraps alike.
+ * Verses are runs of lines between blank lines, on every side, paired by
+ * their section marks where they have them and otherwise by position (see
+ * _pairVerses): a chorus written out once in the translation stands beside
+ * the original's first, and the repeats are left beside nothing. Every
+ * verse, on any side, is its own box, but each side stays one string — an
+ * edit goes back into it in place, so the blank lines between verses are
+ * left exactly as they were.
  *
- * Which verse goes with which: by section mark when the caret's verse has
- * one and the other text has it too — the second [Chorus] with the second
- * [Refren], or the last there is when the other side wrote it out fewer
- * times — and otherwise by position, as the verse view pairs them. */
-const LINK_KEY = 'talmaci:linkedColumns';
-const SIDE_BY_SIDE = window.matchMedia('(min-width: 640px)');
-const LINK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>`;
-
-function _columnsLinked() {
-  try { return localStorage.getItem(LINK_KEY) !== 'off'; } catch (_) { return true; }
-}
-
-// The verse an offset falls in, by its index in _verses, or -1 between verses.
-function _verseAt(text, pos) {
-  return _verses(text).findIndex(v => pos >= v.start && pos <= v.end);
-}
-
-// What a verse's section mark says, the same in either language, or null
-// when the verse has none.
-function _sectionKey(text, v) {
-  const sec = window.Sections.parse(text.slice(v.start, v.end).split('\n')[0]);
-  if (!sec) return null;
-  return sec.kind ? sec.kind + ' ' + (sec.number || '') : sec.text.toLowerCase();
-}
-
-// The verse of `to` that goes with verse k of `from`, or -1.
-function _matchVerse(from, k, to) {
-  const fv = _verses(from), tv = _verses(to);
-  if (k < 0 || k >= fv.length) return -1;
-  const key = _sectionKey(from, fv[k]);
-  if (key) {
-    const nth = fv.slice(0, k).filter(v => _sectionKey(from, v) === key).length;
-    const same = tv.map((v, j) => j).filter(j => _sectionKey(to, tv[j]) === key);
-    if (same.length) return same[Math.min(nth, same.length - 1)];
-  }
-  return k < tv.length ? k : -1;
-}
-
-function _linkColumns(panes) {
-  let linked = _columnsLinked();
-  let from = null, verse = -1;    // the box with the caret, and its verse
-
-  const button = el('button', {
-    class: 'version-switcher__nav text-tab__link' + (linked ? ' btn--icon-on' : ''),
-    'aria-label': 'Coloane legate',
-    'aria-pressed': String(linked),
-    title: 'Coloane legate: derulează împreună',
-    html: LINK_ICON,
-    onmousedown: (e) => e.preventDefault(),
-    onclick: () => {
-      linked = !linked;
-      try { localStorage.setItem(LINK_KEY, linked ? 'on' : 'off'); } catch (_) {}
-      button.classList.toggle('btn--icon-on', linked);
-      button.setAttribute('aria-pressed', String(linked));
-      if (linked && from) level(from, verse);
-    }
-  });
-
-  // A box scrolled from here, rather than by hand, is let be for a moment,
-  // so that its own scroll does not go on to move the others back.
-  const scrollTo = (p, top) => {
-    p.quietUntil = performance.now() + 150;
-    p.ta.scrollTop = top;
-  };
-  const following = () => linked && SIDE_BY_SIDE.matches;
-
-  // Brings verse k of `src` level, on screen, with its verse in every
-  // other box.
-  function level(src, k) {
-    if (!following() || k < 0) return;
-    const at = src.mirror.verses()[k];
-    if (!at) return;
-    const y = src.ta.getBoundingClientRect().top + at.top - src.ta.scrollTop;
-    panes.forEach(p => {
-      if (p === src) return;
-      const there = p.mirror.verses()[_matchVerse(src.ta.value, k, p.ta.value)];
-      if (there) scrollTo(p, there.top - (y - p.ta.getBoundingClientRect().top));
-    });
-  }
-
-  // Shades the caret's verse everywhere, and levels the others with it
-  // when the caret has moved to another verse.
-  function update(src) {
-    const k = _verseAt(src.ta.value, src.ta.selectionStart);
-    panes.forEach(p => {
-      const j = p === src ? k : _matchVerse(src.ta.value, k, p.ta.value);
-      p.mirror.band(j < 0 ? null : j);
-    });
-    if (src !== from || k !== verse) {
-      from = src;
-      verse = k;
-      level(src, k);
-    }
-  }
-
-  /* As one box scrolls, each other keeps the same part of the song in
-   * view: the point a third of the way down the box is followed through
-   * the verses both have, top to top and bottom to bottom, and
-   * proportionally through whatever lies between. */
-  function follow(src) {
-    if (!following()) return;
-    const fv = src.mirror.verses();
-    const anchor = src.ta.scrollTop + src.ta.clientHeight / 3;
-    panes.forEach(p => {
-      if (p === src) return;
-      const tv = p.mirror.verses();
-      const pts = [[0, 0]];
-      fv.forEach((a, k) => {
-        const b = tv[_matchVerse(src.ta.value, k, p.ta.value)];
-        const last = pts[pts.length - 1];
-        if (!b || b.top < last[1] || a.top < last[0]) return;
-        pts.push([a.top, b.top], [a.bottom, b.bottom]);
-      });
-      pts.push([Math.max(src.ta.scrollHeight, pts[pts.length - 1][0]),
-                Math.max(p.ta.scrollHeight, pts[pts.length - 1][1])]);
-      let i = 1;
-      while (i < pts.length - 1 && pts[i][0] < anchor) i++;
-      const [a0, b0] = pts[i - 1], [a1, b1] = pts[i];
-      const t = a1 > a0 ? Math.min(1, Math.max(0, (anchor - a0) / (a1 - a0))) : 0;
-      scrollTo(p, b0 + t * (b1 - b0) - p.ta.clientHeight / 3);
-    });
-  }
-
-  function start() {
-    panes.forEach(p => {
-      let frame = 0;
-      p.ta.addEventListener('scroll', () => {
-        if (performance.now() < (p.quietUntil || 0) || frame) return;
-        frame = requestAnimationFrame(() => { frame = 0; follow(p); });
-      });
-      p.ta.addEventListener('focus', () => update(p));
-      p.ta.addEventListener('input', () => update(p));
-    });
-    // The caret moving without typing: arrow keys, a click. The view is
-    // rebuilt on every render, so the listener retires itself once its
-    // boxes have left the page.
-    const onSelection = () => {
-      if (!panes[0].ta.isConnected) { document.removeEventListener('selectionchange', onSelection); return; }
-      const p = panes.find(x => x.ta === document.activeElement);
-      if (p) update(p);
-    };
-    document.addEventListener('selectionchange', onSelection);
-  }
-
-  return { button, start };
-}
-
-/* Each verse of the original above its verse of the translation — or, on
- * a big screen with more than one version, beside its verse in every
- * version, one column each (see _showingVerseGrid), so the rows line the
- * same verse up across all of them with nothing to scroll in step.
+ * A verse's section mark is still the line "[Refren]" at its head in the
+ * text, but here it is not part of what is typed: it shows above the box,
+ * and is picked from a list (see _openLabelPicker). The box holds the
+ * lyrics.
  *
- * Verses are runs of lines between blank lines, on every side, and are
- * paired by position: the first with the first, and so on. Every verse,
- * on any side, is its own box, but each side stays one string — an edit
- * goes back into it in place, so the blank lines between verses, and the
- * other view, are left exactly as they were.
- *
- * Pairing by position goes wrong from the first verse one side has and the
- * other does not — typically a chorus written out again on one side only.
- * That is shown rather than guessed at: a count of the sides when they
- * differ, and a note on any row whose section marks disagree.
+ * An empty box is where a verse not written yet goes: writing in it puts
+ * one into that side's text, after the verse it has above. A text pasted
+ * in whole, blank lines and all, is split into its verses as it lands —
+ * the original too, which is written here like any other side. A row
+ * whose marks still disagree says so.
  *
  * On a shared song each verse a version has written takes observations of
  * its own, from the button in its corner (see _verseNotesButton). */
 function _renderVersesView(ctx) {
   // One side of the rows: the original or a version. `spans` are the live
   // positions of its verses in its text, shifted as edits change their
-  // lengths; rebuilt only on a full redraw.
-  const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, spans: [], boxes: [] });
-  const orig = side(ctx.original, ctx.original.canEdit, true);
+  // lengths, and `cells` its boxes in row order, each with the verse it
+  // shows (`k`, null while empty); both rebuilt only on a full redraw.
+  const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, spans: [], cells: [] });
+  // A composition is not a translation of anything: no original side.
+  const hasOrig = !isOriginal(_song);
+  const orig = side(ctx.original, hasOrig && ctx.original.canEdit, true);
   const grid = _showingVerseGrid();
   const trs = grid
     ? _versions.map(v => {
@@ -1827,110 +1244,328 @@ function _renderVersesView(ctx) {
         return Object.assign(side(doc, _canEditVersion(v), false), { version: v, title: v.title || 'Fără titlu' });
       })
     : [side(ctx.version, !!ctx.active && ctx.canEdit, false)];
-  // A version's stand-ins come from the original; the original's from the
-  // version being worked on.
-  trs.forEach(t => { t.other = orig; });
-  orig.other = trs.find(t => !t.version || t.version.id === _activeVersionId) || trs[0];
+  const sides = hasOrig ? [orig, ...trs] : trs;
+  // The side across from one: the original for a version, and for the
+  // original the version being worked on.
+  const otherOf = (s) => s.inOriginal
+    ? trs.find(t => !t.version || t.version.id === _activeVersionId) || trs[0]
+    : orig;
+  const verseOf = (s, k) => s.doc.text.slice(s.spans[k].start, s.spans[k].end);
+  // Each side's column, counted from 1.
+  const colOf = (s) => s.inOriginal ? 1 : trs.indexOf(s) + (hasOrig ? 2 : 1);
   let lastBox = null;
 
-  const list = el('div', { class: 'verses' });
+  const list = el('div', { class: 'verses' + (hasOrig ? '' : ' verses--solo') });
   const wrap = el('div', { class: 'verses-wrap' + (grid ? ' verses-wrap--all' : '') }, [list]);
   wrap.addEventListener('scroll', () => { _versesScrollTop = wrap.scrollTop; });
   // Every column as wide as the others, and never narrower than a line of
   // lyrics needs: past what fits, the rows scroll sideways together.
-  const columns = `repeat(${1 + trs.length}, minmax(260px, 1fr))`;
+  const ncols = sides.length;
+  const columns = `repeat(${ncols}, minmax(260px, 1fr))`;
   const heads = [];
   // Nor wider than a line of lyrics reads well: with few versions, the
   // rows stay that wide, in the middle.
   if (grid) {
-    list.style.minWidth = `${(1 + trs.length) * 260 + 4}px`;
-    list.style.maxWidth = `${(1 + trs.length) * 480 + 4}px`;
+    list.style.minWidth = `${ncols * 260 + 4}px`;
+    list.style.maxWidth = `${ncols * 480 + 4}px`;
   }
 
-  /* A stand-in for a verse not written yet, so that one typed further down
-   * keeps its place: verses are told apart by position, and a verse typed
-   * into the third card with nothing above it would otherwise be the
-   * first. It is the other side's section mark, named in this side's
-   * language, or "[…]" when that verse is not marked — a line of its own,
-   * so the verse stays a verse, and plainly something to replace. */
-  function stub(s, k) {
-    const o = s.other;
-    const verse = k < o.spans.length ? o.doc.text.slice(o.spans[k].start, o.spans[k].end) : '';
-    const sec = window.Sections.parse(verse.split('\n')[0]);
-    const name = !sec ? '…' : s.inOriginal ? window.Sections.english(sec) : window.Sections.romanian(sec);
-    return '[' + name + ']';
+  // The mark on the other side's verse in a cell's row, named in this
+  // side's language, or null when that verse has none.
+  function markAcross(cell) {
+    const o = cell.row.get(otherOf(cell.side));
+    if (!o || o.k == null) return null;
+    const sec = window.Sections.parse(verseOf(o.side, o.k).split('\n')[0]);
+    if (!sec || sec.text === '…') return null;
+    return cell.side.inOriginal ? window.Sections.english(sec) : window.Sections.romanian(sec);
   }
 
-  // Writes box i of a side back into its text. A box past the last verse
-  // starts a new one at the end, after a blank line, with stand-ins for
-  // any verses between — shown in their own boxes straight away.
-  function write(s, i, value) {
+  // The nearest cell above one, on its side, that has a verse; or null.
+  function cellAbove(cell) {
+    const cs = cell.side.cells;
+    for (let x = cs.indexOf(cell) - 1; x >= 0; x--) if (cs[x].k != null) return cs[x];
+    return null;
+  }
+
+  /* Writes a verse into its cell's side, and returns the side's text. An
+   * empty cell gets a verse of its own once there is more than blank
+   * space to keep (null till then), after the verse its side has above
+   * it. Without a mark it pairs by position, so any empty cells it passed
+   * on the way, beside verses that have no mark either, first get a
+   * stand-in each: "[…]", a mark that is plainly something to replace,
+   * which keeps it in its row. */
+  function write(cell, value) {
+    const s = cell.side;
     let text = s.doc.text;
-    if (i >= s.spans.length) {
-      text = text.replace(/\s+$/, '');
-      for (let k = s.spans.length; k <= i; k++) {
-        if (text) text += '\n\n';
-        const fill = k < i ? stub(s, k) : '';
-        s.spans.push({ start: text.length, end: text.length + fill.length });
-        text += fill;
-        const box = s.boxes[k];
-        if (fill && box) { box.value = fill; _fitHeight(box); box.repaint(); }
+    if (cell.k != null) {
+      const sp = s.spans[cell.k];
+      const delta = value.length - (sp.end - sp.start);
+      text = text.slice(0, sp.start) + value + text.slice(sp.end);
+      sp.end += delta;
+      for (let j = cell.k + 1; j < s.spans.length; j++) { s.spans[j].start += delta; s.spans[j].end += delta; }
+      return text;
+    }
+    if (!value.trim()) return null;
+    const cs = s.cells, above = cellAbove(cell);
+    const fill = [];
+    if (!_pairMark(value)) {
+      for (let x = (above ? cs.indexOf(above) : -1) + 1; x < cs.indexOf(cell); x++) {
+        const o = cs[x].row.get(otherOf(s));
+        if (o && o.k != null && !_pairMark(verseOf(o.side, o.k))) fill.push(cs[x]);
       }
     }
-    const sp = s.spans[i];
-    const delta = value.length - (sp.end - sp.start);
-    text = text.slice(0, sp.start) + value + text.slice(sp.end);
-    sp.end += delta;
-    for (let j = i + 1; j < s.spans.length; j++) { s.spans[j].start += delta; s.spans[j].end += delta; }
+    const added = [...fill.map(c => [c, '[…]']), [cell, value]];
+    // In they go, a blank line between each and either side of them.
+    const p = above ? above.k + 1 : 0;
+    const at = above ? s.spans[above.k].end : 0;
+    const spans = [];
+    let ins = '';
+    added.forEach(([, v], n) => {
+      if (above || n) ins += '\n\n';
+      spans.push({ start: at + ins.length, end: at + ins.length + v.length });
+      ins += v;
+    });
+    if (!above) {
+      if (text.trim()) ins += '\n\n';
+      else text = '';
+    }
+    text = text.slice(0, at) + ins + text.slice(at);
+    s.spans.slice(p).forEach(sp => { sp.start += ins.length; sp.end += ins.length; });
+    s.spans.splice(p, 0, ...spans);
+    cs.forEach(c => { if (c.k != null && c.k >= p) c.k += added.length; });
+    added.forEach(([c, v], n) => {
+      c.k = p + n;
+      if (c !== cell) { c.label = c.written = v; c.show(''); }
+    });
     return text;
   }
 
-  /* The box for verse i of a side, with everything an editor box has:
-   * formatted section marks, the "[" strip, undo through the side's own
-   * history. Any box can be written in, even far past the side's last
-   * verse — see write. A side that may not be edited is view-only where it
-   * has verses, rather than disabled, so it is not dimmed. */
-  function verseBox(s, i, value, placeholder, mounted) {
+  /* After a paste, the side drawn again with what was pasted in its own
+   * verses, and the caret put back where it was in the text — `pos`. */
+  function split(s, pos) {
+    redraw();
+    let k = s.spans.findIndex(sp => pos <= sp.end);
+    if (k < 0) k = s.spans.length - 1;
+    const to = s.cells.find(c => c.k === k);
+    if (!to) return;
+    const at = Math.max(0, Math.min(pos - s.spans[k].start - to.labelLength(), to.box.value.length));
+    to.box.focus();
+    to.box.setSelectionRange(at, at);
+  }
+
+  /* A verse emptied and left: it goes from its side's text, with the
+   * blank line before it (after it, for the first), and its row from the
+   * page once no side has a verse there. Without a mark, beside a verse
+   * with none either, it would take every verse after it out of the row
+   * it pairs in, so that one keeps a stand-in, "[…]", as a skipped verse
+   * does (see write).
+   *
+   * Done in place rather than by redrawing: the box the tap went to is
+   * already taking focus, and stays the box it was, and where it was on
+   * screen — the rows are scrolled by whatever went from above it. */
+  function vacate(cell, next) {
+    const s = cell.side;
+    const across = cell.row.get(otherOf(s));
+    const pairsByPlace = across && across.k != null && !_pairMark(verseOf(across.side, across.k));
+    const later = s.cells.slice(s.cells.indexOf(cell) + 1)
+      .some(c => c.k != null && !_pairMark(verseOf(s, c.k)));
+    if (pairsByPlace && later) {
+      cell.label = cell.written = '[…]';
+      s.doc.replaced(write(cell, cell.label));
+      cell.show('');
+      return;
+    }
+
+    const anchor = next && list.contains(next) ? next : null;
+    const top = anchor && anchor.getBoundingClientRect().top;
+
+    const sp = s.spans, k = cell.k;
+    const from = k > 0 ? sp[k - 1].end : sp[k].start;
+    const to = k > 0 ? sp[k].end : k + 1 < sp.length ? sp[k + 1].start : s.doc.text.length;
+    const text = s.doc.text.slice(0, from) + s.doc.text.slice(to);
+    sp.slice(k + 1).forEach(x => { x.start -= to - from; x.end -= to - from; });
+    sp.splice(k, 1);
+    cell.k = null;
+    cell.label = cell.written = null;
+    s.cells.forEach(c => { if (c.k != null && c.k > k) c.k--; });
+    s.doc.replaced(text);
+
+    const row = cell.row;
+    if (!row.more && [...row.values()].every(c => c.k == null)) {
+      row.el.remove();
+      rowList = rowList.filter(r => r !== row);
+      sides.forEach(x => { x.cells = x.cells.filter(c => c.row !== row); });
+    } else {
+      // Still a row, with this box empty in it, and nothing left to note.
+      const ed = cell.box.parentNode;
+      ed.classList.remove('verse__editor--notes');
+      ed.querySelectorAll('.verse-notes').forEach(b => b.remove());
+      row.el.querySelectorAll('.verses__note--pair').forEach(n => n.remove());
+      const facing = s.inOriginal ? trs.some(t => (row.get(t) || {}).k != null) : across && across.k != null;
+      cell.box.placeholder = !facing ? '' : s.inOriginal ? 'Fără pereche în original' : 'Traducerea…';
+      cell.show('');
+    }
+    if (anchor) wrap.scrollTop += anchor.getBoundingClientRect().top - top;
+    _syncVerseNotes();
+  }
+
+  /* The box for a cell: its section mark above it, the lyrics in it, undo
+   * through its side's own history. A side that may not be edited is
+   * view-only where it has verses, rather than disabled, so it is not
+   * dimmed. */
+  function verseBox(cell, placeholder, mounted) {
+    const s = cell.side;
     const ta = el('textarea', {
       class: 'field__input verse__box',
       rows: 1,
       placeholder,
-      disabled: !s.editable && i >= s.spans.length
+      disabled: !s.editable && cell.k == null
     });
-    ta.value = value;
-    if (!s.editable && i < s.spans.length) _viewOnly(ta);
-    const mirror = el('div', { class: 'editor__mirror', 'aria-hidden': 'true' });
-    let repaint = () => {};
-    ta.repaint = () => repaint();
+    if (!s.editable && cell.k != null) _viewOnly(ta);
+    cell.box = ta;
+    const labelBtn = el('button', {
+      class: 'verse__label',
+      type: 'button',
+      // Keeps the caret in the box, and the keyboard up, through the pick.
+      onmousedown: (e) => e.preventDefault(),
+      onclick: () => {
+        if (!s.editable || mirrored) return;
+        const above = cell.k != null ? s.doc.text.slice(0, s.spans[cell.k].start)
+          : (a => a ? s.doc.text.slice(0, s.spans[a.k].end) : '')(cellAbove(cell));
+        _openLabelPicker({
+          current: cell.label || (cell.k == null ? suggested() : null),
+          removable: !!cell.label,
+          suggested: markAcross(cell),
+          above,
+          inOriginal: s.inOriginal,
+          pick: relabel
+        });
+      }
+    });
+    const editor = el('div', {
+      class: 'editor verse__editor' + (s.inOriginal ? ' editor--source verse__editor--source' : '')
+    }, [labelBtn, ta]);
 
-    const strip = () => {
-      if (!s.editable) return;
-      const before = s.doc.text.slice(0, i < s.spans.length ? s.spans[i].start : undefined);
-      ctx.updateStrip(ta, before, (t, label) => {
-        // Inside a verse the mark only takes its own line: the blank line
-        // that _withSection adds would split the verse in two.
-        const v = ctx.withoutTyped(ta, t);
-        const rest = v.slice(t.start);
-        const mark = '[' + label + ']';
-        ta.value = v.slice(0, t.start) + mark + (rest.startsWith('\n') ? rest : '\n' + rest);
-        const caret = t.start + mark.length + 1;
-        s.doc.replaced(write(s, i, ta.value));
-        ta.setSelectionRange(caret, caret);
-        _fitHeight(ta);
-        repaint();
-        strip();
-      }, s.inOriginal);
+    /* A translation's marks are the original's, in Romanian: each verse
+     * shows, and is written with, the mark the verse across has, or none
+     * when that has none — nothing to pick. Only a verse the original
+     * does not have keeps a mark of its own; and an emptied one keeps its
+     * stand-in (see vacate). */
+    const mirrored = hasOrig && !s.inOriginal;
+    // The mark an empty box would start its verse with: the one across.
+    const suggested = () => {
+      const m = s.editable && !cell.unmarked && markAcross(cell);
+      return m ? '[' + m + ']' : null;
     };
-    ta.addEventListener('input', () => {
-      s.doc.typed(write(s, i, ta.value));
+    // The mark the verse has now, or would start with.
+    const markNow = () => {
+      if (mirrored) {
+        const o = cell.row.get(orig);
+        if (!o || o.k == null) return cell.label;
+        const m = markAcross(cell);
+        return m ? '[' + m + ']' : ta.value.trim() ? null : cell.label;
+      }
+      return cell.label || (cell.k == null ? suggested() : null);
+    };
+    // How much of the verse's text the mark takes, its line break with it.
+    cell.labelLength = () => cell.label ? cell.label.length + 1 : 0;
+    // The verse as it goes into the text: its mark, then its lyrics.
+    const verseOut = (mark) => mark ? (ta.value ? mark + '\n' + ta.value : mark) : ta.value;
+    /* Shows the cell as it is: its mark above the box — the one it would
+     * start with, faintly, while it is empty — and `lyrics`, when given,
+     * in it. Where marks are picked, a side that may be edited offers one
+     * to every verse that has none. */
+    cell.show = (lyrics) => {
+      if (lyrics != null) ta.value = lyrics;
+      const mark = markNow();
+      const sec = mark && window.Sections.parse(mark);
+      const name = !sec ? '' : sec.text === '…' ? '…' : sec.text;
+      const offer = !mark && !mirrored && s.editable && cell.k != null;
+      labelBtn.textContent = name || (offer ? '+ Etichetă' : '');
+      labelBtn.hidden = !name && !offer;
+      labelBtn.disabled = !s.editable || mirrored;
+      labelBtn.classList.toggle('verse__label--faint', cell.k == null || !mark);
+      labelBtn.classList.toggle('verse__label--stand-in', name === '…');
+      labelBtn.title = name === '…' ? 'Loc păstrat pentru o strofă nescrisă: alege o etichetă sau scrie versurile' : '';
+      editor.classList.toggle('verse__editor--labelled', !labelBtn.hidden);
       _fitHeight(ta);
-      strip();
+    };
+
+    // The cell's mark and lyrics from its verse in the text.
+    const body = cell.k != null ? verseOf(s, cell.k) : '';
+    const first = body.split('\n')[0];
+    // `written` is the mark as it is in the text; `label`, as it is to be.
+    cell.label = cell.written = cell.k != null && window.Sections.isMarker(first) ? first : null;
+    cell.show(cell.label ? body.slice(first.length + 1) : body);
+
+    // The box into its side's text: as typed, or `once`, a step of its own.
+    // A verse new in the row for one more, or in the last row, makes room
+    // for the next (see promote, makeRoom) — unless `whole`, a paste, which
+    // draws every row again anyway.
+    const commit = (once, whole) => {
+      const made = cell.k == null, had = cell.written, mark = markNow();
+      const next = write(cell, verseOut(mark));
+      if (next == null) return false;
+      cell.label = cell.written = mark;
+      if (once) s.doc.replaced(next); else s.doc.typed(next);
+      if (made || mark !== had) cell.show();
+      // The original's mark changed: so do its translations' beside it.
+      if (s.inOriginal && mark !== had) {
+        trs.forEach(t => { const tc = cell.row.get(t); if (tc) tc.follow(); });
+      }
+      if (made && !whole) {
+        if (cell.row.more) promote(cell);
+        else makeRoom(cell);
+      }
+      return true;
+    };
+
+    // A translation's verse, its mark following the original's.
+    cell.follow = () => {
+      if (cell.k != null && s.editable && markNow() !== cell.written) commit(true);
+      cell.show();
+    };
+
+    // A mark picked from the list, or none — which an empty box keeps to,
+    // rather than starting with the one across after all.
+    function relabel(mark) {
+      cell.label = mark;
+      cell.unmarked = !mark;
+      if (!mark && !ta.value.trim()) {
+        if (cell.k != null) vacate(cell, null); else cell.show();
+        return;
+      }
+      commit(true);
+      cell.show();
+    }
+
+    ta.addEventListener('input', (e) => {
+      // A mark typed or pasted as the box's first line, the way lyrics
+      // from the web come, is taken out of the lyrics and becomes the
+      // verse's own.
+      const lines = ta.value.split('\n');
+      if (lines.length > 1 && window.Sections.isMarker(lines[0]) && s.editable) {
+        const caret = Math.max(0, ta.selectionEnd - lines[0].length - 1);
+        cell.label = lines[0].trim();
+        ta.value = lines.slice(1).join('\n');
+        ta.setSelectionRange(caret, caret);
+        cell.show();
+      }
+      // Text that arrived in one go, with a blank line in it, is a paste
+      // of more than one verse. Typed, a blank line is left where it is.
+      const pasted = /^insertFrom/.test(e.inputType) || (e.data || '').includes('\n');
+      const whole = pasted && /\n[ \t]*\n/.test(ta.value.trim());
+      if (commit(whole, whole) && whole) {
+        split(s, s.spans[cell.k].start + cell.labelLength() + ta.selectionEnd);
+        return;
+      }
+      _fitHeight(ta);
       if (!s.inOriginal) _syncVerseNotesSoon();
     });
     ta.addEventListener('focus', () => {
       // The lookup reads from any side: the original's words go to the
       // English dictionary, a version's to Rime and Sinonime. Writing in a
-      // version's column makes it the active one, as in the whole view.
+      // version's column makes it the active one.
       lastBox = ta;
       if (s.version) {
         ctx.activate(s.version, s.doc);
@@ -1939,18 +1574,21 @@ function _renderVersesView(ctx) {
         ctx.focusDoc(s.doc);
       }
     });
-    ta.addEventListener('keyup', strip);
-    ta.addEventListener('mouseup', strip);
-    ta.addEventListener('blur', ctx.hideStrip);
+    ta.addEventListener('blur', (e) => {
+      // A verse left with nothing in it is no longer a verse — nor is a
+      // translation's left with only the mark it takes from the original.
+      const bare = mirrored ? cell.label !== '[…]' : !cell.label;
+      if (s.editable && cell.k != null && bare && !ta.value.trim()) vacate(cell, e.relatedTarget);
+    });
 
-    s.boxes[i] = ta;
-    mounted.push(() => { _fitHeight(ta); repaint = _attachMirror(ta, mirror); });
+    mounted.push(() => _fitHeight(ta));
     // A version's verse, written already, takes observations of its own.
-    const notesOn = !s.inOriginal && i < s.spans.length && _hasNotes() ? (s.version || _activeVersion()) : null;
-    return el('div', {
-      class: 'editor verse__editor' + (s.inOriginal ? ' editor--source verse__editor--source' : '')
-        + (notesOn ? ' verse__editor--notes' : '')
-    }, [mirror, ta, notesOn ? _verseNotesButton(notesOn, i) : null]);
+    const notesOn = !s.inOriginal && cell.k != null && _hasNotes() ? (s.version || _activeVersion()) : null;
+    if (notesOn) {
+      editor.classList.add('verse__editor--notes');
+      editor.appendChild(_verseNotesButton(notesOn, () => cell.k));
+    }
+    return editor;
   }
 
   // In the grid every cell is set in its own column, an empty one too, so
@@ -1961,75 +1599,186 @@ function _renderVersesView(ctx) {
     class: 'verse__gap' + (s.inOriginal ? ' verse__gap--source' : '')
   }), col);
 
+  // The rows on the page, in order.
+  let rowList = [];
+
+  // A side's cell in a row; a side's cells are kept in the order of rows.
+  function cellIn(s, row, k) {
+    const cell = { side: s, row, k, box: null, label: null, written: null };
+    row.set(s, cell);
+    s.cells.push(cell);
+    return cell;
+  }
+
+  // An empty box of the original: with no original yet, the first asks
+  // for it.
+  let askedForOriginal = false;
+  function originalPlaceholder(more) {
+    if (!orig.spans.length) {
+      const first = !askedForOriginal;
+      askedForOriginal = true;
+      return first ? 'Lipește sau scrie textul original…' : '';
+    }
+    return more ? 'Strofa următoare din original…' : 'Fără pereche în original';
+  }
+
+  // An empty box of a version, beside verse `o` of the original, or in the
+  // row for one more.
+  function versionPlaceholder(s, o, more) {
+    if (more) return s.spans.length ? 'Strofa următoare…' : hasOrig ? 'Traducerea…' : 'Versurile tale…';
+    if (o == null) return '';
+    // A section this version has written once already, elsewhere.
+    const om = _pairMark(o);
+    if (om && s.spans.some((sp, k) => { const m = _pairMark(verseOf(s, k)); return m && _sameMark(m, om); })) {
+      return window.Sections.romanian(window.Sections.parse(o.split('\n')[0])) + ' — deja tradus';
+    }
+    return 'Traducerea…';
+  }
+
+  /* One row of the view, added at the bottom: `r` is what each side has
+   * in it (see _verseRows). The row for one more verse has a box on each
+   * side named in `room`, by column. Returns the row: its cells by side,
+   * and `el`. */
+  function addRow(r, mounted, room) {
+    const row = new Map();
+    const o = r.o != null ? verseOf(orig, r.o) : null;
+    const pair = el('div', { class: 'verse' + (grid ? ' verse--grid' : '') });
+    if (grid) pair.style.gridTemplateColumns = columns;
+    row.el = pair;
+    row.more = !!r.more;
+
+    // Past the original's last verse, its box says why a version's verse
+    // has nothing beside it, or offers room for one more.
+    if (hasOrig) {
+      if (!r.more || room[0]) {
+        const ph = o == null ? originalPlaceholder(r.more) : '';
+        pair.appendChild(place(verseBox(cellIn(orig, row, r.o), ph, mounted), 1));
+      } else if (grid) {
+        pair.appendChild(gap(orig, 1));
+      }
+    }
+
+    // By every original verse — empty where the version has no verse
+    // for it yet — and by its own verses that have none there. With no
+    // original, versions side by side pair by position, so each has a box
+    // in every row, to write its verse of that row in.
+    trs.forEach((s, c) => {
+      const k = r.t[c];
+      if (r.more ? !room[colOf(s) - 1] : k == null && o == null && hasOrig) {
+        if (grid) pair.appendChild(gap(s, colOf(s)));
+        return;
+      }
+      const ph = k == null ? versionPlaceholder(s, o, r.more) : '';
+      pair.appendChild(place(verseBox(cellIn(s, row, k), ph, mounted), colOf(s)));
+    });
+
+    const ok = o != null ? _verseKind(o) : null;
+    const clash = ok ? trs.map((s, c) => ({ s, k: r.t[c] != null ? _verseKind(verseOf(s, r.t[c])) : null }))
+      .filter(x => x.k && x.k !== ok) : [];
+    if (clash.length) {
+      pair.appendChild(el('p', { class: 'verses__note verses__note--pair' }, [
+        grid ? `Aici originalul are ${ok}; ` + clash.map(x => `${x.s.title}: ${x.k}`).join(', ') + '.'
+             : `Aici originalul are ${ok}, traducerea ${clash[0].k}.`
+      ]));
+    }
+    list.appendChild(pair);
+    rowList.push(row);
+    return row;
+  }
+
+  // Puts a box into a row in place, in its column: over the gap there in
+  // the grid, else first for the original and last for a version.
+  function putBox(row, box, col) {
+    const g = grid && [...row.el.children].find(x => x.classList.contains('verse__gap') && x.style.gridColumn === String(col));
+    if (g) g.replaceWith(place(box, col));
+    else if (col === 1) row.el.prepend(place(box, col));
+    else row.el.insertBefore(place(box, col), row.el.querySelector('.verses__note'));
+  }
+
+  /* The row for one more verse at the end, beside nothing: a box on each
+   * side that may take one and has a verse in the row above (`above`), or
+   * on each that may, with no rows yet. None, and there is no such row. */
+  function addMoreRow(above, mounted) {
+    const room = sides.map(s => s.editable && (!above || (above.get(s) || {}).k != null));
+    if (room.some(Boolean)) addRow({ o: null, t: trs.map(() => null), more: true }, mounted, room);
+  }
+
+  /* The row for one more verse, once one is written in it: a row like
+   * any other, with a box for its verse on every side it has a place
+   * for, and a new row for one more under it. Done in place, so the box
+   * being written in stays the one it is. */
+  function promote(cell) {
+    const row = cell.row;
+    row.more = false;
+    const mounted = [];
+    if (hasOrig && !row.has(orig)) putBox(row, verseBox(cellIn(orig, row, null), originalPlaceholder(false), mounted), 1);
+    const oc = row.get(orig);
+    const o = oc && oc.k != null ? verseOf(orig, oc.k) : null;
+    if (oc && oc.k == null) oc.box.placeholder = originalPlaceholder(false);
+    trs.forEach(s => {
+      const tc = row.get(s);
+      if (tc) {
+        if (tc.k == null) { tc.box.placeholder = versionPlaceholder(s, o, false); tc.show(); }
+      } else if (o != null) {
+        putBox(row, verseBox(cellIn(s, row, null), versionPlaceholder(s, o, false), mounted), colOf(s));
+      }
+    });
+    addMoreRow(row, mounted);
+    mounted.forEach(f => f());
+  }
+
+  /* A verse written in the last row: its side has written as far as the
+   * end now, so the row for one more takes a box of its side too — or
+   * there is one such row again, if there was none. */
+  function makeRoom(cell) {
+    const s = cell.side;
+    const end = rowList[rowList.length - 1];
+    if (!end || !s.editable) return;
+    const mounted = [];
+    if (!end.more) {
+      if (end === cell.row) addMoreRow(cell.row, mounted);
+    } else if (rowList[rowList.length - 2] === cell.row && !end.has(s)) {
+      const ph = s.inOriginal ? originalPlaceholder(true) : versionPlaceholder(s, null, true);
+      putBox(end, verseBox(cellIn(s, end, null), ph, mounted), colOf(s));
+    }
+    mounted.forEach(f => f());
+  }
+
   function draw() {
-    const ot = orig.doc.text;
-    orig.spans = _verses(ot);
-    orig.boxes = [];
-    trs.forEach(s => { s.spans = _verses(s.doc.text); s.boxes = []; });
+    sides.forEach(s => { s.spans = _verses(s.doc.text); s.cells = []; });
     list.innerHTML = '';
     heads.length = 0;
+    rowList = [];
+    askedForOriginal = false;
     const mounted = [];
-    const on = orig.spans.length;
-    // Room for one more verse at the end of whichever side can take it.
-    const n = Math.max(on + (orig.editable ? 1 : 0), on,
-      ...trs.map(s => s.spans.length + (s.editable ? 1 : 0)));
+    const marksOf = (s) => s.spans.map((sp, k) => _pairMark(verseOf(s, k)));
+    const rows = _verseRows(hasOrig ? marksOf(orig) : [], trs.map(marksOf));
 
     // Who is in which column, kept in view while the rows scroll by.
     if (grid) {
       const row = el('div', { class: 'verses__heads' }, [
-        place(_headRow(el('div', { class: 'text-tab__head' }, ['Original']), null), 1)
+        hasOrig ? place(_headRow(el('div', { class: 'text-tab__head' }, ['Original']), null), 1) : null
       ]);
       row.style.gridTemplateColumns = columns;
-      trs.forEach((s, c) => {
+      trs.forEach(s => {
         const h = el('div', {
           class: 'text-tab__head' + (s.version.id === _activeVersionId ? ' text-tab__head--active' : '')
         }, [s.title]);
         h.side = s;
         heads.push(h);
-        row.appendChild(place(_headRow(h, s.version), c + 2));
+        row.appendChild(place(_headRow(h, s.version), colOf(s)));
       });
       list.appendChild(row);
     }
 
-    for (let i = 0; i < n; i++) {
-      const o = i < on ? ot.slice(orig.spans[i].start, orig.spans[i].end) : null;
-      const ts = trs.map(s => i < s.spans.length ? s.doc.text.slice(s.spans[i].start, s.spans[i].end) : null);
-      const any = ts.some(t => t != null);
-      const pair = el('div', { class: 'verse' + (grid ? ' verse--grid' : '') });
-      if (grid) pair.style.gridTemplateColumns = columns;
-
-      // Past the original's last verse, its box says why a version's verse
-      // has nothing beside it — or, by the last empty version box, offers
-      // room for one more. Neither, and the row has none.
-      if (o != null) {
-        pair.appendChild(place(verseBox(orig, i, o, '', mounted), 1));
-      } else if (any || (orig.editable && i === on)) {
-        const ph = any ? 'Fără pereche în original' : 'Strofa următoare din original…';
-        pair.appendChild(place(verseBox(orig, i, '', ph, mounted), 1));
-      } else if (grid) {
-        pair.appendChild(gap(orig, 1));
-      }
-      // By every original verse, and one more for a verse of its own.
-      trs.forEach((s, c) => {
-        const t = ts[c];
-        if (i <= s.spans.length || o != null) {
-          const ph = t != null ? '' : o != null ? 'Traducerea…' : 'Strofa următoare…';
-          pair.appendChild(place(verseBox(s, i, t || '', ph, mounted), c + 2));
-        } else if (grid) {
-          pair.appendChild(gap(s, c + 2));
-        }
-      });
-
-      const ok = o != null ? _verseKind(o) : null;
-      const clash = ok ? trs.map((s, c) => ({ s, k: ts[c] != null ? _verseKind(ts[c]) : null }))
-        .filter(x => x.k && x.k !== ok) : [];
-      if (clash.length) {
-        pair.appendChild(el('p', { class: 'verses__note verses__note--pair' }, [
-          grid ? `Aici originalul are ${ok}; ` + clash.map(x => `${x.s.title}: ${x.k}`).join(', ') + '.'
-               : `Aici originalul are ${ok}, traducerea ${clash[0].k}.`
-        ]));
-      }
-      list.appendChild(pair);
+    let last = null;
+    rows.forEach(r => { last = addRow(r, mounted); });
+    addMoreRow(last, mounted);
+    // A composition with no version yet has nowhere to write.
+    if (!rowList.length && !ctx.active) {
+      list.appendChild(el('p', { class: 'verses__note verses__note--empty' }, [
+        hasOrig ? 'Creează o versiune pentru a începe traducerea.' : 'Creează o versiune ca să începi.'
+      ]));
     }
     return mounted;
   }
@@ -2037,12 +1786,12 @@ function _renderVersesView(ctx) {
   ctx.setLookupTarget(() => lastBox && lastBox.isConnected ? lastBox : null);
   // Undo can change any verse, add one or remove one, so it redraws them
   // all rather than working out which box it touched.
-  const redraw = () => {
+  function redraw() {
     const keep = wrap.scrollTop;
     draw().forEach(f => f());
     wrap.scrollTop = keep;
     _syncVerseNotes();
-  };
+  }
   ctx.setShowHistory(redraw);
   ctx.original.showHistory = redraw;
   trs.forEach(s => { s.doc.showHistory = redraw; });
@@ -2057,6 +1806,60 @@ function _renderVersesView(ctx) {
       _syncVerseNotes();
     }
   };
+}
+
+/* The section marks a verse can take, to pick from: the one the verse
+ * across has first — so the translation keeps in step with the original —
+ * then a verse numbered on from the verses above, the usual sections, and
+ * any name at all. The original is in English, so it is offered the
+ * English names. `current` is the verse's mark now ("[Refren]") or null;
+ * `above`, its side's text before it; `pick(mark)` is told the choice,
+ * null for none. */
+function _openLabelPicker({ current, removable, suggested, above, inOriginal, pick }) {
+  const verseNo = window.Sections.list(above).filter(s => s.kind === 'Strofa').length + 1;
+  const names = [...new Set([
+    suggested,
+    (inOriginal ? 'Verse ' : 'Strofa ') + verseNo,
+    ...(inOriginal ? SECTION_CHOICES_EN : SECTION_CHOICES)
+  ].filter(Boolean))];
+  const now = current && window.Sections.parse(current);
+  const nowName = now && now.text !== '…' ? now.text : null;
+
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const done = (mark) => { closeSheet(overlay); pick(mark); };
+  // Buttons that leave the caret where it was, as the label itself does.
+  const keep = (e) => e.preventDefault();
+  const chips = el('div', { class: 'label-picker' }, names.map(n => el('button', {
+    class: 'seg' + (n === nowName ? ' seg--active' : n === suggested ? ' seg--suggested' : ''),
+    onmousedown: keep,
+    onclick: () => done('[' + n + ']')
+  }, [n])));
+
+  // Any other name, typed. Brackets and line breaks would make it
+  // something other than one mark, so they do not go in.
+  const input = el('input', {
+    class: 'field__input',
+    placeholder: 'Altă etichetă…',
+    maxlength: '36',
+    enterkeyhint: 'done',
+    onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); useTyped(); } }
+  });
+  if (nowName && !names.includes(nowName)) input.value = nowName;
+  const useTyped = () => {
+    const name = input.value.replace(/[\[\]\n]/g, '').trim();
+    if (name) done('[' + name + ']');
+  };
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Eticheta strofei']),
+    chips,
+    el('div', { class: 'label-picker__other' }, [
+      input,
+      el('button', { class: 'btn', onclick: useTyped }, ['Gata'])
+    ]),
+    removable ? el('button', { class: 'btn btn--wide btn--menu', onmousedown: keep, onclick: () => done(null) }, ['Fără etichetă']) : null
+  ]));
+  openSheet(overlay);
 }
 
 function _refreshTextTab(content) {
@@ -2643,9 +2446,6 @@ function reset() {
   _originalHistory = null;
   _originalHistorySongId = null;
   _otherHistories = new Map();
-  _originalScrollTop = 0;
-  _columnScrollTops = new Map();
-  _translationScrollTop = 0;
   _versesScrollTop = 0;
 }
 
