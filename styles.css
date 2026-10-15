@@ -598,6 +598,27 @@ button.text-tab__head { cursor: pointer; }
 /* The mark an empty box would start with, and the offer of one to a
    verse that has none: there, but not yet the verse's own. */
 .verse__label--faint { color: var(--color-text-muted); opacity: 0.6; font-weight: 600; }
+/* A mark to add, on a verse that has none: a tag in the box's corner, so
+   it takes no line of its own and the lyrics start where they would. */
+.verse__label--offer {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  margin: 0;
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.verse__label-icon svg { display: block; width: 18px; height: 18px; }
+.verse__label--offer .verse__label-text { display: none; }
+.verse__editor--offer .verse__box { padding-right: 44px; }
+/* Beside a verse's observations, in a composition. */
+.verse__editor--notes .verse__label--offer { right: 44px; }
+.verse__editor--notes.verse__editor--offer .verse__box { padding-right: 82px; }
 /* A stand-in kept for a verse not written yet. */
 .verse__label--stand-in { color: var(--color-text-muted); letter-spacing: 0.2em; }
 .verse__editor--labelled .verse__box { padding-top: 2px; min-height: 0; }
@@ -662,6 +683,32 @@ button.text-tab__head { cursor: pointer; }
   .verses:not(.verses--solo) .verse__editor--source { grid-column: 1; border-right: 1px solid var(--color-panel-border); }
   .verse__editor--source + .verse__editor { border-top: 0; }
   .verses__note--pair { grid-column: 1 / -1; }
+  /* Side by side, a box with no mark keeps the mark's line empty when a
+     box beside it has one, so the lyrics in a row start level. */
+  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label[hidden],
+  .verse--grid:has(.verse__editor--labelled) .verse__label[hidden] {
+    display: block !important;
+    visibility: hidden;
+  }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__box,
+  .verse--grid:has(.verse__editor--labelled) .verse__box { padding-top: 2px; min-height: 0; }
+  /* There, a mark to add takes the mark's line, written out, as a mark
+     would: in the corner it would leave its lyrics a line higher. */
+  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label--offer,
+  .verse--grid:has(.verse__editor--labelled) .verse__label--offer {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    margin: 10px 0 0 9px;
+    padding: 2px 5px;
+  }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label--offer .verse__label-text,
+  .verse--grid:has(.verse__editor--labelled) .verse__label--offer .verse__label-text { display: inline; }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label--offer .verse__label-icon,
+  .verse--grid:has(.verse__editor--labelled) .verse__label--offer .verse__label-icon { display: none; }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__editor--offer:not(.verse__editor--notes) .verse__box,
+  .verse--grid:has(.verse__editor--labelled) .verse__editor--offer:not(.verse__editor--notes) .verse__box { padding-right: 14px; }
 }
 
 /* Every version in the verse view, on a big screen (see

@@ -29,6 +29,8 @@ const ROW_ICONS = {
 const LOOKUP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>`;
 
 // A speech bubble — the team's observations on a version.
+// A tag with a plus: a mark to add, on a verse that has none.
+const ADD_LABEL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H4v8l9 9 7-7-8-8z"/><circle cx="8" cy="7" r="1"/><path d="M19 2v6M16 5h6"/></svg>`;
 const NOTES_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H10l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 8.5h10M7 12.5h6"/></svg>`;
 
 // A heart — given to an observation; filled once it is yours.
@@ -1481,13 +1483,27 @@ function _renderVersesView(ctx) {
       const sec = mark && window.Sections.parse(mark);
       const name = !sec ? '' : sec.text === '…' ? '…' : sec.text;
       const offer = !mark && !mirrored && s.editable && cell.k != null;
-      labelBtn.textContent = name || (offer ? '+ Etichetă' : '');
+      // A mark to add sits in the box's corner, out of the lyrics' way,
+      // and is written out only where a box beside it has a mark (see
+      // .verse__label--offer in the stylesheet). With nothing to show, the
+      // label still holds a line's height, for when the row keeps its
+      // place, to start level with a box beside it that has a mark.
+      if (offer) {
+        labelBtn.replaceChildren(
+          el('span', { class: 'verse__label-icon', html: ADD_LABEL_ICON }),
+          el('span', { class: 'verse__label-text' }, ['+ Etichetă']));
+      } else {
+        labelBtn.textContent = name || '\u00a0';
+      }
       labelBtn.hidden = !name && !offer;
       labelBtn.disabled = !s.editable || mirrored;
       labelBtn.classList.toggle('verse__label--faint', cell.k == null || !mark);
       labelBtn.classList.toggle('verse__label--stand-in', name === '…');
-      labelBtn.title = name === '…' ? 'Loc păstrat pentru o strofă nescrisă: alege o etichetă sau scrie versurile' : '';
-      editor.classList.toggle('verse__editor--labelled', !labelBtn.hidden);
+      labelBtn.classList.toggle('verse__label--offer', offer);
+      labelBtn.title = offer ? 'Adaugă o etichetă'
+        : name === '…' ? 'Loc păstrat pentru o strofă nescrisă: alege o etichetă sau scrie versurile' : '';
+      editor.classList.toggle('verse__editor--labelled', !!name);
+      editor.classList.toggle('verse__editor--offer', offer);
       _fitHeight(ta);
     };
 
