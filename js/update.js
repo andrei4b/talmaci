@@ -3,10 +3,11 @@
  * An app left open in the background keeps the release it was started
  * with: coming back to it does not load the page again, and the browser
  * looks for a new service-worker.js only on loading a page (and about once
- * a day). So on coming back to the foreground the worker is fetched again
- * here. A deploy bumps its CACHE_NAME, so a new release's worker installs,
- * storing the new page and every file it loads, and takes over (it skips
- * waiting and claims the page — see service-worker.js).
+ * a day). So on coming back to the foreground, and every two minutes
+ * while the app is on screen, the worker is fetched again here. A deploy
+ * bumps its CACHE_NAME, so a new release's worker installs, storing the
+ * new page and every file it loads, and takes over (it skips waiting and
+ * claims the page — see service-worker.js).
  *
  * The page is then told by the bar at the top, and moves only when its
  * Actualizează is tapped, never on its own: something may be half-written.
@@ -31,9 +32,11 @@ const release = (() => {
   return m ? m[1] : '';
 })();
 
-// Coming back more often than this does not ask again.
-const CHECK_GAP_MS = 60 * 1000;
-let _lastCheck = 0;
+// While the app is on screen it asks again this often, so a release that
+// lands while someone is looking at the app is offered without leaving it.
+const CHECK_EVERY_MS = 2 * 60 * 1000;
+// The check under way, which another asking joins rather than repeats.
+let _checking = null;
 // The newer release the worker holds, once one is known.
 let _newer = 0;
 let _bar = null;
@@ -69,11 +72,15 @@ function _settled(worker) {
  * compares. onDownloading is called if there is one, as installing
  * downloads the whole release. Rejects when the worker cannot be fetched
  * (no connection). Resolves with the newer release, or 0. */
-async function check(onDownloading) {
-  if (_newer) return _newer;
+function check(onDownloading) {
+  if (_newer) return Promise.resolve(_newer);
+  if (!_checking) _checking = _check(onDownloading).finally(() => { _checking = null; });
+  return _checking;
+}
+
+async function _check(onDownloading) {
   const reg = sw && await sw.getRegistration();
   if (!reg) return 0;
-  _lastCheck = Date.now();
   await reg.update();
   const w = reg.installing || reg.waiting;
   if (w) {
@@ -101,11 +108,17 @@ function _showBar() {
 
 if (sw) {
   sw.addEventListener('controllerchange', () => { _compare(sw.controller); });
-  document.addEventListener('visibilitychange', () => {
+  // On coming back, on the connection coming back, and every so often
+  // while on screen. Asking costs one small request, so there is no gap
+  // between them: a check that ran just before a deploy finished must not
+  // keep the next one from finding it.
+  const autoCheck = () => {
     if (document.visibilityState !== 'visible' || _newer) return;
-    if (Date.now() - _lastCheck < CHECK_GAP_MS) return;
     check().catch(() => {});
-  });
+  };
+  document.addEventListener('visibilitychange', autoCheck);
+  window.addEventListener('online', autoCheck);
+  setInterval(autoCheck, CHECK_EVERY_MS);
 }
 
 window.Update = { release, check, newer, apply };
