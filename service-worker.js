@@ -209,6 +209,14 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// The page asks which release this worker holds (see js/update.js), to
+// tell whether it is newer than the one the page is running.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'talmaci-release' && event.ports[0]) {
+    event.ports[0].postMessage({ release: Number(CACHE_NAME.match(/\d+$/)[0]) });
+  }
+});
+
 /* Notifications — about a song this member is working on: an observation
  * left, its text edited, a version added, its status changed, someone
  * joining (see js/push.js and functions/index.js). Firebase Cloud

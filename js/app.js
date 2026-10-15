@@ -532,16 +532,6 @@ function _renderJoinGroup(root) {
   ]));
 }
 
-// The release this page is running, read off the ?v= of its own script —
-// the number bumped with every deploy (see index.html). Shown in the
-// account menu, so a phone still running an older release, which an app
-// left open in the background does until it is restarted, can be told.
-const RELEASE = (() => {
-  const s = document.querySelector('script[src*="js/app.js"]');
-  const m = s && s.src.match(/[?&]v=(\d+)/);
-  return m ? m[1] : '';
-})();
-
 function openAccountMenu() {
   const user = window.Auth.currentUser();
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
@@ -592,10 +582,36 @@ function openAccountMenu() {
     })
   }, menuLabel(icons.logout, 'Deconectează-te')));
 
-  if (RELEASE) items.push(el('div', { class: 'sheet__version' }, ['Versiunea ' + RELEASE]));
+  if (window.Update.release) items.push(_versionLine(overlay));
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
   openSheet(overlay);
+}
+
+/* The release this page is running, and beside it a check for a newer
+ * one (see update.js): once found, a button that moves to it. */
+function _versionLine(overlay) {
+  const Update = window.Update;
+  const status = el('span', {});
+  const updateBtn = (r) => el('button', {
+    class: 'sheet__version-btn',
+    onclick: () => closeSheetThen(overlay, Update.apply)
+  }, ['Actualizează la versiunea ' + r]);
+  const show = (node) => { status.replaceChildren(node); };
+  const checkBtn = el('button', {
+    class: 'sheet__version-btn',
+    onclick: async () => {
+      show('Se caută…');
+      try {
+        const r = await Update.check(() => show('Se descarcă versiunea nouă…'));
+        show(r ? updateBtn(r) : 'Ești la zi');
+      } catch (_) {
+        show(isOffline() ? 'Fără internet' : 'Nu am putut verifica');
+      }
+    }
+  }, ['Caută actualizări']);
+  show(Update.newer() ? updateBtn(Update.newer()) : checkBtn);
+  return el('div', { class: 'sheet__version' }, ['Versiunea ' + Update.release + ' · ', status]);
 }
 
 /* Notifications on this device about the songs you are working on — see
