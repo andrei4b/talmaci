@@ -197,8 +197,10 @@ async function render(root, songId, openNotesFor, entered) {
 
   _showNotesFor(openNotesFor);
   _renderShell(root);
-  _loadNotes();
-  _openNotesFor(openNotesFor);
+  // A tapped notification's observations open once it is known when you
+  // last read them: opened before, every one of them was marked new.
+  const seenRead = _loadNotes();
+  if (openNotesFor) seenRead.then(() => { if (_songOnScreen() && _song.id === songId) _openNotesFor(openNotesFor); });
 }
 
 // Brings the version up whose observations a notification is about.
@@ -454,6 +456,18 @@ function _memberNames(members) {
   return new Map((members || window.Auth.knownMembers()).map(m => [m.uid, window.Auth.shortName(m)]));
 }
 
+// uid -> whole name, for the initials on their observations.
+function _memberFullNames(members) {
+  return new Map((members || window.Auth.knownMembers()).map(m => [m.uid, m.displayName || '']));
+}
+
+// The colors initials are drawn on: muted enough to sit beside the text,
+// dark enough for white letters, and told apart from one another.
+const AVATAR_COLORS = ['#2C3E66', '#B5652A', '#3F7A52', '#8A4B6E', '#3E7C8C', '#7A6230', '#5A5AA0', '#A04A3D'];
+
+// A check mark — a thread dealt with.
+const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+
 // The start of an observation, for a line that only reminds of it.
 function _excerpt(text, max) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
@@ -499,6 +513,7 @@ function _openNotes(version, verseIndex) {
   // author's when it was written, and drawing that first showed an old
   // name for a moment whenever the author had changed theirs since.
   let names = _memberNames();
+  let fullNames = _memberFullNames();
   // The thread being answered, if any; the folded threads opened to read;
   // the threads showing the words they were left on.
   let replyTo = null;
@@ -515,6 +530,9 @@ function _openNotes(version, verseIndex) {
     return onVerse ? all.filter(t => t.loc && t.loc.at.includes(verseIndex)) : all;
   }
 
+  /* One observation: its author's initials in a colored circle, then their
+   * name · when, what they wrote, and a gray row of what can be done with
+   * it — answer, mark the thread done (on its first), give a heart. */
   function noteItem(n, t, isReply) {
     // Two taps to delete: the first only asks.
     const del = canDelete(n) ? el('button', {
@@ -541,26 +559,52 @@ function _openNotes(version, verseIndex) {
       }
     }) : null;
     const fresh = n.by !== me && n.at > _seenAt(seenBefore, version.id, t.id);
+    const isFirst = n === t.root;
     return el('div', { class: 'note' + (isReply ? ' note--reply' : '') + (fresh ? ' note--new' : '') }, [
-      el('div', { class: 'note__meta' }, [
-        el('strong', {}, [whoOf(n)]),
-        el('time', {
-          class: 'note__when',
-          datetime: new Date(n.at).toISOString(),
-          title: new Date(n.at).toLocaleString('ro-RO')
-        }, [window.Activity.formatWhen(n.at, Date.now())]),
-        heartButton(n),
-        del
-      ]),
-      el('div', { class: 'note__text' }, [n.text])
+      avatar(n),
+      el('div', { class: 'note__body' }, [
+        el('div', { class: 'note__meta' }, [
+          fresh ? el('span', { class: 'note__newdot', title: 'Nou' }) : null,
+          el('strong', { class: 'note__who' }, [whoOf(n)]),
+          el('span', { class: 'note__sep', 'aria-hidden': 'true' }, ['·']),
+          el('time', {
+            class: 'note__when',
+            datetime: new Date(n.at).toISOString(),
+            title: new Date(n.at).toLocaleString('ro-RO')
+          }, [window.Activity.formatWhen(n.at, Date.now())]),
+          del
+        ]),
+        el('div', { class: 'note__text' }, [n.text]),
+        el('div', { class: 'note__actions' }, [
+          el('button', { class: 'note__action', onclick: () => startReply(t) }, ['Răspunde']),
+          isFirst ? el('button', { class: 'note__action', onclick: () => resolve(t, !t.resolved) },
+            [t.resolved ? 'Redeschide' : 'Rezolvă']) : null,
+          heartButton(n)
+        ])
+      ])
     ]);
+  }
+
+  /* A member's initials on a color of their own, the same everywhere: who
+   * said what, before reading any names. */
+  function avatar(n) {
+    const full = fullNames.get(n.by) || n.byName || whoOf(n);
+    const words = String(full).trim().split(/\s+/).filter(Boolean);
+    const initials = ((words[0] || '?')[0] + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+    let hash = 0;
+    for (const ch of String(n.by || full)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return el('span', {
+      class: 'note__avatar',
+      style: `background:${AVATAR_COLORS[hash % AVATAR_COLORS.length]}`,
+      'aria-hidden': 'true'
+    }, [initials]);
   }
 
   /* The heart on an observation: yours given or not, and how many there
    * are, with who gave them on hover. Changed on screen straight away and
    * put back should the save fail. */
   function heartButton(n) {
-    const btn = el('button', { class: 'note__heart' });
+    const btn = el('button', { class: 'note__action note__heart' });
     const paint = () => {
       const hearts = n.hearts || [];
       const mine = hearts.includes(me);
@@ -590,35 +634,45 @@ function _openNotes(version, verseIndex) {
     return btn;
   }
 
-  // Where a thread on a verse is, above it: the verse's name on the whole
-  // version, and on either, whether the verse has changed since.
-  function whereItem(t, li) {
+  /* Where a thread on a verse is, at the top of its card: on the whole
+   * version, the verse's name and a line of its words; on either, a pill
+   * when the verse has changed since or is gone, with the words it was
+   * left on. The line opens to the whole verse. */
+  function whereItem(t, card) {
     const state = !t.loc.at.length ? 'Nu mai e în text'
-      : t.loc.changed ? 'S-a schimbat între timp' : '';
+      : t.loc.changed ? 'Schimbată între timp' : '';
     if (onVerse && !state) return;
     const showing = quoted.has(t.id);
-    li.appendChild(el('div', { class: 'thread__where' }, [
+    const lines = String(t.anchor.quote || '').split('\n')
+      .filter(l => l.trim() && !window.Sections.isMarker(l));
+    const toggle = () => { if (showing) quoted.delete(t.id); else quoted.add(t.id); draw(); };
+    card.appendChild(el('div', { class: 'thread__where' }, [
       onVerse ? null : el('span', { class: 'thread__section' }, [window.Threads.label(t.anchor)]),
-      state ? el('span', { class: 'thread__state' }, [state]) : null,
-      el('button', {
-        class: 'thread__link',
-        onclick: () => { if (showing) quoted.delete(t.id); else quoted.add(t.id); draw(); }
-      }, [showing ? 'Ascunde textul' : state ? 'Textul de atunci' : 'Textul strofei'])
+      state ? el('span', { class: 'thread__state' }, [state]) : null
     ]));
-    if (showing) li.appendChild(el('blockquote', { class: 'thread__quote' }, [t.anchor.quote]));
+    if (!lines.length) return;
+    card.appendChild(el('button', {
+      class: 'thread__quote' + (showing ? ' thread__quote--open' : ''),
+      'aria-expanded': showing ? 'true' : 'false',
+      title: showing ? 'Ascunde' : 'Arată toată strofa',
+      onclick: toggle
+    }, [
+      state ? el('span', { class: 'thread__quote-label' }, ['Atunci: ']) : null,
+      showing ? lines.join('\n') : lines.join(' / ')
+    ]));
   }
 
   function threadItem(t) {
     const folded = t.resolved && !unfolded.has(t.id);
     const li = el('li', { class: 'thread' + (t.resolved ? ' thread--resolved' : '') });
-    if (t.anchor) whereItem(t, li);
     if (folded) {
       const first = t.notes[0];
       li.appendChild(el('button', {
         class: 'thread__folded',
         onclick: () => { unfolded.add(t.id); draw(); }
       }, [
-        el('span', { class: 'thread__done' }, ['Rezolvat']),
+        el('span', { class: 'thread__check', html: CHECK_ICON }),
+        t.anchor && !onVerse ? el('span', { class: 'thread__section' }, [window.Threads.label(t.anchor)]) : null,
         el('span', { class: 'thread__gist' }, [whoOf(first) + ': ' + _excerpt(first.text, 60)]),
         el('span', { class: 'thread__count' }, [_messages(t.notes.length)])
       ]));
@@ -626,21 +680,23 @@ function _openNotes(version, verseIndex) {
     }
     if (t.resolved) {
       const by = t.root.resolvedBy === me ? 'tine' : (names.get(t.root.resolvedBy) || 'cineva');
-      li.appendChild(el('div', { class: 'thread__where' }, [
-        el('span', { class: 'thread__done' }, [`Rezolvat de ${by}`])
+      li.appendChild(el('div', { class: 'thread__resolved' }, [
+        el('span', { class: 'thread__check', html: CHECK_ICON }),
+        el('span', {}, [`Rezolvat de ${by}`]),
+        el('button', {
+          class: 'note__action thread__fold',
+          onclick: () => { unfolded.delete(t.id); draw(); }
+        }, ['Strânge'])
       ]));
     }
-    if (!t.root) li.appendChild(el('div', { class: 'note note--gone' }, ['Observația a fost ștearsă.']));
+    if (t.anchor) whereItem(t, li);
+    if (!t.root) {
+      li.appendChild(el('div', { class: 'note note--gone' }, [
+        el('span', { class: 'note__avatar note__avatar--gone', 'aria-hidden': 'true' }),
+        el('span', { class: 'note__body' }, ['Observația a fost ștearsă.'])
+      ]));
+    }
     t.notes.forEach(n => li.appendChild(noteItem(n, t, n !== t.root)));
-    li.appendChild(el('div', { class: 'thread__actions' }, [
-      el('button', { class: 'thread__link', onclick: () => startReply(t) }, ['Răspunde']),
-      t.root ? el('button', { class: 'thread__link', onclick: () => resolve(t, !t.resolved) },
-        [t.resolved ? 'Redeschide' : 'Rezolvat']) : null,
-      t.resolved ? el('button', {
-        class: 'thread__link',
-        onclick: () => { unfolded.delete(t.id); draw(); }
-      }, ['Strânge']) : null
-    ]));
     return li;
   }
 
@@ -802,6 +858,7 @@ function _openNotes(version, verseIndex) {
   window.Auth.groupMembers()
     .then(members => {
       names = _memberNames(members);
+      fullNames = _memberFullNames(members);
       if (overlay.isConnected) draw();
     })
     .catch(() => {});

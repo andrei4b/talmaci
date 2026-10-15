@@ -812,22 +812,56 @@ button.text-tab__head { cursor: pointer; }
   box-shadow: 0 0 0 2px var(--color-surface);
 }
 
-/* The observations sheet */
-.note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+/* The observations sheet: one card a thread, on the page's warm tint so
+   it stands off the white sheet. Each observation is its author's initials
+   in a circle beside their name · when, the text, and a gray row of what
+   can be done with it; the replies are set in under the first, their
+   circles smaller and in line with its text. */
+.note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .note-list__empty { color: var(--color-text-muted); padding: 4px 0 8px; }
-.note { padding: 10px 0; border-bottom: 1px solid var(--color-border); }
-.note:last-child { border-bottom: none; }
-.note__meta { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
-.note__when { color: var(--color-text-muted); font-size: 0.8rem; }
+.thread {
+  padding: 12px 12px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+.note { display: flex; gap: 10px; padding: 2px 0 4px; }
+.note__avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.note__body { flex: 1; min-width: 0; }
+.note__meta { display: flex; align-items: center; gap: 6px; min-height: 22px; font-size: 0.85rem; }
+.note__who { font-weight: 600; }
+.note__sep, .note__when { color: var(--color-text-muted); }
+.note__when { font-size: 0.8rem; }
+/* Someone else's, left since you last read these: a dot before the name. */
+.note__newdot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
 .note__delete {
   margin-left: auto;
-  height: 28px;
-  min-width: 28px;
+  height: 26px;
+  min-width: 26px;
   padding: 0 6px;
   border: none;
   border-radius: var(--radius-sm);
   background: none;
   color: var(--color-text-muted);
+  opacity: 0.6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -835,86 +869,107 @@ button.text-tab__head { cursor: pointer; }
   font-weight: 600;
   cursor: pointer;
 }
-.note__delete svg { width: 15px; height: 15px; }
-/* The heart, at the right of an observation's line, before its delete. */
-.note__heart {
-  margin-left: auto;
-  height: 28px;
-  min-width: 28px;
-  padding: 0 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--color-text-muted);
-  display: flex;
+.note__delete svg { width: 14px; height: 14px; }
+.note__delete--confirm { opacity: 1; color: #fff; background: var(--color-danger); }
+.note__text { margin-top: 1px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Răspunde · Rezolvă · ♡ — gray, a dot between each. */
+.note__actions { display: flex; align-items: center; flex-wrap: wrap; margin: 2px 0 0 -2px; }
+.note__action {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-@media (hover: hover) { .note__heart:hover { background: var(--color-border); } }
-.note__heart svg { width: 16px; height: 16px; }
-.note__heart--mine { color: var(--color-danger); }
-.note__heart--mine svg { fill: currentColor; }
-.note__heart + .note__delete { margin-left: 0; }
-.note__delete--confirm { color: #fff; background: var(--color-danger); }
-.note__text { margin-top: 4px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* A thread: an observation, its replies set in under it, and what can be
-   done with it. One dealt with is folded to a line, dimmed. */
-.thread { padding: 10px 0; border-bottom: 1px solid var(--color-border); }
-.thread:last-child { border-bottom: none; }
-.thread .note { padding: 4px 0; border-bottom: none; }
-.note--reply { margin-left: 14px; padding-left: 10px !important; border-left: 2px solid var(--color-border); }
-/* Someone else's, left since you last read these. */
-.note--new .note__meta strong::after { content: ' · nou'; color: var(--color-accent); font-weight: 600; }
-.note--gone { color: var(--color-text-muted); font-style: italic; font-size: 0.9rem; }
-.thread__where {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
-  margin-bottom: 2px;
-  font-size: 0.8rem;
-}
-.thread__section {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--color-panel);
-  color: var(--color-primary);
-  font-weight: 600;
-}
-.thread__state { color: var(--color-accent); font-weight: 600; }
-.thread__done { color: var(--color-success); font-weight: 600; }
-.thread__quote {
-  margin: 4px 0 6px;
-  padding: 6px 10px;
-  border-left: 3px solid var(--color-panel-border);
-  background: var(--color-panel);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  font-size: 0.85rem;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.thread__actions { display: flex; gap: 14px; margin-top: 2px; }
-.thread__link {
-  padding: 4px 0;
+  min-height: 30px;
+  padding: 0 2px;
   border: none;
   background: none;
-  color: var(--color-primary);
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
 }
+.note__action + .note__action::before {
+  content: '·';
+  margin: 0 8px 0 6px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+@media (hover: hover) { .note__action:hover { color: var(--color-text); } }
+.note__heart svg { width: 15px; height: 15px; }
+.note__heart--mine { color: var(--color-danger); }
+.note__heart--mine svg { fill: currentColor; }
+.note--reply { margin-left: 42px; }
+.note--reply .note__avatar { width: 26px; height: 26px; font-size: 0.68rem; }
+.note--gone { align-items: center; padding: 0 0 6px; color: var(--color-text-muted); font-style: italic; font-size: 0.9rem; }
+.note__avatar--gone { background: none; border: 1.5px dashed var(--color-border); }
+/* Where a thread on a verse is: its name, a pill when it has changed or
+   is gone, and a gray line of its words that opens to the whole verse. */
+.thread__where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 0.78rem;
+}
+.thread__section {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--color-panel);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.thread__state {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(201, 125, 62, 0.14);
+  color: #8F5222;
+  font-weight: 600;
+}
+.thread__quote {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 0 0 0 9px;
+  border: none;
+  border-left: 2px solid var(--color-border);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-style: italic;
+  line-height: 1.45;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.thread__quote--open { white-space: pre-wrap; overflow-wrap: anywhere; }
+.thread__quote-label { font-style: normal; font-weight: 600; }
+/* A thread dealt with: faded, folded to one line, a green check. */
+.thread--resolved { background: var(--color-surface); }
+.thread--resolved:has(.thread__folded) { padding: 8px 12px; opacity: 0.75; }
+.thread__check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-success);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.thread__check svg { width: 12px; height: 12px; }
 .thread__folded {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 2px 0;
+  padding: 0;
   border: none;
   background: none;
   color: var(--color-text-muted);
@@ -925,6 +980,16 @@ button.text-tab__head { cursor: pointer; }
 }
 .thread__gist { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thread__count { flex-shrink: 0; font-size: 0.8rem; }
+.thread__resolved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--color-success);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.thread__fold { margin-left: auto; min-height: 24px; }
 /* Above the field while replying: to whom, and a way out of it. */
 .note-reply-to {
   display: flex;
