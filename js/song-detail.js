@@ -1421,11 +1421,14 @@ function _renderVersesView(ctx) {
    *
    * Done in place rather than by redrawing: the box the tap went to is
    * already taking focus, and stays the box it was, and where it was on
-   * screen — the rows are scrolled by whatever went from above it. */
-  function vacate(cell, next) {
+   * screen — the rows are scrolled by whatever went from above it.
+   *
+   * `whole`: the row is going as a whole (see the box's blur), so there
+   * is nothing to keep a place for. */
+  function vacate(cell, next, whole) {
     const s = cell.side;
     const across = cell.row.get(otherOf(s));
-    const pairsByPlace = across && across.k != null && !_pairMark(verseOf(across.side, across.k));
+    const pairsByPlace = !whole && across && across.k != null && !_pairMark(verseOf(across.side, across.k));
     const later = s.cells.slice(s.cells.indexOf(cell) + 1)
       .some(c => c.k != null && !_pairMark(verseOf(s, c.k)));
     if (pairsByPlace && later) {
@@ -1640,6 +1643,7 @@ function _renderVersesView(ctx) {
       // English dictionary, a version's to Rime and Sinonime. Writing in a
       // version's column makes it the active one.
       lastBox = ta;
+      lyricsOnFocus = ta.value;
       if (s.version) {
         ctx.activate(s.version, s.doc);
         heads.forEach(h => h.classList.toggle('text-tab__head--active', h.side === s));
@@ -1647,11 +1651,23 @@ function _renderVersesView(ctx) {
         ctx.focusDoc(s.doc);
       }
     });
+    // What the box held when it gained focus: a verse emptied since, as
+    // against one that was only ever a mark (an "[Interlude]", say).
+    let lyricsOnFocus = '';
     ta.addEventListener('blur', (e) => {
+      if (!s.editable || cell.k == null || ta.value.trim()) return;
       // A verse left with nothing in it is no longer a verse — nor is a
       // translation's left with only the mark it takes from the original.
       const bare = mirrored ? cell.label !== '[…]' : !cell.label;
-      if (s.editable && cell.k != null && bare && !ta.value.trim()) vacate(cell, e.relatedTarget);
+      if (bare) { vacate(cell, e.relatedTarget); return; }
+      // A marked verse of the original, or of a composition, emptied with
+      // nothing written beside it either: the row goes, mark and all, with
+      // any mark or stand-in beside it that you may remove.
+      const others = [...cell.row.values()].filter(c => c !== cell);
+      if (!mirrored && lyricsOnFocus.trim() && others.every(c => !c.box || !c.box.value.trim())) {
+        others.filter(c => c.k != null && c.side.editable).forEach(c => vacate(c, e.relatedTarget, true));
+        vacate(cell, e.relatedTarget, true);
+      }
     });
 
     mounted.push(() => _fitHeight(ta));
