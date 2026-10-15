@@ -152,6 +152,7 @@ async function render(root, songId, openNotesFor) {
     // there for when a fresh copy is actually wanted.
     _showNotesFor(openNotesFor);
     _renderShell(root);
+    if (openNotesFor) _rewatchNotes();
     _openNotesFor(openNotesFor);
     return;
   }
@@ -334,15 +335,46 @@ function _watchNotes() {
   }
   _versions.forEach(v => {
     if (_noteWatch.stops.has(v.id)) return;
-    _noteWatch.stops.set(v.id, window.Db.watchNotes(songId, v.id, (list) => {
+    const stop = window.Db.watchNotes(songId, v.id, (list) => {
       if (!_song || _song.id !== songId) return;
-      if (!_shellRoot || !_shellRoot.isConnected) { _unwatchNotes(); return; }
+      if (!_songOnScreen()) { _unwatchNotes(); return; }
       _notes.set(v.id, list);
       _syncNoteDots();
       _noteRedraws.forEach(redraw => redraw(v.id));
-    }));
+    }, (err) => {
+      // Firestore ends a listener for good on an error — a sign-in that
+      // lapsed for a moment after the app sat idle, say. Left in place it
+      // would never bring anything again; dropped, it is started anew.
+      console.warn('Observations stopped coming in:', err && (err.code || err.message));
+      if (_noteWatch.stops.get(v.id) === stop) _noteWatch.stops.delete(v.id);
+      setTimeout(() => { if (_songOnScreen() && _song.id === songId) _watchNotes(); }, WATCH_RETRY_MS);
+    });
+    _noteWatch.stops.set(v.id, stop);
   });
 }
+const WATCH_RETRY_MS = 5000;
+
+function _songOnScreen() {
+  return !!_song && !!_shellRoot && _shellRoot.isConnected;
+}
+
+/* The listeners started afresh, for when the ones running may have
+ * fallen behind: the app back on screen after a while away — a phone
+ * puts a backgrounded app's connection to sleep — or a notification
+ * tapped, which should show what it is about. A new listener answers
+ * from the device's copy first and then from the server. */
+function _rewatchNotes() {
+  if (!_songOnScreen()) return;
+  _unwatchNotes();
+  _watchNotes();
+}
+const AWAY_MS = 30 * 1000;
+let _hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { _hiddenAt = Date.now(); return; }
+  if (_hiddenAt && Date.now() - _hiddenAt >= AWAY_MS) _rewatchNotes();
+  _hiddenAt = 0;
+});
 
 /* A version's observations as threads (see threads.js), each found in the
  * version's text as it reads now: `loc` is where its verse is, or null for
