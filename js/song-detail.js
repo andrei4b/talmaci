@@ -143,13 +143,15 @@ WIDE.addEventListener('change', () => {
 });
 
 /* `openNotesFor`, a version id, opens that version's observations once
- * the song is on screen — from a tapped notification. */
-async function render(root, songId, openNotesFor) {
-  if (_song && _song.id === songId) {
+ * the song is on screen — from a tapped notification. `entered`: the song
+ * is being arrived at (see _renderRoute in app.js), so it is read afresh
+ * even if it is the one last open, which may have changed since. */
+async function render(root, songId, openNotesFor, entered) {
+  if (!entered && _song && _song.id === songId) {
     // A tab switch back, or a "back" from Rime/Sinonime/Biblie — not a
     // real navigation. Redraw from what's already loaded instead of
     // hitting Firestore again; "Reîmprospătează" in the kebab menu is
-    // there for when a fresh copy is actually wanted.
+    // there for when a fresh copy is wanted without leaving.
     _showNotesFor(openNotesFor);
     _renderShell(root);
     if (openNotesFor) _rewatchNotes();
@@ -158,6 +160,13 @@ async function render(root, songId, openNotesFor) {
   }
   _originalScrollTop = 0;
   _columnScrollTops = new Map();
+  // Undo starts from the texts as they are read now, the song last open
+  // included, as it would for any other.
+  _undoStateVersionId = undefined;
+  _originalHistory = null;
+  // And its observations' listeners start afresh with it, in case one
+  // ended while the song was off screen.
+  _unwatchNotes();
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {

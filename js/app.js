@@ -319,6 +319,11 @@ function _renderRoute(root) {
   }
   const hash = location.hash || '#/';
   const tab = _tabForHash(hash);
+  // Arriving at a song, as opposed to coming back to it: from the list,
+  // the journal or another song, or from a tapped notification. Back from
+  // another tab is not, and finds the song as it was left.
+  const entered = hash !== _currentRoute &&
+    (!!openNotesFor || !_currentRoute || _tabForHash(_currentRoute) === 'text');
   if (hash !== _currentRoute) { _prevRoute = _currentRoute; _currentRoute = hash; }
   if (tab === 'text') _textRoute = hash;
   if (tab === 'dictionare') _dictRoute = hash;
@@ -344,7 +349,7 @@ function _renderRoute(root) {
 
   if (tab === 'text') {
     const songMatch = hash.match(/^#\/song\/(.+)$/);
-    if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]), openNotesFor);
+    if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]), openNotesFor, entered);
     else if (hash === '#/jurnal') window.Activity.render(content);
     else window.Songs.render(content);
   } else if (tab === 'rime') {
