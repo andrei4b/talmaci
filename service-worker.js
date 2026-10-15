@@ -32,11 +32,17 @@ const CACHE_NAME = 'talmaci-shell-v152';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
-// cold start, and no waiting on a slow network. A changed file ships by
-// bumping CACHE_NAME, which makes install fetch it fresh into the new cache.
-const BIBLE_URL = './data/bible-cornilescu.json';
-const RHYME_URL = './data/rhyme-index.json';
+// cold start, and no waiting on a slow network. They are kept in a cache of
+// their own that a new CACHE_NAME leaves alone, so a release of the app
+// downloads only the app's files — a few hundred KB rather than ten MB — and
+// the Actualizează bar (js/update.js), which waits for that download, comes
+// up in seconds. Bump DATA_CACHE when either file is rebuilt: install then
+// fetches both afresh into the new cache, and activation drops the old one.
+const DATA_CACHE = 'talmaci-data-v1';
+const DATA_FILES = ['./data/bible-cornilescu.json', './data/rhyme-index.json'];
 const CACHE_FIRST = ['/data/bible-cornilescu.json', '/data/rhyme-index.json'];
+// Up to this release the two were stored in each release's own cache.
+const LAST_RELEASE_WITH_DATA = 152;
 // The Bible dictionaries (data/biblic/) are 28 MB in all, far too much to
 // install up front, so their chunks are cached as they are opened — in a
 // cache of their own that a new CACHE_NAME leaves alone, so a deploy does
@@ -51,8 +57,6 @@ const PAGE_CACHE_PREFIX = 'talmaci-mw-';
 // always exactly the set of URLs that page asks for, ?v= and all.
 const SHELL_FILES = [
   './manifest.webmanifest',
-  BIBLE_URL,
-  RHYME_URL,
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png'
@@ -69,6 +73,29 @@ async function _cacheShell(cache) {
   await cache.addAll(files.map(f => new Request(f, { cache: 'no-store' })));
   const page = () => new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   await Promise.all([cache.put('./', page()), cache.put('./index.html', page())]);
+}
+
+/* Stores the Bible and the rhyme index in DATA_CACHE, downloading only what
+ * it lacks — so after the first install, normally nothing. A phone coming
+ * from release LAST_RELEASE_WITH_DATA or earlier has both in that release's
+ * cache, the same files, and they are copied from there rather than
+ * downloaded once more. */
+async function _cacheData() {
+  const cache = await caches.open(DATA_CACHE);
+  const older = (await caches.keys()).filter(k => {
+    const m = k.match(/^talmaci-shell-v(\d+)$/);
+    return m && Number(m[1]) <= LAST_RELEASE_WITH_DATA;
+  });
+  await Promise.all(DATA_FILES.map(async (url) => {
+    if (await cache.match(url)) return;
+    for (const name of older) {
+      const hit = await (await caches.open(name)).match(url);
+      if (hit) return cache.put(url, hit);
+    }
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(url + ': ' + res.status);
+    await cache.put(url, res);
+  }));
 }
 
 // The Firebase SDK is cross-origin and needed to render anything at all
@@ -91,8 +118,13 @@ self.addEventListener('install', (event) => {
       .then(cache => Promise.all([
         cache.addAll(SHELL_FILES),
         _cacheShell(cache),
+        _cacheData(),
+        // Each URL names its SDK version, so a copy the last release
+        // stored is the same file, and is carried over rather than fetched.
         ...CDN_FILES.map(url =>
-          fetch(new Request(url, { mode: 'no-cors' })).then(res => cache.put(url, res)).catch(() => {})
+          caches.match(url)
+            .then(hit => hit || fetch(new Request(url, { mode: 'no-cors' })))
+            .then(res => cache.put(url, res)).catch(() => {})
         )
       ]))
       .then(() => self.skipWaiting())
@@ -103,7 +135,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(keys
-        .filter(k => k !== CACHE_NAME && k !== BIBLIC_CACHE && !k.startsWith(PAGE_CACHE_PREFIX))
+        .filter(k => k !== CACHE_NAME && k !== DATA_CACHE && k !== BIBLIC_CACHE && !k.startsWith(PAGE_CACHE_PREFIX))
         .map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
@@ -160,10 +192,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (CACHE_FIRST.some(p => path.endsWith(p))) {
-    event.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res.ok) { const copy = res.clone(); caches.open(CACHE_NAME).then(c => c.put(req, copy)); }
+    event.respondWith(caches.open(DATA_CACHE).then(cache => cache.match(req).then(hit => hit || fetch(req).then(res => {
+      if (res.ok) cache.put(req, res.clone());
       return res;
-    })));
+    }))));
     return;
   }
 

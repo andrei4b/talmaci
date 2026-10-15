@@ -31,6 +31,10 @@ node --max-old-space-size=4096 tools/rhyme/build-index.js \
 node tools/rhyme/verify-index.js $B/hyphenations.txt.gz
 ```
 
+Then bump `DATA_CACHE` in `service-worker.js`, along with the release.
+Phones keep the index across releases and download it again only when
+that name changes; without the bump they go on using the old one.
+
 Both scripts gunzip an input whose name ends in `.gz` and read anything else
 as plain text, so the uncompressed files work unchanged.
 

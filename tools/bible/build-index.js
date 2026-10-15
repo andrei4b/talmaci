@@ -10,6 +10,8 @@
  * text just runs between them.
  *
  *   node tools/bible/build-index.js
+ *
+ * then bump DATA_CACHE in service-worker.js, or phones keep the old text.
  */
 'use strict';
 const fs = require('fs');

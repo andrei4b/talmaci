@@ -288,7 +288,8 @@ noise as suggestions.
 
 The index (~5.3 MB) loads in the background once the app is idle after
 boot, like the Bible, so a search does not wait on it; the service worker
-keeps it cached, so it downloads again only when a new version ships. See `tools/rhyme/README.md` to rebuild it
+keeps it cached across releases, so it downloads again only when it is rebuilt and
+`DATA_CACHE` in `service-worker.js` is bumped. See `tools/rhyme/README.md` to rebuild it
 and `data/RHYME-INDEX-LICENSE.md` for sources and attribution.
 
 ## What's next
