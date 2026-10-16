@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
+const { el, toast, copyWithToast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
@@ -405,9 +405,32 @@ function _notesButton(version, inHead) {
   });
 }
 
-// A version's name above its column, with its observations at the right.
+/* Lyrics to paste elsewhere — a version's, or the original's: the verses
+ * one after another with a blank line between, without their section
+ * marks, and without the verses nothing has been written in yet. */
+function _copyLyrics(verses, done) {
+  const text = (verses || [])
+    .map(v => v.lyrics.replace(/^(\s*\n)+/, '').trimEnd())
+    .filter(Boolean)
+    .join('\n\n');
+  if (!text) { toast('Nu e încă text de copiat.'); return; }
+  copyWithToast(text, done);
+}
+const _copyVersion = (version) => _copyLyrics(version.verses, 'Versiunea a fost copiată.');
+const _copyOriginal = () => _copyLyrics(_song.originalVerses, 'Originalul a fost copiat.');
+
+// The button above a column that copies its lyrics.
+function _copyHeadButton(label, onclick) {
+  return el('button', { class: 'text-tab__copy', 'aria-label': label, title: label, html: icons.copy, onclick });
+}
+
+/* A column's name above it, with its copy button at the right and, for a
+ * version, its observations. */
 function _headRow(head, version) {
-  return el('div', { class: 'text-tab__headrow' }, [head, _notesButton(version, true)]);
+  const copy = version
+    ? _copyHeadButton('Copiază versiunea', () => _copyVersion(version))
+    : _copyHeadButton('Copiază originalul', _copyOriginal);
+  return el('div', { class: 'text-tab__headrow' }, [head, copy, _notesButton(version, true)]);
 }
 
 /* The verse view's button on each verse of a version, for the
@@ -2120,6 +2143,15 @@ function _openVersionList(content) {
       }, [v.title || 'Fără titlu']),
       el('button', {
         class: 'version-row__icon',
+        'aria-label': 'Copiază versiunea',
+        title: 'Copiază versiunea',
+        html: icons.copy,
+        // Copied while the tap is still going on, before the sheet
+        // closes: Safari only lets the clipboard be written from inside it.
+        onclick: () => { _copyVersion(v); closeSheet(overlay); }
+      }),
+      el('button', {
+        class: 'version-row__icon',
         'aria-label': 'Redenumește versiunea',
         disabled: !editable,
         html: ROW_ICONS.edit,
@@ -2396,6 +2428,14 @@ function _openSongMenu(root) {
     // A source text is something a composition does not have, so the
     // generate item is absent rather than disabled — "Adaugă mai întâi
     // textul original" is a confusing thing to be told about your own lyrics.
+    // The original's own copy button is above its column, which only a big
+    // screen with several versions shows; this one is there everywhere.
+    // Copied from inside the tap, before the sheet closes, which Safari
+    // requires.
+    original ? null : el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => { _copyOriginal(); closeSheet(overlay); }
+    }, menuLabel(icons.copy, 'Copiază originalul')),
     original ? null : el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: async () => {
