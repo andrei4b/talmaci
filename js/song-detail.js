@@ -1554,6 +1554,7 @@ function _renderVersesView(ctx) {
       cell.label = cell.written = mark;
       if (once) s.doc.replaced(next); else s.doc.typed(next);
       if (made || mark !== had) cell.show();
+      if (made) cell.notes();
       // The original's mark changed: so do its translations' beside it.
       if (s.inOriginal && mark !== had) {
         trs.forEach(t => { const tc = cell.row.get(t); if (tc) tc.follow(); });
@@ -1563,6 +1564,18 @@ function _renderVersesView(ctx) {
         else { makeRoom(cell); if (s.inOriginal) settleRow(cell); }
       }
       return true;
+    };
+
+    // A version's verse takes observations of its own, from the moment
+    // there is one: as it is drawn, or as soon as it is written in an
+    // empty box, so a word on it can be left straight away.
+    cell.notes = () => {
+      const version = !s.inOriginal && cell.k != null && _hasNotes() ? (s.version || _activeVersion()) : null;
+      if (!version || editor.querySelector('.verse-notes')) return;
+      editor.classList.add('verse__editor--notes');
+      editor.appendChild(_verseNotesButton(version, () => cell.k));
+      // Drawn with the rest, it is counted once they are all on the page.
+      if (editor.isConnected) _syncVerseNotes();
     };
 
     // A translation's verse, its mark following the original's.
@@ -1640,12 +1653,7 @@ function _renderVersesView(ctx) {
     });
 
     mounted.push(() => _fitHeight(ta));
-    // A version's verse, written already, takes observations of its own.
-    const notesOn = !s.inOriginal && cell.k != null && _hasNotes() ? (s.version || _activeVersion()) : null;
-    if (notesOn) {
-      editor.classList.add('verse__editor--notes');
-      editor.appendChild(_verseNotesButton(notesOn, () => cell.k));
-    }
+    cell.notes();
     return editor;
   }
 
