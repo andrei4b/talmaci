@@ -2129,7 +2129,18 @@ function _openVersionList(content) {
  * the order the rows are in is the versions' order, saved on the song for
  * the whole group (see Db.setVersionOrder). Pointer capture keeps the
  * moves coming to the handle wherever the finger goes, and the handle's
- * touch-action keeps the sheet from scrolling under it instead. */
+ * touch-action keeps the sheet from scrolling under it instead.
+ *
+ * The dragged row itself never moves in the page: the rows it passes are
+ * moved to its other side instead. Taking the row out and putting it back,
+ * even in the same breath, takes the pointer capture away from its handle,
+ * and from then on the moves and the letting go landed on whatever was
+ * under the finger — so a row dragged upwards stayed hanging over the
+ * sheet's title, with an empty place where it belonged. The drag also ends
+ * on lostpointercapture, which comes after every way a press can finish,
+ * so nothing is left half-dragged if the capture goes for another reason.
+ * And the row is kept within the list while it's held, so it is never
+ * drawn anywhere it couldn't be dropped. */
 function _dragVersionRow(e, content) {
   if (e.button !== 0) return;
   e.preventDefault();
@@ -2146,14 +2157,18 @@ function _dragVersionRow(e, content) {
     let next = row.nextElementSibling;
     while (next && y > middle(next)) { list.insertBefore(next, row); next = row.nextElementSibling; }
     let prev = row.previousElementSibling;
-    while (prev && y < middle(prev)) { list.insertBefore(row, prev); prev = row.previousElementSibling; }
+    while (prev && y < middle(prev)) { list.insertBefore(prev, row.nextElementSibling); prev = row.previousElementSibling; }
     row.style.transform = '';
-    row.style.transform = `translateY(${y - grab - row.getBoundingClientRect().top}px)`;
+    const slot = row.getBoundingClientRect();
+    const bounds = list.getBoundingClientRect();
+    const top = Math.min(Math.max(y - grab, bounds.top), bounds.bottom - slot.height);
+    row.style.transform = `translateY(${top - slot.top}px)`;
   };
   const end = () => {
     handle.removeEventListener('pointermove', move);
     handle.removeEventListener('pointerup', end);
     handle.removeEventListener('pointercancel', end);
+    handle.removeEventListener('lostpointercapture', end);
     row.style.transform = '';
     row.classList.remove('version-row--dragging');
     const ids = Array.from(list.children, r => r.dataset.id);
@@ -2163,6 +2178,7 @@ function _dragVersionRow(e, content) {
   handle.addEventListener('pointermove', move);
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
+  handle.addEventListener('lostpointercapture', end);
 }
 
 // Shown in the new order at once; if it can't be saved, the rows go back
