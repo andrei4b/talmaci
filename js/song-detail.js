@@ -1102,6 +1102,7 @@ function _editedText({ verses, history, canEdit, write, save }) {
     verses, history, canEdit,
     onChange: () => {},
     showHistory: () => {},          // the view redraws what undo landed on
+    onStep: () => {},               // told of each undo (true) or redo
     typed(next) {
       if (!history.pending) {
         history.undo.push(history.last);
@@ -1132,6 +1133,7 @@ function _editedText({ verses, history, canEdit, write, save }) {
       to.push(doc.verses);
       const t = from.pop();
       doc.settle(t);
+      doc.onStep(from === history.undo);
       doc.showHistory(t);
     }
   };
@@ -1288,6 +1290,9 @@ function _renderVersesView(ctx) {
       })
     : [side(ctx.version, !!ctx.active && ctx.canEdit, false)];
   const sides = hasOrig ? [orig, ...trs] : trs;
+  // Where the original may be written in, a verse of it can be put in
+  // between any two rows (see insertBefore).
+  const canInsert = hasOrig && orig.editable;
   // The side across from one: the original for a version, and for the
   // original the version being worked on.
   const otherOf = (s) => s.inOriginal
@@ -1402,9 +1407,7 @@ function _renderVersesView(ctx) {
 
     const row = cell.row;
     if (!row.more && [...row.values()].every(c => c.k == null)) {
-      row.el.remove();
-      rowList = rowList.filter(r => r !== row);
-      sides.forEach(x => { x.cells = x.cells.filter(c => c.row !== row); });
+      dropRow(row);
     } else {
       // Still a row, with this box empty in it, and nothing left to note.
       const ed = cell.box.parentNode;
@@ -1536,7 +1539,7 @@ function _renderVersesView(ctx) {
       }
       if (made) {
         if (cell.row.more) promote(cell);
-        else makeRoom(cell);
+        else { makeRoom(cell); if (s.inOriginal) settleRow(cell); }
       }
       return true;
     };
@@ -1594,6 +1597,12 @@ function _renderVersesView(ctx) {
     // against one that was only ever a mark (an "[Interlude]", say).
     let lyricsOnFocus = '';
     ta.addEventListener('blur', (e) => {
+      // A row made to write a verse in (see insertBefore), left with
+      // none written: back out it goes.
+      if (cell.row.inserted && !ta.value.trim() && [...cell.row.values()].every(c => c.k == null)) {
+        dropRow(cell.row);
+        return;
+      }
       if (!s.editable || cell.k == null || ta.value.trim()) return;
       // A verse left with nothing in it is no longer a verse — nor is a
       // translation's left with only the mark it takes from the original.
@@ -1631,10 +1640,14 @@ function _renderVersesView(ctx) {
   let rowList = [];
 
   // A side's cell in a row; a side's cells are kept in the order of rows.
+  // A row not on the page yet counts as the last.
+  const rowAt = (row) => rowList.includes(row) ? rowList.indexOf(row) : Infinity;
   function cellIn(s, row, k) {
     const cell = { side: s, row, k, box: null, label: null, written: null };
     row.set(s, cell);
-    s.cells.push(cell);
+    let i = s.cells.length;
+    while (i > 0 && rowAt(s.cells[i - 1].row) > rowAt(row)) i--;
+    s.cells.splice(i, 0, cell);
     return cell;
   }
 
@@ -1709,6 +1722,7 @@ function _renderVersesView(ctx) {
              : `Aici originalul are ${ok}, traducerea ${clash[0].k}.`
       ]));
     }
+    if (canInsert && rowList.length && !row.more) list.appendChild(row.ins = inserter(row));
     list.appendChild(pair);
     rowList.push(row);
     return row;
@@ -1739,6 +1753,14 @@ function _renderVersesView(ctx) {
     const row = cell.row;
     row.more = false;
     const mounted = [];
+    if (canInsert && rowList.indexOf(row) > 0) row.el.before(row.ins = inserter(row));
+    boxesFor(row, mounted);
+    addMoreRow(row, mounted);
+    mounted.forEach(f => f());
+  }
+
+  // A box for its verse on every side a row has a place for.
+  function boxesFor(row, mounted) {
     if (hasOrig && !row.has(orig)) putBox(row, verseBox(cellIn(orig, row, null), originalPlaceholder(false), mounted), 1);
     const oc = row.get(orig);
     const o = oc && oc.k != null ? verseOf(orig, oc.k) : null;
@@ -1751,8 +1773,6 @@ function _renderVersesView(ctx) {
         putBox(row, verseBox(cellIn(s, row, null), versionPlaceholder(s, o, false), mounted), colOf(s));
       }
     });
-    addMoreRow(row, mounted);
-    mounted.forEach(f => f());
   }
 
   /* A verse written in the last row: its side has written as far as the
@@ -1771,6 +1791,96 @@ function _renderVersesView(ctx) {
     }
     mounted.forEach(f => f());
   }
+
+  /* Between two rows, a "+" to write a verse of the original there: a
+   * row of its own, put in before `row`, with an empty box of the
+   * original to write it in. It shows under the row being written in
+   * (see .verses__insert in the stylesheet), so a tap keeps the caret
+   * where it is until the new box takes it — and the keyboard stays up. */
+  function inserter(row) {
+    return el('div', { class: 'verses__insert' }, [el('button', {
+      class: 'verses__insert-btn',
+      type: 'button',
+      title: 'Adaugă o strofă aici',
+      'aria-label': 'Adaugă o strofă aici',
+      onmousedown: (e) => e.preventDefault(),
+      onclick: () => insertBefore(row),
+      // Drawn, not typed: a "+" in the font sits off its middle.
+      html: '<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"/></svg>'
+    })]);
+  }
+
+  function insertBefore(row) {
+    if (!rowList.includes(row)) return;
+    const mounted = [];
+    const fresh = addRow({ o: null, t: trs.map(() => null) }, mounted);
+    const at = row.ins || row.el;
+    if (fresh.ins) at.before(fresh.ins);
+    at.before(fresh.el);
+    rowList.pop();
+    rowList.splice(rowList.indexOf(row), 0, fresh);
+    sides.forEach(x => x.cells.sort((a, b) => rowAt(a.row) - rowAt(b.row)));
+    fresh.inserted = true;
+    const box = fresh.get(orig).box;
+    box.placeholder = 'Strofa nouă din original…';
+    mounted.forEach(f => f());
+    box.focus();
+  }
+
+  // A row off the page, with the "+" before it; the first row has none.
+  function dropRow(row) {
+    if (row.ins) row.ins.remove();
+    row.el.remove();
+    rowList = rowList.filter(r => r !== row);
+    sides.forEach(x => { x.cells = x.cells.filter(c => c.row !== row); });
+    const first = rowList[0];
+    if (first && first.ins) { first.ins.remove(); first.ins = null; }
+  }
+
+  /* A verse new in the original, in a row that was not the one for one
+   * more — put in between two (see insertBefore), or beside a version's
+   * verse that had none: a box beside it on every version. Without a
+   * mark it pairs by position, and so would take the next verse with no
+   * mark of each version from further down, and every such verse after
+   * it up a row. A version that may be edited keeps them where they are
+   * with a stand-in beside it, "[…]", as a skipped verse has (see write);
+   * one that may not moves up until its author puts one there. */
+  function settleRow(cell) {
+    const row = cell.row;
+    const mounted = [];
+    boxesFor(row, mounted);
+    if (!_pairMark(verseOf(orig, cell.k))) {
+      const below = rowList.slice(rowList.indexOf(row) + 1);
+      trs.forEach(t => {
+        const tc = row.get(t);
+        if (!t.editable || !tc || tc.k != null) return;
+        if (!below.some(r => { const c = r.get(t); return c && c.k != null && !_pairMark(verseOf(t, c.k)); })) return;
+        const was = t.doc.verses;
+        tc.label = tc.written = '[…]';
+        t.doc.replaced(write(tc, STAND_IN));
+        tc.show('');
+        tied.push({ depth: orig.doc.history.undo.length, doc: t.doc, was, now: t.doc.verses });
+      });
+    }
+    mounted.forEach(f => f());
+  }
+
+  /* The stand-ins a verse new in the original put beside it (see
+   * settleRow) are part of the step that wrote it: undone with it, so the
+   * rows under it do not move, and done again with it — each only while
+   * its version has not been written in since. */
+  const tied = [];
+  orig.doc.onStep = (undo) => {
+    const depth = orig.doc.history.undo.length;
+    tied.forEach(x => {
+      const h = x.doc.history;
+      if (undo && depth < x.depth && x.doc.verses === x.now && h.undo[h.undo.length - 1] === x.was) {
+        x.doc.step(h.undo, h.redo);
+      } else if (!undo && depth >= x.depth && x.doc.verses === x.was && h.redo[h.redo.length - 1] === x.now) {
+        x.doc.step(h.redo, h.undo);
+      }
+    });
+  };
 
   function draw() {
     sides.forEach(s => { s.cells = []; });

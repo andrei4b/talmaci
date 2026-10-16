@@ -684,6 +684,44 @@ button.text-tab__head { cursor: pointer; }
   background: rgba(201, 125, 62, 0.07);
   color: var(--color-accent);
 }
+/* Under a card, a "+" to write a verse of the original after it (see
+   insertBefore in _renderVersesView). It takes no room of its own: drawn
+   over the gap between the cards, by the original's side, with a target
+   bigger than it looks. Shown only under the card being written in, and
+   with a mouse under the one it is over — never in every gap at once. */
+.verses__insert { position: relative; height: 0; margin-top: -16px; z-index: 1; }
+.verses__insert-btn {
+  position: absolute;
+  left: 14px;
+  top: 8px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.verses__insert-btn::before { content: ''; position: absolute; inset: -10px; }
+.verses__insert-btn svg { display: block; }
+.verse:focus-within + .verses__insert .verses__insert-btn,
+.verses__insert-btn:focus-visible { opacity: 1; pointer-events: auto; }
+/* With a mouse it stays where it can be reached while out of sight, so
+   leaving the card for it does not take it away; a touch screen, where
+   :hover sticks after a tap, has only the card being written in. */
+@media (hover: hover) {
+  .verses__insert-btn { pointer-events: auto; }
+  .verse:hover + .verses__insert .verses__insert-btn,
+  .verses__insert:hover .verses__insert-btn { opacity: 1; }
+}
+.verses__insert-btn:hover,
+.verses__insert-btn:focus-visible { color: var(--color-accent); border-color: var(--color-accent); }
 /* With no original on a composition, nothing to set beside its verses. */
 .verses__note--empty { padding: 24px 4px; text-align: center; }
 @media (min-width: 640px) {

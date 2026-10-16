@@ -322,9 +322,20 @@ function _openAddSong() {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   // Not autofocused. The first thing to decide here is the type, and
   // focusing the title raises the keyboard over the choice on a phone.
-  // No field for the original text: a translation's source is written in
-  // its own panel on the Text tab, where the song opens straight after.
   const titleInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Titlul melodiei' });
+  // A translation's original, pasted whole, the way lyrics come from the
+  // web: split into its verses at the blank lines between them, a
+  // "[Chorus]" line over one becoming its mark (see Verses.fromText).
+  // Optional — it can as well be written verse by verse on the Text tab,
+  // where the song opens straight after.
+  const originalInput = el('textarea', {
+    class: 'field__input field__input--textarea',
+    rows: 5,
+    placeholder: 'Lipește versurile. Un rând gol între strofe le desparte.'
+  });
+  const originalField = el('label', { class: 'field' }, [
+    el('span', { class: 'field__label' }, ['Textul original (opțional)']), originalInput
+  ]);
   const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off' });
 
   let kind = 'translation';
@@ -337,6 +348,8 @@ function _openAddSong() {
         onclick: () => { kind = value; paintKind(); }
       }, [label]));
     });
+    // A composition has no original.
+    originalField.hidden = kind !== 'translation';
   };
   paintKind();
 
@@ -379,6 +392,7 @@ function _openAddSong() {
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Vizibilitate']), visRow]),
     el('div', { class: 'field' }, [el('span', { class: 'field__label' }, ['Lucrezi la ea?']), workRow]),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
+    originalField,
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo (opțional)']), demoInput]),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
@@ -389,7 +403,7 @@ function _openAddSong() {
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
           const demoUrl = normalizeUrl(demoInput.value);
           if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
-          const originalVerses = [];
+          const originalVerses = kind === 'translation' ? window.Verses.fromText(originalInput.value) : [];
           try {
             const now = Date.now();
             const shared = visibility !== 'personal';
