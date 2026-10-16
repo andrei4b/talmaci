@@ -102,6 +102,25 @@ function _segButton(label, active, onclick) {
   }, [label]);
 }
 
+/* A word's syllables with dots between them, its stressed vowel marked:
+ * the letter alone, found by its offset into the word, or the whole
+ * syllable when that isn't known. `cls` is each syllable's own class. */
+function _syllables(parts, stressIndex, stressOffset, cls) {
+  const out = [];
+  let at = 0;
+  parts.forEach((p, i) => {
+    if (i) out.push(el('span', { class: 'rime__syl-sep' }, ['·']));
+    const k = stressOffset - at;
+    at += p.length;
+    if (i !== stressIndex) { out.push(el('span', { class: cls }, [p])); return; }
+    if (!(k >= 0 && k < p.length)) { out.push(el('span', { class: (cls + ' rime__syl--stressed').trim() }, [p])); return; }
+    out.push(el('span', { class: cls }, [
+      p.slice(0, k), el('span', { class: 'rime__syl--stressed' }, [p[k]]), p.slice(k + 1)
+    ]));
+  });
+  return out;
+}
+
 async function _runRimeSearch(wrap) {
   const body = wrap.querySelector('.rime__body');
   if (!body) return;
@@ -180,13 +199,7 @@ async function _runRimeSearch(wrap) {
   // as "2 silabe · accent pe silaba 1". Set like the English dictionary's
   // headword, dots between syllables included.
   const parts = a.syllableParts && a.syllableParts.length ? a.syllableParts : [a.word];
-  const word = el('span', { class: 'rime__hw' });
-  parts.forEach((p, i) => {
-    if (i) word.appendChild(el('span', { class: 'rime__syl-sep' }, ['·']));
-    word.appendChild(el('span', {
-      class: 'rime__syl' + (i === a.stressIndex ? ' rime__syl--stressed' : '')
-    }, [p]));
-  });
+  const word = el('span', { class: 'rime__hw' }, _syllables(parts, a.stressIndex, a.stressOffset, 'rime__syl'));
   const line = el('div', { class: 'rime__analysis' }, [word]);
   line.appendChild(el('span', { class: 'rime__meta' }, [
     (a.attested ? '' : ' · accent estimat') +
@@ -206,13 +219,7 @@ async function _runRimeSearch(wrap) {
       // r.reading is the reading's real index; the picker may have collapsed
       // ones that read the same, so a button's position is not its index.
       const i = r.reading;
-      const label = el('span', {});
-      r.parts.forEach((p, k) => {
-        if (k) label.appendChild(el('span', { class: 'rime__syl-sep' }, ['·']));
-        label.appendChild(el('span', {
-          class: k === r.stressIndex ? 'rime__syl--stressed' : ''
-        }, [p]));
-      });
+      const label = el('span', {}, _syllables(r.parts, r.stressIndex, r.stressOffset, ''));
       const btn = el('button', {
         class: 'seg' + (i === _rimeReading ? ' seg--active' : ''),
         onclick: () => {

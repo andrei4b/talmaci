@@ -416,6 +416,10 @@ function analyze(word, opts) {
     // to the whole word if the division and the nucleus count disagree.
     syllableParts: (parts.length === nuclei.length) ? parts : [clean],
     stressIndex: stressIdx,
+    // The letter the stressed nucleus starts at, for marking it on screen.
+    // Where one pass spells two tokens ("ea" as /ja/), this is the first
+    // of its letters.
+    stressOffset: g2p.src[start],
     // Exact rhyme: every phoneme from the stressed nucleus onward.
     exactKey: marked.tokens.slice(start).join(''),
     // Assonance: only the nuclei, so consonants may differ but the vowel

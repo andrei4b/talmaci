@@ -1259,7 +1259,8 @@ button.text-tab__head { cursor: pointer; }
 /* The divided word, set as the English dictionary's headword (.en__hw). */
 .rime__hw { font-family: var(--font-heading); font-size: 1.4rem; font-weight: 600; margin-right: 8px; }
 .rime__syl { color: var(--color-text); }
-/* The stressed syllable, marked visually rather than described in words. */
+/* The stressed vowel, marked visually rather than described in words —
+   its whole syllable when the letter isn't known. */
 .rime__syl--stressed {
   color: var(--color-accent);
   text-decoration: underline;

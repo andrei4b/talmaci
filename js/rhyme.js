@@ -263,6 +263,9 @@ function analyzeWord(word, readingIdx) {
       const a = P.analyze(marked);
       if (a) {
         a.attested = off > 0;
+        // The stressed vowel itself, as dexonline marks it: in a pair like
+        // "oa" the letter it falls on, which the rules can't tell.
+        if (off > 0) a.stressOffset = off - 1;
         a.id = id;
         a.readingCount = all.length;
         a.readingIndex = all.indexOf(pick);
@@ -297,7 +300,7 @@ function readingLabels(word) {
     const sig = parts.join('-') + '|' + a.stressIndex;
     if (seen.has(sig)) return;
     seen.add(sig);
-    out.push({ parts: parts, stressIndex: a.stressIndex, reading: i });
+    out.push({ parts: parts, stressIndex: a.stressIndex, stressOffset: a.stressOffset, reading: i });
   });
   return out.length > 1 ? out : [];
 }
