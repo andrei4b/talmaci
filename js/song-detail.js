@@ -400,6 +400,15 @@ function _syncNoteDots() {
 
 /* The button that opens a version's observations: in the row under the
  * box, or — `inHead` — beside the version's name above its column. */
+/* Takes the caret out of the box being written in, as a sheet opens over
+ * it: left there, a phone keeps its keyboard up and draws the caret's
+ * handle on top of the sheet. In the click rather than on the press,
+ * which keeps the box focused (see keepFocus in _renderTextTab). */
+function _dropCaret() {
+  const box = document.activeElement;
+  if (box && box.tagName === 'TEXTAREA') box.blur();
+}
+
 function _notesButton(version, inHead) {
   if (!version || !_hasNotes()) return null;
   return el('button', {
@@ -410,7 +419,7 @@ function _notesButton(version, inHead) {
     title: 'Observații',
     html: NOTES_ICON,
     onmousedown: (e) => e.preventDefault(),
-    onclick: () => _openNotes(version)
+    onclick: () => { _dropCaret(); _openNotes(version); }
   });
 }
 
@@ -481,7 +490,9 @@ function _verseNotesButton(version, indexNow) {
     title: 'Observații la strofă',
     html: NOTES_ICON,
     onmousedown: (e) => e.preventDefault(),
-    onclick: () => _openNotes(version, indexNow())
+    // The caret first: a verse left empty goes as its box loses it, and
+    // the verses after it move up, this one with them.
+    onclick: () => { _dropCaret(); _openNotes(version, indexNow()); }
   });
   btn.appendChild(el('span', { class: 'verse-notes__count' }));
   btn._version = version;
@@ -1042,6 +1053,8 @@ function _openLookup(ta) {
     toast('Pune cursorul pe un cuvânt.');
     return;
   }
+  // Read, so the caret may go (see _dropCaret).
+  ta.blur();
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const go = (tab) => closeSheetThen(overlay, () => {
     if (tab === 'rime') window.RimeTab.search(word);
