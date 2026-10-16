@@ -688,7 +688,8 @@ button.text-tab__head { cursor: pointer; }
    insertBefore in _renderVersesView). It takes no room of its own: drawn
    over the gap between the cards, by the original's side, with a target
    bigger than it looks. Shown only under the card being written in, and
-   with a mouse under the one it is over — never in every gap at once. */
+   with a mouse under the original's box it is over — never in every gap
+   at once. */
 .verses__insert { position: relative; height: 0; margin-top: -16px; z-index: 1; }
 .verses__insert-btn {
   position: absolute;
@@ -710,14 +711,22 @@ button.text-tab__head { cursor: pointer; }
 }
 .verses__insert-btn::before { content: ''; position: absolute; inset: -10px; }
 .verses__insert-btn svg { display: block; }
-.verse:focus-within + .verses__insert .verses__insert-btn,
+/* The card being written in: on a narrow screen the whole card, the
+   original over its translation; with the versions beside the original,
+   only the original's box, the "+" being the original's. */
 .verses__insert-btn:focus-visible { opacity: 1; pointer-events: auto; }
+@media (max-width: 639px) {
+  .verse:focus-within + .verses__insert .verses__insert-btn { opacity: 1; pointer-events: auto; }
+}
+@media (min-width: 640px) {
+  .verse:has(> .verse__editor--source:focus-within) + .verses__insert .verses__insert-btn { opacity: 1; pointer-events: auto; }
+}
 /* With a mouse it stays where it can be reached while out of sight, so
    leaving the card for it does not take it away; a touch screen, where
    :hover sticks after a tap, has only the card being written in. */
 @media (hover: hover) {
   .verses__insert-btn { pointer-events: auto; }
-  .verse:hover + .verses__insert .verses__insert-btn,
+  .verse:has(> .verse__editor--source:hover) + .verses__insert .verses__insert-btn,
   .verses__insert:hover .verses__insert-btn { opacity: 1; }
 }
 .verses__insert-btn:hover,
