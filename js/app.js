@@ -68,8 +68,33 @@ function unpanViewport() {
     }
   }
 }
+/* The field being typed in, in a sheet, kept in sight above the sheet's
+ * buttons. The browser scrolls a tapped field into view, but it doesn't
+ * know the buttons (stuck to the sheet's bottom) are covering it, and it
+ * does so before the keyboard is up: then the sheet shrinks to fit above
+ * the keyboard, and the field is left under the buttons or below them.
+ * So once the sheet has its size, scroll it — the sheet alone, not the
+ * page — until the field is clear of them. A field too tall for the room
+ * shows its top. */
+function keepFieldInSheet() {
+  const field = document.activeElement;
+  const sheet = field && field.closest && field.closest('.sheet');
+  if (!sheet || !field.matches('input, textarea')) return;
+  const box = sheet.getBoundingClientRect();
+  const actions = sheet.querySelector('.sheet__actions');
+  const top = box.top + 12;
+  const bottom = (actions ? actions.getBoundingClientRect().top : box.bottom) - 12;
+  const r = field.getBoundingClientRect();
+  if (r.top < top) sheet.scrollTop -= top - r.top;
+  else if (r.bottom > bottom) sheet.scrollTop += Math.min(r.bottom - bottom, r.top - top);
+}
+document.addEventListener('focusin', () => requestAnimationFrame(keepFieldInSheet));
+
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', syncViewportInsets);
+  window.visualViewport.addEventListener('resize', () => {
+    syncViewportInsets();
+    requestAnimationFrame(keepFieldInSheet);
+  });
   window.visualViewport.addEventListener('scroll', syncViewportInsets);
 }
 syncViewportInsets();
