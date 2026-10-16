@@ -59,6 +59,11 @@ let _versions = [];       // [{ id, title, text, createdAt, updatedAt }]
  * with the song. */
 let _notes = new Map();
 let _seen = {};
+/* The song `_seen` has been read for. The observations come at once, from
+ * the device's copy, while when they were last read is still on its way
+ * from the server; until it is here nothing counts as unread, or every
+ * one of them showed a dot for that moment and then lost it. */
+let _seenFor = null;
 let _activeVersionId = null;
 
 // Remembers which version was last viewed, per song, per device — a
@@ -275,6 +280,7 @@ async function _loadNotes() {
     const seen = await window.Db.getSeen(window.Auth.currentUser().uid, songId);
     if (!_song || _song.id !== songId) return;
     _seen = seen;
+    _seenFor = songId;
     _syncNoteDots();
   } catch (_) { /* no dots until they are read */ }
 }
@@ -299,12 +305,13 @@ function _unwatchNotes(forget) {
 }
 
 function _watchNotes() {
-  if (!_hasNotes()) { _unwatchNotes(true); _notes = new Map(); _seen = {}; return; }
+  if (!_hasNotes()) { _unwatchNotes(true); _notes = new Map(); _seen = {}; _seenFor = null; return; }
   if (_noteWatch.songId !== _song.id) {
     _unwatchNotes(true);
     _noteWatch.songId = _song.id;
     _notes = new Map();
-    _seen = {};
+    // Unless they were read for this song already.
+    if (_seenFor !== _song.id) { _seen = {}; _seenFor = null; }
   }
   const songId = _song.id;
   const ids = new Set(_versions.map(v => v.id));
@@ -371,8 +378,10 @@ function _seenAt(seen, versionId, threadId) {
   return Math.max(seen[versionId] || 0, seen[versionId + ':' + threadId] || 0);
 }
 
-// Someone else's observation in a thread since you last read it.
+// Someone else's observation in a thread since you last read it — none
+// until it is known when that was (see _seenFor).
 function _threadUnread(versionId, t, seen) {
+  if (!seen && _seenFor !== _song.id) return false;
   const me = window.Auth.currentUser().uid;
   const at = _seenAt(seen || _seen, versionId, t.id);
   return t.notes.some(n => n.by !== me && n.at > at);
@@ -2664,6 +2673,7 @@ function reset() {
   _unwatchNotes(true);
   _notes = new Map();
   _seen = {};
+  _seenFor = null;
   _song = null;
   _versions = [];
   _activeVersionId = null;
