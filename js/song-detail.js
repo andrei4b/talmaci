@@ -15,6 +15,9 @@ const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuL
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
+// A verse not written yet, holding its place in its row (see write).
+const STAND_IN = { mark: '…', lyrics: '' };
+
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
   delete: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`,
@@ -84,11 +87,11 @@ function _recallVersion(songId) {
 // The original text, editable in place too, keeps a history of its own,
 // scoped to the song: undo steps back through whichever of the two was
 // edited last, never one on behalf of the other.
-function _newHistory(text) {
-  return { undo: [], redo: [], last: text || '', pending: false };
+function _newHistory(verses) {
+  return { undo: [], redo: [], last: verses || [], pending: false };
 }
 let _undoStateVersionId;
-let _versionHistory = _newHistory('');
+let _versionHistory = _newHistory();
 let _originalHistory = null;
 let _originalHistorySongId = null;
 // With every version on screen at once (see _showingVerseGrid), each
@@ -157,20 +160,9 @@ async function render(root, songId, openNotesFor, entered) {
   try {
     _song = await window.Db.getSong(songId);
     _versions = _song ? orderVersions(_song, await window.Db.listVersions(songId)) : [];
-
-    // One-time migration: a song saved before versions existed may still
-    // carry its translation in the legacy translatedText field. Turn it
-    // into "Versiunea 1" instead of losing it.
-    if (_song && _versions.length === 0 && _song.translatedText) {
-      const id = await window.Db.addVersion(songId, {
-        title: 'Versiunea 1',
-        text: _song.translatedText,
-        createdBy: window.Auth.currentUser().uid
-      });
-      const now = Date.now();
-      _versions = [{ id, title: 'Versiunea 1', text: _song.translatedText,
-        createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now }];
-    }
+    // Their verses in the shape the rest expects, whatever was stored.
+    if (_song) _song.originalVerses = window.Verses.read(_song.originalVerses);
+    _versions.forEach(v => { v.verses = window.Verses.read(v.verses); });
 
     const remembered = _versions.some(v => v.id === openNotesFor) ? openNotesFor : _recallVersion(songId);
     const rememberedStillExists = remembered && _versions.some(v => v.id === remembered);
@@ -345,9 +337,9 @@ document.addEventListener('visibilitychange', () => {
  * version's text as it reads now: `loc` is where its verse is, or null for
  * a thread on the whole version. */
 function _threadsOf(version) {
-  const text = version.text || '';
+  const verses = version.verses || [];
   return window.Threads.group(_notes.get(version.id) || []).map(t => {
-    t.loc = t.anchor ? window.Threads.locate(text, t.anchor) : null;
+    t.loc = t.anchor ? window.Threads.locate(verses, t.anchor) : null;
     return t;
   });
 }
@@ -491,7 +483,7 @@ function _openNotes(version, verseIndex) {
   const me = window.Auth.currentUser().uid;
   const onVerse = verseIndex != null;
   // What a new observation here remembers of its verse, as it reads now.
-  const anchorNow = () => onVerse ? window.Threads.anchorFor(version.text || '', verseIndex) : null;
+  const anchorNow = () => onVerse ? window.Threads.anchorFor(version.verses || [], verseIndex) : null;
   const verseAnchor = anchorNow();
   // What had been read before this opened, so what is new stays marked
   // while the sheet is up.
@@ -643,8 +635,10 @@ function _openNotes(version, verseIndex) {
       : t.loc.changed ? 'Schimbată între timp' : '';
     if (onVerse && !state) return;
     const showing = quoted.has(t.id);
-    const lines = String(t.anchor.quote || '').split('\n')
-      .filter(l => l.trim() && !window.Sections.isMarker(l));
+    // Its lyrics, blank lines and all when it is open, and on one line
+    // without them when it is not.
+    const all = String(t.anchor.quote || '').split('\n').filter(l => !window.Sections.isMarker(l));
+    const lines = all.filter(l => l.trim());
     const toggle = () => { if (showing) quoted.delete(t.id); else quoted.add(t.id); draw(); };
     card.appendChild(el('div', { class: 'thread__where' }, [
       onVerse ? null : el('span', { class: 'thread__section' }, [window.Threads.label(t.anchor)]),
@@ -658,7 +652,7 @@ function _openNotes(version, verseIndex) {
       onclick: toggle
     }, [
       state ? el('span', { class: 'thread__quote-label' }, ['Atunci: ']) : null,
-      showing ? lines.join('\n') : lines.join(' / ')
+      showing ? all.join('\n').trim() : lines.join(' / ')
     ]));
   }
 
@@ -883,7 +877,7 @@ function _canEditVersion(version) {
 function _syncUndoState(active) {
   if (_undoStateVersionId === _activeVersionId) return;
   _undoStateVersionId = _activeVersionId;
-  _versionHistory = _newHistory(active ? active.text : '');
+  _versionHistory = _newHistory(active ? active.verses : []);
   _otherHistories = new Map();
   _versesScrollTop = 0;
 }
@@ -891,7 +885,7 @@ function _syncUndoState(active) {
 // The history of any version, the active one's being _versionHistory.
 function _historyFor(version) {
   if (version.id === _undoStateVersionId) return _versionHistory;
-  if (!_otherHistories.has(version.id)) _otherHistories.set(version.id, _newHistory(version.text));
+  if (!_otherHistories.has(version.id)) _otherHistories.set(version.id, _newHistory(version.verses));
   return _otherHistories.get(version.id);
 }
 
@@ -912,10 +906,10 @@ function _makeActive(version) {
 // not to whichever is active when the typing pause ends.
 function _versionDoc(version, history) {
   return _editedText({
-    text: version ? (version.text || '') : '',
+    verses: version ? (version.verses || []) : [],
     history,
     canEdit: _canEditVersion(version),
-    write: (t) => { if (version) version.text = t; },
+    write: (t) => { if (version) version.verses = t; },
     save: (t) => _saveVersionText(version && version.id, history, t)
   });
 }
@@ -995,16 +989,9 @@ function _openLookup(ta) {
   openSheet(overlay);
 }
 
-/* The verses of a text: runs of non-blank lines, each with where it sits
- * in the text, so an edit to one can be put back in place without
- * touching the blank lines around it. */
-function _verses(text) {
-  return window.Threads.verses(text);
-}
-
-// The section a verse opens with, by its Romanian name, if it is marked.
-function _verseKind(text) {
-  const sec = window.Sections.parse(String(text).split('\n')[0]);
+// A verse's section, by its Romanian name, if it is marked.
+function _verseKind(verse) {
+  const sec = window.Verses.section(verse);
   return sec ? sec.kind : null;
 }
 
@@ -1013,7 +1000,7 @@ function _verseKind(text) {
  * Null for a verse with no mark, and for a stand-in "[…]", which pairs
  * as one does. */
 function _pairMark(verse) {
-  const sec = window.Sections.parse(String(verse).split('\n')[0]);
+  const sec = window.Verses.section(verse);
   if (!sec || sec.text === '…') return null;
   return sec.kind ? { kind: sec.kind, number: sec.number } : { name: sec.text.toLowerCase() };
 }
@@ -1104,11 +1091,15 @@ function _fitHeight(ta) {
  *
  * The debounced save saves whatever the text is when the pause ends, not
  * what it was at the keystroke that scheduled it: an edit committed at
- * once must not be overtaken by a stale pending save. */
-function _editedText({ text, history, canEdit, write, save }) {
-  const debouncedSave = debounce(() => save(doc.text), 600);
+ * once must not be overtaken by a stale pending save.
+ *
+ * The text is its list of verses (see verses.js), and every edit makes a
+ * new list rather than changing the one it had: the history keeps each
+ * list as it was. */
+function _editedText({ verses, history, canEdit, write, save }) {
+  const debouncedSave = debounce(() => save(doc.verses), 600);
   const doc = {
-    text, history, canEdit,
+    verses, history, canEdit,
     onChange: () => {},
     showHistory: () => {},          // the view redraws what undo landed on
     typed(next) {
@@ -1117,18 +1108,18 @@ function _editedText({ text, history, canEdit, write, save }) {
         history.redo = [];
         history.pending = true;
       }
-      doc.text = next;
+      doc.verses = next;
       write(next);
       debouncedSave();
       doc.onChange();
     },
     replaced(next) {
-      if (!history.pending) history.undo.push(doc.text);
+      if (!history.pending) history.undo.push(doc.verses);
       history.redo = [];
       doc.settle(next);
     },
     settle(next) {
-      doc.text = next;
+      doc.verses = next;
       write(next);
       history.last = next;
       history.pending = false;
@@ -1138,7 +1129,7 @@ function _editedText({ text, history, canEdit, write, save }) {
     // Undo moves from `from` to `to`; redo the other way round.
     step(from, to) {
       if (!from.length) return;
-      to.push(doc.text);
+      to.push(doc.verses);
       const t = from.pop();
       doc.settle(t);
       doc.showHistory(t);
@@ -1210,15 +1201,15 @@ function _renderTextTab(content) {
    * Undo and redo act on whichever was focused last, the version unless
    * the original has been. */
   if (!_originalHistory || _originalHistorySongId !== _song.id) {
-    _originalHistory = _newHistory(_song.originalText);
+    _originalHistory = _newHistory(_song.originalVerses);
     _originalHistorySongId = _song.id;
   }
   const versionDoc = _versionDoc(active, _versionHistory);
   const originalDoc = _editedText({
-    text: _song.originalText || '',
+    verses: _song.originalVerses,
     history: _originalHistory,
     canEdit: _canEditSong(),
-    write: (t) => { _song.originalText = t; },
+    write: (t) => { _song.originalVerses = t; },
     save: (t) => _saveOriginalText(t)
   });
   let current = versionDoc;
@@ -1266,33 +1257,26 @@ function _renderTextTab(content) {
  * across all of them with nothing to scroll in step. A composition has no
  * original: its verses one under another, or its versions side by side.
  *
- * Verses are runs of lines between blank lines, on every side, paired by
- * their section marks where they have them and otherwise by position (see
- * _pairVerses): a chorus written out once in the translation stands beside
- * the original's first, and the repeats are left beside nothing. Every
- * verse, on any side, is its own box, but each side stays one string — an
- * edit goes back into it in place, so the blank lines between verses are
- * left exactly as they were.
- *
- * A verse's section mark is still the line "[Refren]" at its head in the
- * text, but here it is not part of what is typed: it shows above the box,
- * and is picked from a list (see _openLabelPicker). The box holds the
- * lyrics.
+ * Each side is a list of verses (see verses.js), each its own box, paired
+ * by their section marks where they have them and otherwise by position
+ * (see _pairVerses): a chorus written out once in the translation stands
+ * beside the original's first, and the repeats are left beside nothing.
+ * A box holds its verse's lyrics as typed or pasted, blank lines and all;
+ * its section mark shows above it, and is picked from a list (see
+ * _openLabelPicker).
  *
  * An empty box is where a verse not written yet goes: writing in it puts
- * one into that side's text, after the verse it has above. A text pasted
- * in whole, blank lines and all, is split into its verses as it lands —
- * the original too, which is written here like any other side. A row
- * whose marks still disagree says so.
+ * one into that side's list, after the verse it has above — the original
+ * too, which is written here like any other side. A row whose marks still
+ * disagree says so.
  *
  * On a shared song each verse a version has written takes observations of
  * its own, from the button in its corner (see _verseNotesButton). */
 function _renderVersesView(ctx) {
-  // One side of the rows: the original or a version. `spans` are the live
-  // positions of its verses in its text, shifted as edits change their
-  // lengths, and `cells` its boxes in row order, each with the verse it
-  // shows (`k`, null while empty); both rebuilt only on a full redraw.
-  const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, spans: [], cells: [] });
+  // One side of the rows: the original or a version. `cells` are its boxes
+  // in row order, each with the index of the verse it shows (`k`, null
+  // while empty); rebuilt only on a full redraw.
+  const side = (doc, editable, inOriginal) => ({ doc, editable, inOriginal, cells: [] });
   // A composition is not a translation of anything: no original side.
   const hasOrig = !isOriginal(_song);
   const orig = side(ctx.original, hasOrig && ctx.original.canEdit, true);
@@ -1309,7 +1293,7 @@ function _renderVersesView(ctx) {
   const otherOf = (s) => s.inOriginal
     ? trs.find(t => !t.version || t.version.id === _activeVersionId) || trs[0]
     : orig;
-  const verseOf = (s, k) => s.doc.text.slice(s.spans[k].start, s.spans[k].end);
+  const verseOf = (s, k) => s.doc.verses[k];
   // Each side's column, counted from 1.
   const colOf = (s) => s.inOriginal ? 1 : trs.indexOf(s) + (hasOrig ? 2 : 1);
   let lastBox = null;
@@ -1334,7 +1318,7 @@ function _renderVersesView(ctx) {
   function markAcross(cell) {
     const o = cell.row.get(otherOf(cell.side));
     if (!o || o.k == null) return null;
-    const sec = window.Sections.parse(verseOf(o.side, o.k).split('\n')[0]);
+    const sec = window.Verses.section(verseOf(o.side, o.k));
     if (!sec || sec.text === '…') return null;
     return cell.side.inOriginal ? window.Sections.english(sec) : window.Sections.romanian(sec);
   }
@@ -1346,8 +1330,8 @@ function _renderVersesView(ctx) {
     return null;
   }
 
-  /* Writes a verse into its cell's side, and returns the side's text. An
-   * empty cell gets a verse of its own once there is more than blank
+  /* Writes a verse into its cell's side, and returns the side's verses.
+   * An empty cell gets a verse of its own once there is more than blank
    * space to keep (null till then), after the verse its side has above
    * it. Without a mark it pairs by position, so any empty cells it passed
    * on the way, beside verses that have no mark either, first get a
@@ -1355,16 +1339,12 @@ function _renderVersesView(ctx) {
    * which keeps it in its row. */
   function write(cell, value) {
     const s = cell.side;
-    let text = s.doc.text;
+    const verses = s.doc.verses.slice();
     if (cell.k != null) {
-      const sp = s.spans[cell.k];
-      const delta = value.length - (sp.end - sp.start);
-      text = text.slice(0, sp.start) + value + text.slice(sp.end);
-      sp.end += delta;
-      for (let j = cell.k + 1; j < s.spans.length; j++) { s.spans[j].start += delta; s.spans[j].end += delta; }
-      return text;
+      verses[cell.k] = value;
+      return verses;
     }
-    if (!value.trim()) return null;
+    if (!window.Verses.text(value).trim()) return null;
     const cs = s.cells, above = cellAbove(cell);
     const fill = [];
     if (!_pairMark(value)) {
@@ -1373,48 +1353,19 @@ function _renderVersesView(ctx) {
         if (o && o.k != null && !_pairMark(verseOf(o.side, o.k))) fill.push(cs[x]);
       }
     }
-    const added = [...fill.map(c => [c, '[…]']), [cell, value]];
-    // In they go, a blank line between each and either side of them.
+    const added = [...fill.map(c => [c, STAND_IN]), [cell, value]];
     const p = above ? above.k + 1 : 0;
-    const at = above ? s.spans[above.k].end : 0;
-    const spans = [];
-    let ins = '';
-    added.forEach(([, v], n) => {
-      if (above || n) ins += '\n\n';
-      spans.push({ start: at + ins.length, end: at + ins.length + v.length });
-      ins += v;
-    });
-    if (!above) {
-      if (text.trim()) ins += '\n\n';
-      else text = '';
-    }
-    text = text.slice(0, at) + ins + text.slice(at);
-    s.spans.slice(p).forEach(sp => { sp.start += ins.length; sp.end += ins.length; });
-    s.spans.splice(p, 0, ...spans);
+    verses.splice(p, 0, ...added.map(([, v]) => v));
     cs.forEach(c => { if (c.k != null && c.k >= p) c.k += added.length; });
-    added.forEach(([c, v], n) => {
+    added.forEach(([c], n) => {
       c.k = p + n;
-      if (c !== cell) { c.label = c.written = v; c.show(''); }
+      if (c !== cell) { c.label = c.written = '[…]'; c.show(''); }
     });
-    return text;
+    return verses;
   }
 
-  /* After a paste, the side drawn again with what was pasted in its own
-   * verses, and the caret put back where it was in the text — `pos`. */
-  function split(s, pos) {
-    redraw();
-    let k = s.spans.findIndex(sp => pos <= sp.end);
-    if (k < 0) k = s.spans.length - 1;
-    const to = s.cells.find(c => c.k === k);
-    if (!to) return;
-    const at = Math.max(0, Math.min(pos - s.spans[k].start - to.labelLength(), to.box.value.length));
-    to.box.focus();
-    to.box.setSelectionRange(at, at);
-  }
-
-  /* A verse emptied and left: it goes from its side's text, with the
-   * blank line before it (after it, for the first), and its row from the
-   * page once no side has a verse there. Without a mark, beside a verse
+  /* A verse emptied and left: it goes from its side's verses, and its row
+   * from the page once no side has a verse there. Without a mark, beside a verse
    * with none either, it would take every verse after it out of the row
    * it pairs in, so that one keeps a stand-in, "[…]", as a skipped verse
    * does (see write).
@@ -1433,7 +1384,7 @@ function _renderVersesView(ctx) {
       .some(c => c.k != null && !_pairMark(verseOf(s, c.k)));
     if (pairsByPlace && later) {
       cell.label = cell.written = '[…]';
-      s.doc.replaced(write(cell, cell.label));
+      s.doc.replaced(write(cell, STAND_IN));
       cell.show('');
       return;
     }
@@ -1441,16 +1392,13 @@ function _renderVersesView(ctx) {
     const anchor = next && list.contains(next) ? next : null;
     const top = anchor && anchor.getBoundingClientRect().top;
 
-    const sp = s.spans, k = cell.k;
-    const from = k > 0 ? sp[k - 1].end : sp[k].start;
-    const to = k > 0 ? sp[k].end : k + 1 < sp.length ? sp[k + 1].start : s.doc.text.length;
-    const text = s.doc.text.slice(0, from) + s.doc.text.slice(to);
-    sp.slice(k + 1).forEach(x => { x.start -= to - from; x.end -= to - from; });
-    sp.splice(k, 1);
+    const k = cell.k;
+    const verses = s.doc.verses.slice();
+    verses.splice(k, 1);
     cell.k = null;
     cell.label = cell.written = null;
     s.cells.forEach(c => { if (c.k != null && c.k > k) c.k--; });
-    s.doc.replaced(text);
+    s.doc.replaced(verses);
 
     const row = cell.row;
     if (!row.more && [...row.values()].every(c => c.k == null)) {
@@ -1492,8 +1440,8 @@ function _renderVersesView(ctx) {
       onmousedown: (e) => e.preventDefault(),
       onclick: () => {
         if (!s.editable || mirrored) return;
-        const above = cell.k != null ? s.doc.text.slice(0, s.spans[cell.k].start)
-          : (a => a ? s.doc.text.slice(0, s.spans[a.k].end) : '')(cellAbove(cell));
+        const upTo = cell.k != null ? cell.k : (a => a ? a.k + 1 : 0)(cellAbove(cell));
+        const above = window.Verses.toText(s.doc.verses.slice(0, upTo));
         _openLabelPicker({
           current: cell.label || (cell.k == null ? suggested() : null),
           removable: !!cell.label,
@@ -1529,10 +1477,9 @@ function _renderVersesView(ctx) {
       }
       return cell.label || (cell.k == null ? suggested() : null);
     };
-    // How much of the verse's text the mark takes, its line break with it.
-    cell.labelLength = () => cell.label ? cell.label.length + 1 : 0;
-    // The verse as it goes into the text: its mark, then its lyrics.
-    const verseOut = (mark) => mark ? (ta.value ? mark + '\n' + ta.value : mark) : ta.value;
+    // The verse as it goes into its side's list: its mark — kept here, as
+    // in the picker, in its brackets — and the lyrics as typed.
+    const verseOut = (mark) => ({ mark: mark ? mark.trim().slice(1, -1) : '', lyrics: ta.value });
     /* Shows the cell as it is: its mark above the box — the one it would
      * start with, faintly, while it is empty — and `lyrics`, when given,
      * in it. Where marks are picked, a side that may be edited offers one
@@ -1567,18 +1514,16 @@ function _renderVersesView(ctx) {
       _fitHeight(ta);
     };
 
-    // The cell's mark and lyrics from its verse in the text.
-    const body = cell.k != null ? verseOf(s, cell.k) : '';
-    const first = body.split('\n')[0];
-    // `written` is the mark as it is in the text; `label`, as it is to be.
-    cell.label = cell.written = cell.k != null && window.Sections.isMarker(first) ? first : null;
-    cell.show(cell.label ? body.slice(first.length + 1) : body);
+    // The cell's mark and lyrics from its verse. `written` is the mark as
+    // it is stored; `label`, as it is to be.
+    const v = cell.k != null ? verseOf(s, cell.k) : null;
+    cell.label = cell.written = v && v.mark ? '[' + v.mark + ']' : null;
+    cell.show(v ? v.lyrics : '');
 
-    // The box into its side's text: as typed, or `once`, a step of its own.
-    // A verse new in the row for one more, or in the last row, makes room
-    // for the next (see promote, makeRoom) — unless `whole`, a paste, which
-    // draws every row again anyway.
-    const commit = (once, whole) => {
+    // The box into its side's verses: as typed, or `once`, a step of its
+    // own. A verse new in the row for one more, or in the last row, makes
+    // room for the next (see promote, makeRoom).
+    const commit = (once) => {
       const made = cell.k == null, had = cell.written, mark = markNow();
       const next = write(cell, verseOut(mark));
       if (next == null) return false;
@@ -1589,7 +1534,7 @@ function _renderVersesView(ctx) {
       if (s.inOriginal && mark !== had) {
         trs.forEach(t => { const tc = cell.row.get(t); if (tc) tc.follow(); });
       }
-      if (made && !whole) {
+      if (made) {
         if (cell.row.more) promote(cell);
         else makeRoom(cell);
       }
@@ -1615,7 +1560,7 @@ function _renderVersesView(ctx) {
       cell.show();
     }
 
-    ta.addEventListener('input', (e) => {
+    ta.addEventListener('input', () => {
       // A mark typed or pasted as the box's first line, the way lyrics
       // from the web come, is taken out of the lyrics and becomes the
       // verse's own.
@@ -1627,14 +1572,8 @@ function _renderVersesView(ctx) {
         ta.setSelectionRange(caret, caret);
         cell.show();
       }
-      // Text that arrived in one go, with a blank line in it, is a paste
-      // of more than one verse. Typed, a blank line is left where it is.
-      const pasted = /^insertFrom/.test(e.inputType) || (e.data || '').includes('\n');
-      const whole = pasted && /\n[ \t]*\n/.test(ta.value.trim());
-      if (commit(whole, whole) && whole) {
-        split(s, s.spans[cell.k].start + cell.labelLength() + ta.selectionEnd);
-        return;
-      }
+      // Blank lines, typed or pasted, stay where they are: in its verse.
+      commit();
       _fitHeight(ta);
       if (!s.inOriginal) _syncVerseNotesSoon();
     });
@@ -1703,7 +1642,7 @@ function _renderVersesView(ctx) {
   // for it.
   let askedForOriginal = false;
   function originalPlaceholder(more) {
-    if (!orig.spans.length) {
+    if (!orig.doc.verses.length) {
       const first = !askedForOriginal;
       askedForOriginal = true;
       return first ? 'Lipește sau scrie textul original…' : '';
@@ -1714,12 +1653,12 @@ function _renderVersesView(ctx) {
   // An empty box of a version, beside verse `o` of the original, or in the
   // row for one more.
   function versionPlaceholder(s, o, more) {
-    if (more) return s.spans.length ? 'Strofa următoare…' : hasOrig ? 'Traducerea…' : 'Versurile tale…';
+    if (more) return s.doc.verses.length ? 'Strofa următoare…' : hasOrig ? 'Traducerea…' : 'Versurile tale…';
     if (o == null) return '';
     // A section this version has written once already, elsewhere.
     const om = _pairMark(o);
-    if (om && s.spans.some((sp, k) => { const m = _pairMark(verseOf(s, k)); return m && _sameMark(m, om); })) {
-      return window.Sections.romanian(window.Sections.parse(o.split('\n')[0])) + ' — deja tradus';
+    if (om && s.doc.verses.some(v => { const m = _pairMark(v); return m && _sameMark(m, om); })) {
+      return window.Sections.romanian(window.Verses.section(o)) + ' — deja tradus';
     }
     return 'Traducerea…';
   }
@@ -1834,13 +1773,13 @@ function _renderVersesView(ctx) {
   }
 
   function draw() {
-    sides.forEach(s => { s.spans = _verses(s.doc.text); s.cells = []; });
+    sides.forEach(s => { s.cells = []; });
     list.innerHTML = '';
     heads.length = 0;
     rowList = [];
     askedForOriginal = false;
     const mounted = [];
-    const marksOf = (s) => s.spans.map((sp, k) => _pairMark(verseOf(s, k)));
+    const marksOf = (s) => s.doc.verses.map(_pairMark);
     const rows = _verseRows(hasOrig ? marksOf(orig) : [], trs.map(marksOf));
 
     // Who is in which column, kept in view while the rows scroll by.
@@ -1985,17 +1924,17 @@ window.addEventListener('beforeunload', (e) => {
 
 // The song is read once, up front, so what follows the save is about the
 // song it was made on even if another has been opened meanwhile.
-async function _saveVersionText(versionId, history, text) {
+async function _saveVersionText(versionId, history, verses) {
   if (!versionId) return;
   const song = _song;
   try {
-    const { queued, sent } = await window.Db.setVersionText(song.id, versionId, text);
+    const { queued, sent } = await window.Db.setVersionVerses(song.id, versionId, verses);
     if (queued) _queued(sent, 'Nu am putut salva textul');
     const version = _versions.find(v => v.id === versionId);
     window.Activity.log(song, 'version_text', { versionTitle: version ? version.title : '' }, versionId);
     // The version's text is kept current as it is typed (see the Text
     // tab), so it is not set back here to whatever this save carried.
-    history.last = text;
+    history.last = verses;
     history.pending = false;
   } catch (err) {
     toast(failText('Nu am putut salva textul', err), { kind: 'error' });
@@ -2004,15 +1943,15 @@ async function _saveVersionText(versionId, history, text) {
 
 // The original text, edited in place on the Text tab. The song list keeps
 // its own copy for the snippet under each title, so it is told as well.
-async function _saveOriginalText(text) {
+async function _saveOriginalText(verses) {
   const song = _song;
   try {
-    const { queued, sent } = await window.Db.setOriginalText(song.id, text);
+    const { queued, sent } = await window.Db.setOriginalVerses(song.id, verses);
     if (queued) _queued(sent, 'Nu am putut salva originalul');
-    window.Songs.noteUpdated(song.id, { originalText: text });
+    window.Songs.noteUpdated(song.id, { originalVerses: verses });
     window.Activity.log(song, 'original_text', null, 'original');
     if (_originalHistory && _originalHistorySongId === song.id) {
-      _originalHistory.last = text;
+      _originalHistory.last = verses;
       _originalHistory.pending = false;
     }
   } catch (err) {
@@ -2189,14 +2128,14 @@ function _openAddVersion(content) {
           try {
             const id = await window.Db.addVersion(_song.id, {
               title,
-              text: '',
+              verses: [],
               createdBy: window.Auth.currentUser().uid
             });
             const now = Date.now();
             // With its creator, as listVersions would bring it: that is
             // who may write in it, and without it the version you just
             // made would be read-only to you until the song is reloaded.
-            _versions.push({ id, title, text: '', createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now });
+            _versions.push({ id, title, verses: [], createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now });
             window.Activity.log(_song, 'version_added', { versionTitle: title });
             _activeVersionId = id;
             _rememberVersion(_song.id, id);
@@ -2304,7 +2243,7 @@ function _openSongMenu(root) {
       class: 'btn btn--wide btn--menu',
       onclick: async () => {
         closeSheet(overlay);
-        if (!_song.originalText || !_song.originalText.trim()) {
+        if (!window.Verses.hasLyrics(_song.originalVerses)) {
           toast('Adaugă mai întâi textul original.', { kind: 'error' });
           return;
         }
@@ -2510,7 +2449,7 @@ function _openEditSong(root) {
 // the kebab menu's button.
 async function _generateMotAMot(root) {
   try {
-    const v = await window.Translator.generateMotAMotVersion(_song.id, _song.originalText, _versions, window.Auth.currentUser().uid, window.Auth.isAdmin());
+    const v = await window.Translator.generateMotAMotVersion(_song.id, _song.originalVerses, _versions, window.Auth.currentUser().uid, window.Auth.isAdmin());
     const idx = _versions.findIndex(x => x.id === v.id);
     if (idx >= 0) _versions[idx] = v; else _versions.push(v);
     _activeVersionId = v.id;
@@ -2531,7 +2470,7 @@ function reset() {
   _versions = [];
   _activeVersionId = null;
   _undoStateVersionId = undefined;
-  _versionHistory = _newHistory('');
+  _versionHistory = _newHistory();
   _originalHistory = null;
   _originalHistorySongId = null;
   _otherHistories = new Map();

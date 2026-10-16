@@ -15,10 +15,13 @@
  *                               // and a Firestore where() would instead
  *                               // have skipped every doc missing the
  *                               // field.
- *     originalText: string,     // English source text; empty for 'original'
- *     translatedText: string,   // legacy single-translation field, no longer
- *                                // written — kept only so pre-versions data
- *                                // isn't lost; see listVersions' migration.
+ *     originalVerses: [{ mark, lyrics }],
+ *                               // the English source, verse by verse (see
+ *                               // verses.js); empty for 'original'. Until
+ *                               // release 158 it was one string,
+ *                               // originalText, and the versions' text
+ *                               // too — tools/migrate-verses made them
+ *                               // lists.
  *     groupId: string,
  *     shared: boolean,          // visible to the whole group, vs personal —
  *                               // read it through Utils.isShared for
@@ -62,7 +65,8 @@
  *   songs/{songId}/versions/{versionId}
  *   {
  *     title: string,             // shown in the version switcher
- *     text: string,              // the Romanian translation for this version
+ *     verses: [{ mark, lyrics }], // the Romanian translation for this
+ *                                 // version, verse by verse
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -157,13 +161,12 @@ async function getGroup(groupId) {
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 
-async function addSong({ title, originalText, kind, shared, demoUrl, workers, groupId, createdBy }) {
+async function addSong({ title, originalVerses, kind, shared, demoUrl, workers, groupId, createdBy }) {
   const now = Date.now();
   const ref = await fs().collection('songs').add({
     title: title || '',
     kind: kind === 'original' ? 'original' : 'translation',
-    originalText: originalText || '',
-    translatedText: '',
+    originalVerses: originalVerses || [],
     groupId,
     shared: shared !== false,
     demoUrl: demoUrl || '',
@@ -176,7 +179,7 @@ async function addSong({ title, originalText, kind, shared, demoUrl, workers, gr
   // disabled version switcher with nothing to switch to, and "Adaugă
   // versiune" lives inside that switcher's own sheet — so there was no way
   // to make the first one.
-  await addVersion(ref.id, { title: 'Versiunea 1', text: '', createdBy });
+  await addVersion(ref.id, { title: 'Versiunea 1', verses: [], createdBy });
   return ref.id;
 }
 
@@ -230,11 +233,11 @@ async function listVersions(songId) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-async function addVersion(songId, { title, text, createdBy }) {
+async function addVersion(songId, { title, verses, createdBy }) {
   const now = Date.now();
   const ref = await _versionsRef(songId).add({
     title: title || 'Versiune nouă',
-    text: text || '',
+    verses: verses || [],
     createdBy,
     createdAt: now,
     updatedAt: now
@@ -252,11 +255,11 @@ function _queued(write) {
   if (!window.Utils.isOffline()) return sent.then(() => ({ queued: false, sent }));
   return Promise.resolve({ queued: true, sent });
 }
-function setVersionText(songId, versionId, text) {
-  return _queued(() => _versionsRef(songId).doc(versionId).update({ text, updatedAt: Date.now() }));
+function setVersionVerses(songId, versionId, verses) {
+  return _queued(() => _versionsRef(songId).doc(versionId).update({ verses, updatedAt: Date.now() }));
 }
-function setOriginalText(songId, text) {
-  return _queued(() => fs().collection('songs').doc(songId).update({ originalText: text, updatedAt: Date.now() }));
+function setOriginalVerses(songId, verses) {
+  return _queued(() => fs().collection('songs').doc(songId).update({ originalVerses: verses, updatedAt: Date.now() }));
 }
 
 async function updateVersion(songId, versionId, patch) {
@@ -337,7 +340,7 @@ const _online = (fn) => async (...args) => { window.Utils.requireOnline(); retur
 
 window.Db = {
   listSongs, getSong, getGroup, listVersions, watchNotes, getSeen,
-  setVersionText, setOriginalText,
+  setVersionVerses, setOriginalVerses,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
     addVersion, updateVersion, deleteVersion, addNote, deleteNote, setNoteResolved, setNoteHeart, markSeen

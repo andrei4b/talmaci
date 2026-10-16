@@ -1,9 +1,10 @@
 /* threads.js — observations on one verse of a version, and the replies to
  * an observation (see db.js for how they are stored).
  *
- * A verse has no id of its own: it is a run of lines between blank lines,
- * and the text it lives in is edited freely afterwards. So an observation
- * on a verse does not point at a place in the text. It remembers what it
+ * A verse has no id of its own: it is an entry in its version's list of
+ * verses (see verses.js), and the list is edited freely afterwards —
+ * verses written above it, taken out, rewritten. So an observation on a
+ * verse does not point at a place in the list. It remembers what it
  * was left on — the verse's section mark, which of the verses with that
  * mark it was, its position, and the verse itself as it read then — and
  * the verse is looked for again every time the text is shown:
@@ -22,24 +23,6 @@
  * observations show on every verse with its mark, and on every verse with
  * exactly its words when it has none. */
 (function () {
-
-/* Each verse of a text: { start, end } offsets of its lines, without the
- * blank lines around it. */
-function verses(text) {
-  const out = [];
-  let pos = 0, cur = null;
-  for (const line of String(text || '').split('\n')) {
-    const end = pos + line.length;
-    if (line.trim()) {
-      if (cur) cur.end = end;
-      else { cur = { start: pos, end }; out.push(cur); }
-    } else {
-      cur = null;
-    }
-    pos = end + 1;
-  }
-  return out;
-}
 
 // A verse's section mark, as a key the same in either spelling of it, and
 // its name to show; or null when its first line is not a mark.
@@ -71,9 +54,11 @@ function _likeness(a, b) {
 }
 const LIKE_ENOUGH = 0.5;
 
-/* What an observation on verse `index` of `text` remembers of it. */
-function anchorFor(text, index) {
-  const vs = verses(text).map(v => text.slice(v.start, v.end));
+/* What an observation on verse `index` of a list of verses remembers of
+ * it. Each verse is compared as text — its mark's line, then its lyrics —
+ * which is also how it is quoted. */
+function anchorFor(verses, index) {
+  const vs = (verses || []).map(window.Verses.text);
   const quote = vs[index] || '';
   const mark = _mark(quote);
   return {
@@ -85,12 +70,12 @@ function anchorFor(text, index) {
   };
 }
 
-/* Where an anchored observation is in `text` now:
+/* Where an anchored observation is in a list of verses now:
  *   { at: [verse indices it shows on], home: the verse it was left on or
  *     -1, changed: whether that verse reads differently now }
  * `at` is empty when the verse is not found. */
-function locate(text, anchor) {
-  const vs = verses(text).map(v => text.slice(v.start, v.end));
+function locate(verses, anchor) {
+  const vs = (verses || []).map(window.Verses.text);
   const info = vs.map(v => ({ mark: _mark(v), body: _body(v) }));
   const quoteBody = _body(anchor.quote || '');
   const sameMark = (key) => key ? info.map((x, i) => i).filter(i => info[i].mark && info[i].mark.key === key) : [];
@@ -174,5 +159,5 @@ function label(anchor) {
   return '„' + (t.length > 32 ? t.slice(0, 31).trimEnd() + '…' : t) + '”';
 }
 
-window.Threads = { verses, anchorFor, locate, group, label };
+window.Threads = { anchorFor, locate, group, label };
 })();

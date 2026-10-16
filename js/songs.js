@@ -260,7 +260,7 @@ function _renderList(listWrap) {
         class: 'song-list__link'
       }, [
         el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
-        el('span', { class: 'song-list__snippet' }, [window.Sections.strip(song.originalText).slice(0, 80)]),
+        el('span', { class: 'song-list__snippet' }, [window.Sections.strip(window.Verses.toText(window.Verses.read(song.originalVerses))).slice(0, 80)]),
         _renderSongMeta(song)
       ])
     ]));
@@ -389,18 +389,18 @@ function _openAddSong() {
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
           const demoUrl = normalizeUrl(demoInput.value);
           if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
-          const originalText = '';
+          const originalVerses = [];
           try {
             const now = Date.now();
             const shared = visibility !== 'personal';
             const groupId = window.Auth.currentGroupId();
             const createdBy = window.Auth.currentUser().uid;
             const workers = working ? [createdBy] : [];
-            const id = await window.Db.addSong({ title, kind, originalText, shared, demoUrl, workers, groupId, createdBy });
+            const id = await window.Db.addSong({ title, kind, originalVerses, shared, demoUrl, workers, groupId, createdBy });
             // The cache won't otherwise learn about this until a manual
             // refresh — there's no fetch to pick it up on the way back
             // from the song this opens next.
-            _songs.push({ id, title, kind, originalText, shared, demoUrl, workers, groupId, createdBy, createdAt: now, updatedAt: now });
+            _songs.push({ id, title, kind, originalVerses, shared, demoUrl, workers, groupId, createdBy, createdAt: now, updatedAt: now });
             window.Activity.log({ id, title, shared }, 'song_created');
             closeSheetThen(overlay, () => {
               // Once the song's route has been taken, so the offer's sheet

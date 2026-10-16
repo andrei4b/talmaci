@@ -12,15 +12,12 @@ Four tabs sit under every screen — **Text**, **Rime**, **Sinonime**,
 anything.
 
 **Text**, **Rime** and **Sinonime** work. Text edits a song's lyrics across
-multiple named versions, so several people can draft in parallel. Sections
-(verse, chorus, bridge…) are marked in the text itself by a line such as
-`[Refren]` — the form lyrics pasted from the web already use. Typing `[`
-at the start of a line offers the section names, the original's next one
-first, and the source panel sets the marks apart; see `js/sections.js`.
-A translation can also be shown **pe strofe** (the button beside the
-song's menu): each verse of the original above its verse of the
-translation, paired by position, with a note where the two sides'
-counts or section marks disagree. Rime
+multiple named versions, so several people can draft in parallel, verse by
+verse: each verse of the original beside its verse of every version, paired
+by section mark (verse, chorus, bridge…, picked above each box; see
+`js/sections.js`) and otherwise by position. The original and each version
+are stored as a list of verses, `{ mark, lyrics }` (see `js/verses.js`), so
+a blank line inside a verse is just a line. Rime
 looks a word up in a 210k-word index built from dexonline and returns its
 perfect rhymes, with the stressed syllable marked; its index is built
 offline, see `tools/rhyme/README.md`. Sinonime shows dexonline's *Dicționar
@@ -234,6 +231,7 @@ firestore.rules             Security rules (reference copy — publish to
 js/firebase-config.js        Your Firebase project's public web config
 js/auth.js                    Firebase Auth + user profile (role, group)
 js/db.js                       Firestore data layer (songs, versions)
+js/verses.js                    A song's text as its list of verses
 js/translate.js                 Client for the translateText function
 js/utils.js                      DOM helpers, toast, sheet stack
 js/ro-phonetics.js                Romanian G2P, syllables, stress — shared
@@ -247,6 +245,8 @@ js/app.js                             Sign-in/join gating, routing, account
 functions/index.js                     Cloud Functions: Google Translate and
                                          Merriam-Webster proxies (optional,
                                          see above)
+tools/migrate-verses/                   One-time move of song texts from
+                                          one string to lists of verses
 tools/rhyme/                            Offline build for the rhyme index —
                                           dev-only, never ships
 data/biblic/                             Generated Bible dictionaries (public

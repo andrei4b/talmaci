@@ -13,8 +13,8 @@ rules_version = '2';
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /groups/{groupId}/activity/{entryId} { action, by, byName, songId, songTitle, ..., at }
 //   /invites/{code}   { groupId, createdBy, createdAt }
-//   /songs/{songId}   { title, originalText, translatedText, groupId, shared, status, workers, versionOrder, demoUrl, createdBy, createdAt, updatedAt }
-//   /songs/{songId}/versions/{versionId} { title, text, createdBy, createdAt, updatedAt }
+//   /songs/{songId}   { title, originalVerses: [{ mark, lyrics }], groupId, shared, status, workers, versionOrder, demoUrl, createdBy, createdAt, updatedAt }
+//   /songs/{songId}/versions/{versionId} { title, verses: [{ mark, lyrics }], createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId}/notes/{noteId} { text, by, byName, at, anchor?, parentId?, resolved?, resolvedBy?, resolvedAt?, hearts? }
 //   /users/{uid}/seen/{songId} { [versionId]: ms, [versionId:threadId]: ms }
 //

@@ -11,42 +11,34 @@ async function translate(text) {
 
 // Generates (or, if one already exists AND belongs to this user — or this
 // user is an admin — refreshes) the song's "Mot-a-mot" version from its
-// current original text, from the song's kebab menu (song-detail.js).
+// current original, from the song's kebab menu (song-detail.js).
 //
 // Versions can only be edited by whoever created them (or an admin), so if
 // an existing "Mot-a-mot" belongs to someone else, this creates a new one
 // of your own instead of trying to overwrite theirs.
-/* Puts the original's section marks back into a machine translation under
- * their Romanian names. Left alone, Google turns "[Chorus]" into "[Cor]"
- * and "[Verse 2]" into "[Versetul 2]". The translation keeps the original's line breaks, so the
- * marks are found by line; if the line counts ever disagree, by order
- * among the bracketed lines instead, and failing both they are left be. */
-function _romanianSections(originalText, translatedText) {
-  const S = window.Sections;
-  const marks = S.list(originalText);
-  if (!marks.length) return translatedText;
-  const lines = translatedText.split('\n');
-  if (lines.length === String(originalText).split('\n').length) {
-    marks.forEach(m => { lines[m.line] = '[' + S.romanian(m) + ']'; });
-    return lines.join('\n');
-  }
-  const at = lines.map((l, i) => S.isMarker(l) ? i : -1).filter(i => i >= 0);
-  if (at.length !== marks.length) return translatedText;
-  at.forEach((i, k) => { lines[i] = '[' + S.romanian(marks[k]) + ']'; });
-  return lines.join('\n');
-}
-
-async function generateMotAMotVersion(songId, originalText, existingVersions, createdBy, isAdmin) {
-  const translatedText = _romanianSections(originalText, await translate(originalText));
+//
+// Verse by verse, all at once: each verse's lyrics go to Google on their
+// own and come back as its verse, so the translation has the original's
+// verses however many blank lines are in them, and each keeps its mark,
+// under its Romanian name ("Chorus" becomes "Refren", where Google would
+// have made it "Cor").
+async function generateMotAMotVersion(songId, originalVerses, existingVersions, createdBy, isAdmin) {
+  const verses = await Promise.all(originalVerses.map(async (v) => {
+    const sec = window.Verses.section(v);
+    return {
+      mark: sec ? window.Sections.romanian(sec) : v.mark,
+      lyrics: v.lyrics.trim() ? await translate(v.lyrics) : ''
+    };
+  }));
   const existing = (existingVersions || []).find(v =>
     v.title === 'Mot-a-mot' && (v.createdBy === createdBy || isAdmin));
   if (existing) {
-    await window.Db.updateVersion(songId, existing.id, { text: translatedText });
-    return { ...existing, text: translatedText };
+    await window.Db.updateVersion(songId, existing.id, { verses });
+    return { ...existing, verses };
   }
-  const id = await window.Db.addVersion(songId, { title: 'Mot-a-mot', text: translatedText, createdBy });
+  const id = await window.Db.addVersion(songId, { title: 'Mot-a-mot', verses, createdBy });
   const now = Date.now();
-  return { id, title: 'Mot-a-mot', text: translatedText, createdBy, createdAt: now, updatedAt: now };
+  return { id, title: 'Mot-a-mot', verses, createdBy, createdAt: now, updatedAt: now };
 }
 
 window.Translator = { translate, generateMotAMotVersion };
