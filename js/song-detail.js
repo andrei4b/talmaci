@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, copyWithToast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
+const { el, toast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
@@ -21,8 +21,6 @@ const STAND_IN = { mark: '…', lyrics: '' };
 const ROW_ICONS = {
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
   delete: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`,
-  // Two sheets, one over the other — the version's lyrics, copied.
-  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`,
   // Six dots — something to take hold of and drag.
   drag: `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>`
 };
@@ -407,34 +405,9 @@ function _notesButton(version, inHead) {
   });
 }
 
-/* A version's lyrics, to paste elsewhere: its verses one after another
- * with a blank line between, without their section marks, and without
- * the verses nothing has been written in yet. */
-function _copyVersion(version) {
-  const text = (version.verses || [])
-    .map(v => v.lyrics.replace(/^(\s*\n)+/, '').trimEnd())
-    .filter(Boolean)
-    .join('\n\n');
-  if (!text) { toast('Versiunea nu are încă text.'); return; }
-  copyWithToast(text, 'Versiunea a fost copiată.');
-}
-
-// The button above a version's column that copies its lyrics.
-function _copyHeadButton(version) {
-  if (!version) return null;
-  return el('button', {
-    class: 'text-tab__copy',
-    'aria-label': 'Copiază versiunea',
-    title: 'Copiază versiunea',
-    html: ROW_ICONS.copy,
-    onclick: () => _copyVersion(version)
-  });
-}
-
-// A version's name above its column, with its copy and observations
-// buttons at the right.
+// A version's name above its column, with its observations at the right.
 function _headRow(head, version) {
-  return el('div', { class: 'text-tab__headrow' }, [head, _copyHeadButton(version), _notesButton(version, true)]);
+  return el('div', { class: 'text-tab__headrow' }, [head, _notesButton(version, true)]);
 }
 
 /* The verse view's button on each verse of a version, for the
@@ -2145,15 +2118,6 @@ function _openVersionList(content) {
         class: 'version-row__title' + (v.id === _activeVersionId ? ' version-row__title--active' : ''),
         onclick: () => { _activeVersionId = v.id; _rememberVersion(_song.id, v.id); closeSheet(overlay); _refreshTextTab(content); }
       }, [v.title || 'Fără titlu']),
-      el('button', {
-        class: 'version-row__icon',
-        'aria-label': 'Copiază versiunea',
-        title: 'Copiază versiunea',
-        html: ROW_ICONS.copy,
-        // Copied while the tap is still going on, before the sheet
-        // closes: Safari only lets the clipboard be written from inside it.
-        onclick: () => { _copyVersion(v); closeSheet(overlay); }
-      }),
       el('button', {
         class: 'version-row__icon',
         'aria-label': 'Redenumește versiunea',

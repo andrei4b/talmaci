@@ -795,10 +795,9 @@ button.text-tab__head { cursor: pointer; }
 .verses__heads .text-tab__headrow { padding-right: 9px; }
 
 /* The observations button — a version's, in the row under its box or
-   above its column — and the dot on it while someone else's are unread.
-   The copy button above a column is drawn the same way. */
+   above its column — and the dot on it while someone else's are unread. */
 .notes-btn { position: relative; }
-.notes-btn--head, .text-tab__copy {
+.notes-btn--head {
   flex-shrink: 0;
   width: 30px;
   height: 28px;
@@ -812,11 +811,8 @@ button.text-tab__head { cursor: pointer; }
   justify-content: center;
   cursor: pointer;
 }
-.notes-btn--head:hover, .text-tab__copy:hover { background: var(--color-border); }
+.notes-btn--head:hover { background: var(--color-border); }
 .notes-btn--head svg { width: 20px; height: 20px; }
-/* Beside the observations' bubble, a little smaller so the two read as
-   one pair rather than as two of the same. */
-.text-tab__copy svg { width: 17px; height: 17px; }
 .version-switcher__nav.notes-btn svg { width: 20px; height: 20px; }
 .notes-btn--unread::after {
   content: '';
