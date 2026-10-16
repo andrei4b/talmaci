@@ -1,6 +1,6 @@
 /* app.js — boot sequence, sign-in/join gating, hash router, account menu. */
 (function () {
-const { $, el, menuLabel, toast, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
+const { $, el, menuLabel, toast, copyWithToast, openSheet, closeSheet, closeSheetThen, icons,
         isOffline, failText } = window.Utils;
 
 // ---- Keep sheets clear of the on-screen keyboard AND Chrome's autofill
@@ -665,10 +665,7 @@ function _pushItem(overlay) {
 function _openInviteCode(code) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const copyBtn = el('button', { class: 'btn btn--wide' }, ['Copiază codul']);
-  copyBtn.addEventListener('click', async () => {
-    const ok = await copyToClipboard(code);
-    toast(ok ? 'Cod copiat.' : 'Nu am putut copia codul.', ok ? {} : { kind: 'error' });
-  });
+  copyBtn.addEventListener('click', () => copyWithToast(code, 'Cod copiat.'));
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Invită pe cineva']),
     el('p', { class: 'sheet__text' }, ['Trimite-i acest cod ca să se alăture grupului tău:']),

@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, copyToClipboard, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
+const { el, toast, copyWithToast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
@@ -410,14 +410,13 @@ function _notesButton(version, inHead) {
 /* A version's lyrics, to paste elsewhere: its verses one after another
  * with a blank line between, without their section marks, and without
  * the verses nothing has been written in yet. */
-async function _copyVersion(version) {
+function _copyVersion(version) {
   const text = (version.verses || [])
     .map(v => v.lyrics.replace(/^(\s*\n)+/, '').trimEnd())
     .filter(Boolean)
     .join('\n\n');
   if (!text) { toast('Versiunea nu are încă text.'); return; }
-  const ok = await copyToClipboard(text);
-  toast(ok ? 'Versiunea a fost copiată.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
+  copyWithToast(text, 'Versiunea a fost copiată.');
 }
 
 // The button above a version's column that copies its lyrics.

@@ -147,6 +147,19 @@ async function copyToClipboard(text) {
   }
 }
 
+/* Copies, and says so — unless Android already does: from Android 13 it
+ * shows its own "Copied" whenever text reaches the clipboard, and a toast
+ * of ours beside it said the same thing twice. Browsers no longer tell
+ * which Android it is (every one reads as 10), so the older ones, which
+ * say nothing, go without. A failure is always told. */
+const OS_TELLS_COPIED = /Android/i.test(navigator.userAgent);
+async function copyWithToast(text, done) {
+  const ok = await copyToClipboard(text);
+  if (!ok) toast('Nu am putut copia.', { kind: 'error' });
+  else if (!OS_TELLS_COPIED) toast(done);
+  return ok;
+}
+
 // ---- Sheet/modal stack + hardware back button support (same pattern as
 // worship-setlist) ----
 // Opening a sheet pushes a history entry, so the phone's back button or
@@ -265,7 +278,7 @@ function offlineNotice(opts) {
   return node;
 }
 
-window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, openSheet, closeSheet, closeSheetThen, icons,
+window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, copyWithToast, openSheet, closeSheet, closeSheetThen, icons,
                  songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers, orderVersions,
                  OFFLINE_HINT, isOffline, requireOnline, isNetworkError, failText, offlineNotice };
 

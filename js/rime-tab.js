@@ -244,10 +244,7 @@ async function _runRimeSearch(wrap) {
     list.appendChild(el('button', {
       class: 'rime__word',
       title: r.syllables + ' silabe',
-      onclick: async () => {
-        const ok = await window.Utils.copyToClipboard(r.word);
-        toast(ok ? '„' + r.word + '” copiat.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
-      }
+      onclick: () => window.Utils.copyWithToast(r.word, '„' + r.word + '” copiat.')
     }, [r.word]));
   });
   body.appendChild(list);

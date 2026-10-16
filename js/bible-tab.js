@@ -11,7 +11,7 @@
  * to the same page instead of resetting to Geneza 1.
  */
 (function () {
-const { el, toast, copyToClipboard, isNetworkError, offlineNotice } = window.Utils;
+const { el, toast, copyToClipboard, copyWithToast, isNetworkError, offlineNotice } = window.Utils;
 
 const DATA_URL = './data/bible-cornilescu.json';
 // The RCCV export lists books in the standard order; the Old Testament
@@ -292,8 +292,7 @@ function _buildSelectionTopbar(host) {
     el('button', {
       class: 'btn btn--icon', 'aria-label': 'Copiază', html: COPY_ICON,
       onclick: async () => {
-        const ok = await copyToClipboard(_selectionText());
-        toast(ok ? 'Copiat.' : 'Nu am putut copia.', ok ? {} : { kind: 'error' });
+        await copyWithToast(_selectionText(), 'Copiat.');
         _selected.clear();
         _refreshSelectionUI(host);
       }
