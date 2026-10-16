@@ -148,8 +148,21 @@ async function listSongs(groupId, myUid) {
   return songs;
 }
 
+/* Null for a song that is not there for this member. A deleted song is
+ * refused as a missing permission, not reported missing: the read rule
+ * looks at the document's own groupId and shared fields, and a document
+ * that does not exist has none (see firestore.rules). Another member's
+ * personal song, or one made personal since, is refused the same way.
+ * Either way it is gone as far as this member is concerned, and the two
+ * cannot be told apart from here. */
 async function getSong(songId) {
-  const snap = await _get(fs().collection('songs').doc(songId));
+  let snap;
+  try {
+    snap = await _get(fs().collection('songs').doc(songId));
+  } catch (err) {
+    if (err && err.code === 'permission-denied') return null;
+    throw err;
+  }
   return snap.exists ? { id: snap.id, ...snap.data() } : null;
 }
 

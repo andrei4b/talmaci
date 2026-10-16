@@ -141,6 +141,9 @@ async function render(root, songId, openNotesFor, entered) {
   // And its observations' listeners start afresh with it, in case one
   // ended while the song was off screen.
   _unwatchNotes();
+  // Set once the song turns out not to be there, so leaving it takes its
+  // entry out of the history rather than leaving it to be gone back to.
+  let gone = false;
   root.innerHTML = '';
   root.appendChild(el('div', { class: 'topbar' }, [
     el('button', {
@@ -149,7 +152,7 @@ async function render(root, songId, openNotesFor, entered) {
       html: icons.back,
       // Up to the list, which is not the same as back now that a song can
       // also be reached from the other tabs — see goUpToList in app.js.
-      onclick: () => window.App.goUpToList()
+      onclick: () => window.App.goUpToList(gone)
     }),
     el('h1', { class: 'topbar__title' }, ['Se încarcă…'])
   ]));
@@ -179,11 +182,29 @@ async function render(root, songId, openNotesFor, entered) {
       }));
       return;
     }
-    toast(failText('Nu am putut încărca melodia', err), { kind: 'error' });
+    // Anything else that went wrong, shown in place of the spinner so the
+    // page never keeps loading forever.
+    root.querySelector('.topbar__title').textContent = 'Eroare';
+    root.querySelector('.loading-state').replaceWith(el('div', { class: 'empty-state' }, [
+      el('p', {}, [failText('Nu am putut încărca melodia', err)]),
+      el('button', { class: 'btn', onclick: () => render(root, songId, openNotesFor, true) }, ['Încearcă din nou'])
+    ]));
+    return;
   }
 
   if (!_song) {
-    root.appendChild(el('div', { class: 'empty-state' }, ['Melodia nu a fost găsită.']));
+    // Deleted, or not visible to this member (see Db.getSong). Reached by
+    // going back to a song deleted on another device, or deleted here
+    // before deleting stopped leaving it in the history. The list's copy
+    // forgets it too, or it would stay there to be opened again.
+    window.Songs.noteDeleted(songId);
+    gone = true;
+    root.querySelector('.topbar__title').textContent = 'Melodie indisponibilă';
+    root.querySelector('.loading-state').replaceWith(el('div', { class: 'empty-state' }, [
+      el('p', {}, ['Melodia nu mai există.']),
+      el('p', { class: 'empty-state__hint' }, ['A fost ștearsă, sau nu este vizibilă pentru contul tău.']),
+      el('button', { class: 'btn', onclick: () => window.App.goUpToList(true) }, ['Înapoi la listă'])
+    ]));
     return;
   }
 
@@ -2335,7 +2356,9 @@ function _openSongMenu(root) {
     }, menuLabel(icons.flag, 'Stare: ' + statusLabel(songStatus(_song)))),
     el('button', {
       class: 'btn btn--wide btn--menu',
-      onclick: () => { closeSheet(overlay); _refreshSong(root); }
+      // After the sheet's history entry is gone: a song found deleted
+      // leaves the page, and that must not race the sheet's own pop.
+      onclick: () => closeSheetThen(overlay, () => _refreshSong(root))
     }, menuLabel(icons.refresh, 'Reîmprospătează')),
     el('button', {
       class: 'btn btn--wide btn--menu',
@@ -2492,7 +2515,7 @@ function _confirmDeleteSong() {
             await window.Db.deleteSong(_song.id);
             window.Activity.log(_song, 'song_deleted');
             window.Songs.noteDeleted(_song.id);
-            closeSheetThen(overlay, () => { location.hash = '#/'; });
+            closeSheetThen(overlay, () => window.App.goUpToList(true));
           } catch (err) {
             toast(failText('Nu am putut șterge melodia', err), { kind: 'error' });
           }
@@ -2512,7 +2535,8 @@ async function _refreshSong(root) {
     const refreshed = await window.Db.getSong(_song.id);
     if (!refreshed) {
       toast('Melodia nu mai există.', { kind: 'error' });
-      location.hash = '#/';
+      window.Songs.noteDeleted(_song.id);
+      window.App.goUpToList(true);
       return;
     }
     _song = refreshed;

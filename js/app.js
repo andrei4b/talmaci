@@ -268,10 +268,21 @@ function openTab(id) {
  * That is nearly always true, tab switches no longer pushing anything, but
  * not on a cold start: open a '#/song/x' link directly and the entry below
  * belongs to whatever site you came from. The flag written in _renderRoute
- * tells the two apart. */
-function goUpToList() {
+ * tells the two apart.
+ *
+ * `gone`: the song was just deleted, or found to be no longer there. Then
+ * its entry must not stay in the history at all. Assigning the hash would
+ * push the list on top of it, and back from the list would later land on
+ * a song that cannot be read, which Firestore refuses as a missing
+ * permission rather than reporting it missing (see firestore.rules: the
+ * read rule looks at the document's own fields, and there are none). So
+ * the song's entry is replaced by the list instead. Going back from the
+ * list's own entry leaves the song's as a forward step, which a phone has
+ * no gesture for and the next song opened overwrites. */
+function goUpToList(gone) {
   const st = history.state;
   if (st && st.talmaciFromList) history.back();
+  else if (gone) location.replace('#/');
   else location.hash = '#/';
 }
 
