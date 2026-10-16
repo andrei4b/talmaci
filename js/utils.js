@@ -34,6 +34,8 @@ const icons = {
   // Two sheets, one over the other — a text copied, from a song's menu or
   // above its columns.
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`,
+  // A sheet ruled into cells — a song exported as a spreadsheet, from its menu.
+  table: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/></svg>`,
   // A flag — a song's status, in its menu.
   flag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>`,
   offline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M14.4 10.1A10 10 0 0 1 19 12.9"/><path d="M1.5 9.3a15 15 0 0 1 4.3-2.8"/><path d="M10.7 5.1A15 15 0 0 1 22.5 9.3"/><path d="M12 20h.01"/></svg>`,
@@ -163,6 +165,25 @@ async function copyWithToast(text, done) {
   return ok;
 }
 
+/* A file made here, handed to the person. On a phone, through the share
+ * sheet where it takes files, which is where an iPhone saves to Files or
+ * sends on; elsewhere, and where it does not (Android takes no
+ * spreadsheets), downloaded. Call it from inside the tap: sharing needs
+ * one going on. */
+async function saveFile(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; }
+    catch (err) { if (err && err.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
+}
+
 // ---- Sheet/modal stack + hardware back button support (same pattern as
 // worship-setlist) ----
 // Opening a sheet pushes a history entry, so the phone's back button or
@@ -281,7 +302,7 @@ function offlineNotice(opts) {
   return node;
 }
 
-window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, copyWithToast, openSheet, closeSheet, closeSheetThen, icons,
+window.Utils = { $, $all, el, menuLabel, normalizeUrl, escapeHtml, toast, debounce, copyToClipboard, copyWithToast, saveFile, openSheet, closeSheet, closeSheetThen, icons,
                  songKind, isOriginal, isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers, orderVersions,
                  OFFLINE_HINT, isOffline, requireOnline, isNetworkError, failText, offlineNotice };
 

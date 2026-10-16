@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, copyWithToast, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
+const { el, toast, copyWithToast, saveFile, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
@@ -427,6 +427,31 @@ function _copyLyrics(verses, done) {
 }
 const _copyVersion = (version) => _copyLyrics(version.verses, 'Versiunea a fost copiată.');
 const _copyOriginal = () => _copyLyrics(_song.originalVerses, 'Originalul a fost copiat.');
+
+/* The song as a spreadsheet: a column for the original, if it has one,
+ * and one for each version, headed by its name; a row for each row of
+ * boxes as the verse view lines them up (see _verseRows). Lyrics only, as
+ * copied, so without the section marks, and without the rows that have
+ * nothing written in them. */
+function _exportSheet() {
+  const hasOrig = !isOriginal(_song);
+  const orig = hasOrig ? (_song.originalVerses || []) : [];
+  const texts = _versions.map(v => v.verses || []);
+  const lyrics = (v) => v ? v.lyrics.replace(/^(\s*\n)+/, '').trimEnd() : '';
+  // Each verse opens with an empty line, which sets the verses apart.
+  const rows = _verseRows(orig.map(_pairMark), texts.map(t => t.map(_pairMark)))
+    .map(r => [
+      ...(hasOrig ? [lyrics(r.o == null ? null : orig[r.o])] : []),
+      ...r.t.map((j, c) => lyrics(j == null ? null : texts[c][j]))
+    ])
+    .filter(cells => cells.some(Boolean))
+    .map(cells => cells.map(t => t && '\n' + t));
+  if (!rows.length) { toast('Nu e încă text de exportat.'); return; }
+  const head = [...(hasOrig ? ['Original'] : []), ..._versions.map(v => v.title || 'Fără titlu')];
+  const title = (_song.title || '').trim() || 'Melodie';
+  const name = title.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.xlsx';
+  saveFile(window.Xlsx.build(title, head, rows), name);
+}
 
 // The button above a column that copies its lyrics.
 function _copyHeadButton(label, onclick) {
@@ -2445,6 +2470,11 @@ function _openSongMenu(root) {
       class: 'btn btn--wide btn--menu',
       onclick: () => { _copyOriginal(); closeSheet(overlay); }
     }, menuLabel(icons.copy, 'Copiază originalul')),
+    // Made and handed over from inside the tap, which sharing it requires.
+    el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => { _exportSheet(); closeSheet(overlay); }
+    }, menuLabel(icons.table, 'Exportă în Excel')),
     original ? null : el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: async () => {
