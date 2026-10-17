@@ -185,6 +185,16 @@ function _recipients(song, by) {
   return (Array.isArray(song.workers) ? song.workers : []).filter(uid => uid && uid !== by);
 }
 
+/* Of `recipients`, those still in the song's group. Someone removed from
+ * it (js/auth.js, removeMember) may still be on a song's workers or in a
+ * thread, and a notification would tell them what they can no longer read. */
+async function _inGroup(recipients, groupId) {
+  if (!recipients.length) return recipients;
+  const db = admin.firestore();
+  const profiles = await db.getAll(...recipients.map(uid => db.collection('users').doc(uid)));
+  return recipients.filter((_, i) => profiles[i].exists && profiles[i].data().groupId === groupId);
+}
+
 /* `data` is what the service worker shows: title, body, songId, and
  * versionId for an observation (which opens them). All strings, as FCM requires. */
 async function _send(where, recipients, data) {
@@ -289,7 +299,7 @@ exports.notifySongActivity = onDocumentCreated(
     if (!song) return;
     const where = { kind: e.action, songId: e.songId, by: e.by, workers: song.workers || [] };
     const reply = e.action === 'note_added' && e.reply && e.versionId && e.threadId;
-    let recipients = reply ? await _threadPeople(e) : _recipients(song, e.by);
+    let recipients = await _inGroup(reply ? await _threadPeople(e) : _recipients(song, e.by), song.groupId);
     const text = e.action === 'version_text' || e.action === 'original_text';
     if (text) recipients = await _dueForText(e.songId, recipients, Date.now());
     // No tag, so none replaces another: on a Mac, Chrome swaps a tagged
@@ -348,6 +358,7 @@ exports.notifyNoteHeart = onDocumentUpdated(
     const { songId, versionId, noteId } = event.params;
     const song = await _song(songId);
     if (!song) return;
+    if (!(await _inGroup([note.by], song.groupId)).length) return;
     if (!(await _dueForHeart(noteId, Date.now()))) {
       logger.info('Heart not told, told recently', { songId, noteId, by: given });
       return;

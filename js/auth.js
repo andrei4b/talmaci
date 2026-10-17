@@ -383,11 +383,63 @@ async function setMemberRole(uid, role) {
   if (uid === _fbUser.uid) await refreshProfile();
 }
 
+/* Super-admin only: take someone out of the group. Their profile stays,
+ * without a groupId — see firestore.rules for why it is not deleted — so
+ * the app shows them they were removed instead of the join screen. The
+ * shared songs they were down as working on stop listing them, best-effort:
+ * a song that could not be changed just keeps showing "Cineva". */
+async function removeMember(uid) {
+  window.Utils.requireOnline();
+  if (!isSuperAdmin()) throw new Error('Only the super-admin can remove members');
+  if (uid === _fbUser.uid) throw new Error('You can’t remove yourself');
+  const groupId = currentGroupId();
+  const FV = firebase.firestore.FieldValue;
+  await fs.collection('users').doc(uid).update({
+    groupId: FV.delete(),
+    role: 'user',
+    removedFrom: groupId,
+    removedAt: Date.now()
+  });
+  _members = null;
+  // The same query as the song list's (db.js), filtered here: adding
+  // array-contains to it would need a composite index.
+  try {
+    const snap = await fs.collection('songs').where('groupId', '==', groupId).where('shared', '==', true).get();
+    const theirs = snap.docs.filter(d => (d.data().workers || []).includes(uid));
+    await Promise.all(theirs.map(d => d.ref.update({ workers: FV.arrayRemove(uid) }).catch(() => {})));
+  } catch (_) {}
+}
+
+// Super-admin only: those removed from the current group, to add one back.
+async function listRemovedMembers() {
+  const groupId = currentGroupId();
+  if (!groupId) return [];
+  const snap = await fs.collection('users').where('removedFrom', '==', groupId).get();
+  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+}
+
+// Super-admin only: bring a removed member back, as a plain member.
+async function restoreMember(uid) {
+  window.Utils.requireOnline();
+  if (!isSuperAdmin()) throw new Error('Only the super-admin can add members back');
+  const FV = firebase.firestore.FieldValue;
+  await fs.collection('users').doc(uid).update({
+    groupId: currentGroupId(),
+    removedFrom: FV.delete(),
+    removedAt: FV.delete()
+  });
+  _members = null;
+}
+
+// Whether this account was taken out of its group (see removeMember).
+function wasRemoved() { return !!(_profile && !_profile.groupId && _profile.removedFrom); }
+
 window.Auth = {
   ready, onChange, currentUser, isAdmin, isSuperAdmin, currentGroupId, isPersistent, persistence, profileFailed, profileError,
-  signInWithGoogle, signOut, refreshProfile,
+  wasRemoved, signInWithGoogle, signOut, refreshProfile,
   redeemInvite, createInvite,
-  listGroupMembers, setMemberRole, groupMembers, knownMembers, shortName
+  listGroupMembers, setMemberRole, removeMember, listRemovedMembers, restoreMember,
+  groupMembers, knownMembers, shortName
 };
 
 })();

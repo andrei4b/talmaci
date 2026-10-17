@@ -163,6 +163,7 @@ function _renderCurrentScreen() {
   const user = window.Auth.currentUser();
 
   if (!user) return _renderSignIn(root);
+  if (window.Auth.wasRemoved()) return _renderRemoved(root);
   if (!user.groupId) return window.Auth.profileFailed() ? _renderProfileFailed(root) : _renderJoinGroup(root);
   return _renderRoute(root);
 }
@@ -539,6 +540,24 @@ function _renderProfileFailed(root) {
   ]));
 }
 
+/* Someone the super-admin took out of the group (Auth.removeMember). An
+ * invite code would not let them back in — their profile still exists,
+ * and firestore.rules won't let it be made again — so there is no code
+ * field here, only who to ask and a way to sign out. */
+function _renderRemoved(root) {
+  root.innerHTML = '';
+  root.appendChild(el('div', { class: 'gate' }, [
+    el('div', { class: 'gate__card' }, [
+      el('h1', { class: 'gate__title' }, ['Nu mai faci parte din grup']),
+      el('p', { class: 'gate__subtitle' }, ['Contul tău a fost scos din grup. Dacă e o greșeală, vorbește cu administratorul aplicației.']),
+      el('button', {
+        class: 'btn btn--text',
+        onclick: () => window.Auth.signOut().catch(err => toast(failText('Nu te-am putut deconecta', err), { kind: 'error' }))
+      }, ['Deconectează-te'])
+    ])
+  ]));
+}
+
 function _renderJoinGroup(root) {
   root.innerHTML = '';
   const codeInput = el('input', { class: 'field__input', type: 'text', placeholder: 'Cod de invitație', autofocus: true });
@@ -715,15 +734,23 @@ async function _openManageMembers() {
   openSheet(overlay);
 
   let members;
+  // Those removed are only there to be added back, so failing to list
+  // them leaves the section out rather than the whole sheet.
+  let removed = [];
   try {
-    members = await window.Auth.listGroupMembers();
+    [members, removed] = await Promise.all([
+      window.Auth.listGroupMembers(),
+      window.Auth.listRemovedMembers().catch(() => [])
+    ]);
   } catch (err) {
     listEl.innerHTML = '';
     listEl.appendChild(el('div', { class: 'empty-state' }, [failText('Nu am putut încărca membrii', err)]));
     return;
   }
 
-  members.sort((a, b) => (a.displayName || a.email || '').localeCompare(b.displayName || b.email || ''));
+  const byName = (a, b) => _memberName(a).localeCompare(_memberName(b));
+  members.sort(byName);
+  removed.sort(byName);
   const me = window.Auth.currentUser();
 
   listEl.innerHTML = '';
@@ -733,21 +760,87 @@ async function _openManageMembers() {
   members.forEach(m => {
     const isAdminRole = m.role === 'admin';
     // The super-admin's own row: their powers come from their account, not
-    // this role, so there is nothing to flip.
-    const roleBtn = m.uid === me.uid
-      ? el('span', { class: 'btn member-row__role-btn member-row__role-btn--admin member-row__role-btn--fixed' }, ['Super-admin'])
-      : el('button', {
-          class: 'btn member-row__role-btn' + (isAdminRole ? ' member-row__role-btn--admin' : ''),
-          onclick: (e) => _setMemberRole(e.currentTarget, m, isAdminRole ? 'user' : 'admin', overlay)
-        }, [isAdminRole ? 'Admin' : 'Membru']);
-    listEl.appendChild(el('div', { class: 'member-row' }, [
-      el('div', { class: 'member-row__info' }, [
-        el('div', { class: 'member-row__name' }, [m.displayName || m.email || m.uid]),
-        el('div', { class: 'member-row__meta' }, [m.email || ''])
-      ]),
-      roleBtn
-    ]));
+    // this role, so there is nothing to flip, and they can't remove themself.
+    const actions = m.uid === me.uid
+      ? [el('span', { class: 'btn member-row__role-btn member-row__role-btn--admin member-row__role-btn--fixed' }, ['Super-admin'])]
+      : [
+          el('button', {
+            class: 'btn member-row__role-btn' + (isAdminRole ? ' member-row__role-btn--admin' : ''),
+            onclick: (e) => _setMemberRole(e.currentTarget, m, isAdminRole ? 'user' : 'admin', overlay)
+          }, [isAdminRole ? 'Admin' : 'Membru']),
+          el('button', {
+            class: 'btn member-row__remove-btn btn--danger',
+            'aria-label': 'Scoate din grup',
+            title: 'Scoate din grup',
+            html: icons.trash,
+            onclick: () => closeSheetThen(overlay, () => _confirmRemoveMember(m))
+          })
+        ];
+    listEl.appendChild(_memberRow(m, actions));
   });
+
+  if (removed.length) {
+    listEl.appendChild(el('h3', { class: 'member-list__heading' }, ['Foști membri']));
+    removed.forEach(m => {
+      listEl.appendChild(_memberRow(m, [el('button', {
+        class: 'btn member-row__role-btn',
+        onclick: (e) => _restoreMember(e.currentTarget, m, overlay)
+      }, ['Readaugă'])]));
+    });
+  }
+}
+
+function _memberName(m) { return m.displayName || m.email || m.uid; }
+
+function _memberRow(m, actions) {
+  return el('div', { class: 'member-row' }, [
+    el('div', { class: 'member-row__info' }, [
+      el('div', { class: 'member-row__name' }, [_memberName(m)]),
+      el('div', { class: 'member-row__meta' }, [m.email || ''])
+    ]),
+    el('div', { class: 'member-row__actions' }, actions)
+  ]);
+}
+
+/* Removing someone is undone from the same sheet (Foști membri), but
+ * until then they lose the group's songs at once, so it is asked first. */
+function _confirmRemoveMember(member) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Scoți din grup?']),
+    el('p', { class: 'sheet__text' }, [
+      `${_memberName(member)} nu va mai vedea melodiile grupului și nu va mai primi notificări. Ce a scris rămâne în grup. Readăugarea se face oricând din lista de membri.`
+    ]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => closeSheetThen(overlay, _openManageMembers) }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--danger-solid',
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          try {
+            await window.Auth.removeMember(member.uid);
+            closeSheetThen(overlay, _openManageMembers);
+          } catch (err) {
+            toast(failText('Nu am putut scoate membrul', err), { kind: 'error' });
+            btn.disabled = false;
+          }
+        }
+      }, ['Scoate'])
+    ])
+  ]));
+  openSheet(overlay);
+}
+
+async function _restoreMember(btn, member, overlay) {
+  btn.disabled = true;
+  try {
+    await window.Auth.restoreMember(member.uid);
+    closeSheetThen(overlay, _openManageMembers);
+  } catch (err) {
+    toast(failText('Nu am putut readăuga membrul', err), { kind: 'error' });
+    btn.disabled = false;
+  }
 }
 
 async function _setMemberRole(btn, member, nextRole, overlay) {

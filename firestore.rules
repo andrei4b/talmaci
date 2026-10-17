@@ -10,6 +10,8 @@ rules_version = '2';
 // Data model:
 //   /users/{uid}      { email, displayName, role: 'admin'|'user', groupId, createdAt }
 //                     (the super-admin is not a role here — see isSuperAdmin)
+//                     A removed member has no groupId and instead
+//                     { removedFrom: groupId, removedAt } — see /users below.
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /groups/{groupId}/activity/{entryId} { action, by, byName, songId, songTitle, ..., at }
 //   /invites/{code}   { groupId, createdBy, createdAt }
@@ -80,8 +82,12 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      // Read your own profile, or any profile in your own group (member lists).
-      allow read: if isSignedIn() && (userId == request.auth.uid || resource.data.groupId == myGroup());
+      // Read your own profile, or any profile in your own group (member
+      // lists). The super-admin also reads those removed from their group,
+      // to add one back.
+      allow read: if isSignedIn() && (userId == request.auth.uid
+        || resource.data.groupId == myGroup()
+        || (isSuperAdmin() && resource.data.removedFrom == myGroup()));
 
       // First write ever to this doc — either self-granted admin on a group
       // you just created, or self-granted 'user' on joining an existing group.
@@ -96,12 +102,36 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)))
         );
 
-      // Two updates are allowed, and nothing else about a profile can ever
-      // change. The super-admin flips a group member's role...
+      // These updates are allowed, and nothing else about a profile can
+      // ever change. The super-admin flips a group member's role...
       allow update: if isSignedIn() && isSuperAdmin()
         && resource.data.groupId == myGroup()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
         && request.resource.data.role in ['admin', 'user'];
+
+      // ...removes someone else from their group: the profile loses its
+      // groupId, so every rule that goes by myGroup() shuts them out, and
+      // goes back to a plain role. It is kept rather than deleted on
+      // purpose — a profile that exists can't be created again, so the
+      // removed member can't simply join the group anew...
+      allow update: if isSignedIn() && isSuperAdmin()
+        && userId != request.auth.uid
+        && resource.data.groupId == myGroup()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['groupId', 'role', 'removedFrom', 'removedAt'])
+        && !('groupId' in request.resource.data)
+        && request.resource.data.role == 'user'
+        && request.resource.data.removedFrom == resource.data.groupId
+        && request.resource.data.removedAt is number;
+
+      // ...and adds one back, into the group they were removed from.
+      allow update: if isSignedIn() && isSuperAdmin()
+        && resource.data.removedFrom == myGroup()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['groupId', 'removedFrom', 'removedAt'])
+        && request.resource.data.groupId == resource.data.removedFrom
+        && !('removedFrom' in request.resource.data)
+        && !('removedAt' in request.resource.data);
 
       // ...and a member brings their own name and email in line with their
       // Google account, which the app does on each start (see auth.js).

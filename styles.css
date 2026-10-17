@@ -1163,6 +1163,10 @@ button.text-tab__head { cursor: pointer; }
 .member-row__role-btn { flex-shrink: 0; }
 .member-row__role-btn--admin { border-color: var(--color-accent); color: var(--color-accent); }
 .member-row__role-btn--fixed { cursor: default; pointer-events: none; }
+.member-row__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.member-row__remove-btn { padding: 0; width: 40px; align-self: stretch; display: inline-flex; align-items: center; justify-content: center; }
+.member-row__remove-btn svg { width: 18px; height: 18px; }
+.member-list__heading { margin: 12px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--color-text-muted); }
 
 /* The layer that outlives a render, holding the Sinonime frame. Ordered
    after .shell rather than placed after it: moving it in the DOM would

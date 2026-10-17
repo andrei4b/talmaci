@@ -210,9 +210,18 @@ dragging the handle beside each one in the **Versiuni** sheet.
   by `firestore.rules` denying `/groups` writes outright.
 - **Super-admin**: the app owner's Google account (andrei4.bulzan@gmail.com,
   hard-coded in `firestore.rules` and `js/auth.js`). Only they can generate
-  invite codes and promote/demote members (**Gestionează membrii**), and
-  they have every admin power over songs too. It is not stored in a
-  profile, so nothing written to Firestore can grant it.
+  invite codes, promote/demote members and remove them from the group
+  (**Gestionează membrii**), and they have every admin power over songs
+  too. It is not stored in a profile, so nothing written to Firestore can
+  grant it.
+- **Removing a member** keeps their profile but takes away its `groupId`
+  (recording `removedFrom`), so they lose every song of the group at once
+  and see a "you were removed" screen. The profile isn't deleted on
+  purpose: one that exists can't be created again, so an old invite code
+  doesn't let them back in. What they wrote stays in the group. The
+  super-admin adds them back from **Foști membri** in the same sheet. The
+  Cloud Functions skip anyone no longer in a song's group, so notifications
+  stop too (`firebase deploy --only functions`).
 - **Admin**: may edit or delete any shared song or version, and delete
   any observation, not just their own.
 - All of this is enforced server-side in `firestore.rules`, not just hidden
