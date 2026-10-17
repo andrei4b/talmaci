@@ -120,21 +120,29 @@ async function disable() {
 }
 
 /* On each start: a device that has them on keeps its stored token current.
- * Permission taken back in the settings meanwhile turns them off here too. */
+ * Permission taken back in the settings meanwhile turns them off here too.
+ *
+ * A token the Cloud Function found dead is deleted from the member's
+ * devices there, and nothing reaches this device after that, while the menu
+ * here still says they are on. Firebase goes on handing out the dead token
+ * from its own cache for up to a week without asking for a new one, so when
+ * the document is gone the token is dropped here and a fresh one saved. */
 async function refresh() {
   const user = window.Auth.currentUser();
   if (!user || !configured() || !_stored(user.uid) || window.Utils.isOffline()) return;
+  const stored = _stored(user.uid);
   try {
     if (!supported() || Notification.permission !== 'granted') {
-      await _devicesRef(user.uid).doc(_stored(user.uid)).delete();
+      await _devicesRef(user.uid).doc(stored).delete();
       _store(user.uid, '');
       return;
     }
+    const kept = (await _devicesRef(user.uid).doc(stored).get()).exists;
+    if (!kept) await firebase.messaging().deleteToken().catch(() => {});
     const token = await _token();
-    if (token && token !== _stored(user.uid)) {
-      await _devicesRef(user.uid).doc(_stored(user.uid)).delete().catch(() => {});
-      await _save(user.uid, token);
-    }
+    if (!token) return;
+    if (token !== stored) await _devicesRef(user.uid).doc(stored).delete().catch(() => {});
+    if (token !== stored || !kept) await _save(user.uid, token);
   } catch (_) { /* tried again at the next start */ }
 }
 
