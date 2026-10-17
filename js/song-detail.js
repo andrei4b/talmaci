@@ -166,11 +166,7 @@ async function render(root, songId, openNotesFor, entered) {
   ]));
 
   try {
-    _song = await window.Db.getSong(songId);
-    _versions = _song ? orderVersions(_song, await window.Db.listVersions(songId)) : [];
-    // Their verses in the shape the rest expects, whatever was stored.
-    if (_song) _song.originalVerses = window.Verses.read(_song.originalVerses);
-    _versions.forEach(v => { v.verses = window.Verses.read(v.verses); });
+    ({ song: _song, versions: _versions } = await _loadSong(songId));
 
     const remembered = _versions.some(v => v.id === openNotesFor) ? openNotesFor : _recallVersion(songId);
     const rememberedStillExists = remembered && _versions.some(v => v.id === remembered);
@@ -219,6 +215,19 @@ async function render(root, songId, openNotesFor, entered) {
   // last read them: opened before, every one of them was marked new.
   const seenRead = _loadNotes();
   if (openNotesFor) seenRead.then(() => { if (_songOnScreen() && _song.id === songId) _openNotesFor(openNotesFor); });
+}
+
+/* The song and its versions as Firestore has them now, their verses in
+ * the shape the rest expects whatever was stored: a version with no list
+ * of verses stored comes back with an empty one. Opening a song and
+ * "Reîmprospătează" both read it this way. Null for a song that is gone. */
+async function _loadSong(songId) {
+  const song = await window.Db.getSong(songId);
+  if (!song) return { song: null, versions: [] };
+  const versions = orderVersions(song, await window.Db.listVersions(songId));
+  song.originalVerses = window.Verses.read(song.originalVerses);
+  versions.forEach(v => { v.verses = window.Verses.read(v.verses); });
+  return { song, versions };
 }
 
 // Brings the version up whose observations a notification is about.
@@ -2632,7 +2641,7 @@ function _confirmDeleteSong() {
 // navigating to a brand-new song and resets to the Text tab).
 async function _refreshSong(root) {
   try {
-    const refreshed = await window.Db.getSong(_song.id);
+    const { song: refreshed, versions } = await _loadSong(_song.id);
     if (!refreshed) {
       toast('Melodia nu mai există.', { kind: 'error' });
       window.Songs.noteDeleted(_song.id);
@@ -2641,7 +2650,7 @@ async function _refreshSong(root) {
     }
     _song = refreshed;
     window.Songs.noteUpdated(_song.id, refreshed);
-    _versions = orderVersions(_song, await window.Db.listVersions(_song.id));
+    _versions = versions;
     if (!_versions.find(v => v.id === _activeVersionId)) {
       _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
     }
