@@ -128,17 +128,13 @@ async function enable() {
   await _save(user.uid, token);
 }
 
-async function _drop(uid) {
-  const token = _stored(uid);
-  if (token) await _devicesRef(uid).doc(token).delete();
-  _store(uid, '');
-  try { await firebase.messaging().deleteToken(); } catch (_) { /* gone already */ }
-}
-
 async function disable() {
   window.Utils.requireOnline();
   const user = window.Auth.currentUser();
-  await _drop(user.uid);
+  const token = _stored(user.uid);
+  if (token) await _devicesRef(user.uid).doc(token).delete();
+  _store(user.uid, '');
+  try { await firebase.messaging().deleteToken(); } catch (_) { /* gone already */ }
   _setResuming(user.uid, false);
   _setAsked(user.uid, 'off');
 }
@@ -179,26 +175,33 @@ async function refresh() {
 
 /* A member signed back in where they had them on: on again, as long as the
  * browser still allows them. Blocked, they stay off and are offered as
- * usual; not reported as allowed here (see refresh), or a failure on the
- * way, and it is tried again at the next start. */
+ * usual; not reported as allowed here (see refresh), and it is tried again
+ * at the next start. A failure is told, rather than leaving the member to
+ * find them off in the menu, and tried again at the next start too. */
 async function _resume(uid) {
   if (!_resuming(uid)) return;
   if (supported() && Notification.permission === 'denied') { _setResuming(uid, false); return; }
   if (!supported() || Notification.permission !== 'granted') return;
   try {
     const token = await _token();
-    if (token) await _save(uid, token);
-  } catch (_) { /* tried again at the next start */ }
+    if (!token) throw new Error('Nu am primit un identificator de la Firebase.');
+    await _save(uid, token);
+  } catch (err) {
+    toast(failText('Nu am putut reporni notificările', err), { kind: 'error' });
+  }
 }
 
 /* Before signing out, so the next account on this device does not get the
- * last one's notifications. Not a choice to turn them off, as it is from the
- * menu: they come back when this member signs in here again (see _resume).
- * Never in the way of signing out. */
+ * last one's notifications: its document goes, which is all the Cloud
+ * Function looks at. The token itself is kept — it is this browser's, not
+ * the member's — so signing back in only saves it again, with nothing to ask
+ * of Firebase (see _resume). Not a choice to turn them off, as it is from
+ * the menu. Never in the way of signing out. */
 async function forget() {
   const user = window.Auth.currentUser();
   if (!user || !_stored(user.uid)) return;
-  try { await _drop(user.uid); } catch (_) { _store(user.uid, ''); }
+  try { await _devicesRef(user.uid).doc(_stored(user.uid)).delete(); } catch (_) {}
+  _store(user.uid, '');
   _setResuming(user.uid, true);
 }
 
