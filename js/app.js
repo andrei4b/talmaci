@@ -111,6 +111,9 @@ async function boot() {
     if (uid === lastUid) return;
     lastUid = uid;
     _resetUserData();
+    // Signing in happens after a load, not before it: notifications this
+    // member had on here before signing out come back now (see push.js).
+    if (uid) window.Push.refresh();
   });
   window.Auth.onChange(_renderCurrentScreen);
   _anchorOnText();

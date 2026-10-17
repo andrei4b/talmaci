@@ -23,6 +23,10 @@
  * member, with the token it was given. Firebase may hand out a new token
  * from time to time; each start compares and stores the new one.
  *
+ * Signing out turns them off for the member leaving, and remembers that
+ * they were on; signing back in on this device turns them on again without
+ * asking, since the browser's permission is the site's, not the account's.
+ *
  * They are also offered (see offer) when a member marks themselves as
  * working on a shared song, the moment they start to matter: our own sheet
  * first, and the browser's prompt only from its button. The browser's
@@ -42,6 +46,18 @@ const KEY_PREFIX = 'talmaci.pushToken:';
 // made again: the menu is where they will look for them.
 const ASKED_PREFIX = 'talmaci.pushAsked:';
 const ASK_AGAIN_MS = 30 * 24 * 3600 * 1000;
+// Set when a member signs out with them on, until they are on again.
+const RESUME_PREFIX = 'talmaci.pushResume:';
+
+function _resuming(uid) {
+  try { return !!localStorage.getItem(RESUME_PREFIX + uid); } catch (_) { return false; }
+}
+function _setResuming(uid, on) {
+  try {
+    if (on) localStorage.setItem(RESUME_PREFIX + uid, '1');
+    else localStorage.removeItem(RESUME_PREFIX + uid);
+  } catch (_) {}
+}
 
 function _asked(uid) {
   try { return localStorage.getItem(ASKED_PREFIX + uid) || ''; } catch (_) { return ''; }
@@ -91,6 +107,7 @@ async function _token() {
 async function _save(uid, token) {
   await _devicesRef(uid).doc(token).set({ token, at: Date.now() });
   _store(uid, token);
+  _setResuming(uid, false);
 }
 
 /* Called from a tap, which iOS requires for the permission prompt. Throws
@@ -109,14 +126,19 @@ async function enable() {
   await _save(user.uid, token);
 }
 
+async function _drop(uid) {
+  const token = _stored(uid);
+  if (token) await _devicesRef(uid).doc(token).delete();
+  _store(uid, '');
+  try { await firebase.messaging().deleteToken(); } catch (_) { /* gone already */ }
+}
+
 async function disable() {
   window.Utils.requireOnline();
   const user = window.Auth.currentUser();
-  const token = _stored(user.uid);
-  if (token) await _devicesRef(user.uid).doc(token).delete();
-  _store(user.uid, '');
+  await _drop(user.uid);
+  _setResuming(user.uid, false);
   _setAsked(user.uid, 'off');
-  try { await firebase.messaging().deleteToken(); } catch (_) { /* gone already */ }
 }
 
 /* On each start: a device that has them on keeps its stored token current.
@@ -129,7 +151,8 @@ async function disable() {
  * the document is gone the token is dropped here and a fresh one saved. */
 async function refresh() {
   const user = window.Auth.currentUser();
-  if (!user || !configured() || !_stored(user.uid) || window.Utils.isOffline()) return;
+  if (!user || !configured() || window.Utils.isOffline()) return;
+  if (!_stored(user.uid)) return _resume(user.uid);
   const stored = _stored(user.uid);
   try {
     if (!supported() || Notification.permission !== 'granted') {
@@ -146,12 +169,27 @@ async function refresh() {
   } catch (_) { /* tried again at the next start */ }
 }
 
+/* A member signed back in where they had them on: on again, as long as the
+ * browser still allows them. If it no longer does, they stay off and are
+ * offered as usual; a failure on the way is tried again at the next start. */
+async function _resume(uid) {
+  if (!_resuming(uid)) return;
+  if (!supported() || Notification.permission !== 'granted') { _setResuming(uid, false); return; }
+  try {
+    const token = await _token();
+    if (token) await _save(uid, token);
+  } catch (_) { /* tried again at the next start */ }
+}
+
 /* Before signing out, so the next account on this device does not get the
- * last one's notifications. Never in the way of signing out. */
+ * last one's notifications. Not a choice to turn them off, as it is from the
+ * menu: they come back when this member signs in here again (see _resume).
+ * Never in the way of signing out. */
 async function forget() {
   const user = window.Auth.currentUser();
   if (!user || !_stored(user.uid)) return;
-  try { await disable(); } catch (_) { _store(user.uid, ''); }
+  try { await _drop(user.uid); } catch (_) { _store(user.uid, ''); }
+  _setResuming(user.uid, true);
 }
 
 // A tap on a notification while the app is open: the worker asks the page
