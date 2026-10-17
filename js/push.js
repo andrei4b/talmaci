@@ -96,7 +96,9 @@ function needsInstall() {
 
 function isOn() {
   const user = window.Auth.currentUser();
-  return !!(user && _stored(user.uid)) && supported() && Notification.permission === 'granted';
+  // Not 'granted': opened another way, the app may not be told it is (see
+  // refresh), and this device still receives them.
+  return !!(user && _stored(user.uid)) && supported() && Notification.permission !== 'denied';
 }
 
 async function _token() {
@@ -142,7 +144,11 @@ async function disable() {
 }
 
 /* On each start: a device that has them on keeps its stored token current.
- * Permission taken back in the settings meanwhile turns them off here too.
+ * Permission blocked in the settings meanwhile turns them off here too —
+ * only blocked, though. The app opened another way (the installed app or a
+ * Chrome tab, from a link in another app) may report the site's permission
+ * as not given yet, or have no push at all, while this device goes on
+ * receiving them; once, that turned off a phone that had them working.
  *
  * A token the Cloud Function found dead is deleted from the member's
  * devices there, and nothing reaches this device after that, while the menu
@@ -155,12 +161,14 @@ async function refresh() {
   if (!_stored(user.uid)) return _resume(user.uid);
   const stored = _stored(user.uid);
   try {
-    if (!supported() || Notification.permission !== 'granted') {
+    if (supported() && Notification.permission === 'denied') {
       await _devicesRef(user.uid).doc(stored).delete();
       _store(user.uid, '');
       return;
     }
-    const kept = (await _devicesRef(user.uid).doc(stored).get()).exists;
+    if (!supported() || Notification.permission !== 'granted') return;
+    // From the server: a cached copy could say a document is gone that is not.
+    const kept = (await _devicesRef(user.uid).doc(stored).get({ source: 'server' })).exists;
     if (!kept) await firebase.messaging().deleteToken().catch(() => {});
     const token = await _token();
     if (!token) return;
@@ -170,11 +178,13 @@ async function refresh() {
 }
 
 /* A member signed back in where they had them on: on again, as long as the
- * browser still allows them. If it no longer does, they stay off and are
- * offered as usual; a failure on the way is tried again at the next start. */
+ * browser still allows them. Blocked, they stay off and are offered as
+ * usual; not reported as allowed here (see refresh), or a failure on the
+ * way, and it is tried again at the next start. */
 async function _resume(uid) {
   if (!_resuming(uid)) return;
-  if (!supported() || Notification.permission !== 'granted') { _setResuming(uid, false); return; }
+  if (supported() && Notification.permission === 'denied') { _setResuming(uid, false); return; }
+  if (!supported() || Notification.permission !== 'granted') return;
   try {
     const token = await _token();
     if (token) await _save(uid, token);
