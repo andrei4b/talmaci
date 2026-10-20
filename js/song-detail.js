@@ -115,6 +115,9 @@ let _versesScrollTop = 0;
  * one last written in: the switcher names it, and undo and the lookup act
  * on it. Resizing across the breakpoint redraws the song page it is on. */
 const WIDE = window.matchMedia('(min-width: 1024px)');
+// A column's width there, at the least and at the most (see fitColumns).
+const COL_MIN = 300;
+const COL_MAX = 560;
 let _shellRoot = null;
 function _showingVerseGrid() {
   return WIDE.matches && _versions.length > 1;
@@ -1406,17 +1409,45 @@ function _renderVersesView(ctx) {
   const list = el('div', { class: 'verses' + (hasOrig ? '' : ' verses--solo') });
   const wrap = el('div', { class: 'verses-wrap' + (grid ? ' verses-wrap--all' : '') }, [list]);
   wrap.addEventListener('scroll', () => { _versesScrollTop = wrap.scrollTop; });
-  // Every column as wide as the others, and never narrower than a line of
-  // lyrics needs: past what fits, the rows scroll sideways together.
+  // Every column as wide as the others, and never narrower than the
+  // song's longest line needs (see fitColumns): past what fits, the rows
+  // scroll sideways together.
   const ncols = sides.length;
-  const columns = `repeat(${ncols}, minmax(260px, 1fr))`;
+  const columns = `repeat(${ncols}, minmax(var(--verse-col, ${COL_MIN}px), 1fr))`;
   const heads = [];
-  // Nor wider than a line of lyrics reads well: with few versions, the
-  // rows stay that wide, in the middle.
-  if (grid) {
-    list.style.minWidth = `${ncols * 260 + 4}px`;
-    list.style.maxWidth = `${ncols * 480 + 4}px`;
+
+  /* The columns' width, from the song: the longest line of lyrics on any
+   * side, in the boxes' font, with the room a box keeps around its text —
+   * between COL_MIN, for a song of short lines, and COL_MAX, past which a
+   * line wraps rather than widening every column. Nor wider than a line of
+   * lyrics reads well: with few versions, the rows stay that wide, in the
+   * middle. Taken as the view is drawn, not as it is typed in, so the
+   * columns do not shift under the caret. */
+  function fitColumns() {
+    if (!grid) return;
+    const box = list.querySelector('.verse__box');
+    let col = COL_MIN;
+    if (box) {
+      const cs = getComputedStyle(box);
+      const measure = document.createElement('canvas').getContext('2d');
+      measure.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      let longest = 0;
+      sides.forEach(s => s.doc.verses.forEach(v => (v.lyrics || '').split('\n').forEach(line => {
+        if (line.trim()) longest = Math.max(longest, measure.measureText(line).width);
+      })));
+      // The most any box keeps beside its text: its padding, and the
+      // buttons in its corner. And a hair for the caret.
+      const room = Math.max(...[...list.querySelectorAll('.verse__box')].map(b => {
+        const bs = getComputedStyle(b);
+        return parseFloat(bs.paddingLeft) + parseFloat(bs.paddingRight);
+      }));
+      col = Math.min(COL_MAX, Math.max(COL_MIN, Math.ceil(longest + room + 4)));
+    }
+    list.style.setProperty('--verse-col', `${col}px`);
+    list.style.minWidth = `${ncols * col + 4}px`;
+    list.style.maxWidth = `${ncols * Math.max(col, 480) + 4}px`;
   }
+  if (grid) fitColumns();
 
   // The mark on the other side's verse in a cell's row, named in this
   // side's language, or null when that verse has none.
@@ -2015,9 +2046,9 @@ function _renderVersesView(ctx) {
 
     // Who is in which column, kept in view while the rows scroll by.
     if (grid) {
-      const row = el('div', { class: 'verses__heads' }, [
-        hasOrig ? place(_headRow(el('div', { class: 'text-tab__head' }, ['Original']), null), 1) : null
-      ]);
+      const origHead = hasOrig ? _headRow(el('div', { class: 'text-tab__head' }, ['Original']), null) : null;
+      if (origHead) origHead.classList.add('verses__head--source');
+      const row = el('div', { class: 'verses__heads' }, [origHead && place(origHead, 1)]);
       row.style.gridTemplateColumns = columns;
       trs.forEach(s => {
         const h = el('div', {
@@ -2048,6 +2079,7 @@ function _renderVersesView(ctx) {
   function redraw() {
     const keep = wrap.scrollTop;
     draw().forEach(f => f());
+    fitColumns();
     wrap.scrollTop = keep;
     _syncVerseNotes();
   }
@@ -2060,6 +2092,9 @@ function _renderVersesView(ctx) {
     el: wrap,
     mounted() {
       pending.forEach(f => f());
+      fitColumns();
+      // Measured again once the font is in, if it was not yet.
+      if (grid && document.fonts) document.fonts.ready.then(() => { if (wrap.isConnected) fitColumns(); });
       void wrap.offsetHeight;
       wrap.scrollTop = _versesScrollTop;
       _syncVerseNotes();

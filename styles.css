@@ -777,7 +777,21 @@ button.text-tab__head { cursor: pointer; }
 .verses-wrap--all { overflow-x: auto; }
 /* Capped from the script at 480px a column, like the whole view's. */
 .verses-wrap--all .verses { margin-inline: auto; }
+/* Clipped to its rounded corners without being a scroller of its own,
+   which would keep the original from staying put (below). */
+.verse--grid { overflow: clip; }
 .verse--grid > .verse__editor--source { border-right: 0; }
+/* The original stays at the left as the versions scroll sideways under
+   it, its edge drawn so it still reads apart from them. */
+.verse--grid > .verse__editor--source,
+.verse--grid > .verse__gap--source,
+.verses__heads > .verses__head--source {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  box-shadow: 1px 0 0 var(--color-panel-border);
+}
+.verses__heads > .verses__head--source { background: var(--color-bg); box-shadow: none; }
 .verse--grid > :not(:first-child):not(.verses__note) { border-left: 1px solid var(--color-border); }
 .verse--grid > .verse__editor--source + :not(.verses__note) { border-left-color: var(--color-panel-border); }
 /* A version with no verse in this row: the cell is left empty. */
@@ -786,7 +800,7 @@ button.text-tab__head { cursor: pointer; }
 .verses__heads {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
   display: grid;
   margin-bottom: -10px;
   padding: 6px 1px 0;
