@@ -740,18 +740,19 @@ button.text-tab__head { cursor: pointer; }
   .verse__editor--source + .verse__editor { border-top: 0; }
   .verses__note--pair { grid-column: 1 / -1; }
   /* Side by side, a box with no mark keeps the mark's line empty when a
-     box beside it has one, so the lyrics in a row start level. */
-  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label[hidden],
-  .verse--grid:has(.verse__editor--labelled) .verse__label[hidden] {
+     box beside it has one, so the lyrics in a row start level. A stand-in
+     ("…") beside an empty box has no lyrics to line up with. */
+  .verses:not(.verses--solo) .verse:has(.verse__editor--marked) .verse__label[hidden],
+  .verse--grid:has(.verse__editor--marked) .verse__label[hidden] {
     display: block !important;
     visibility: hidden;
   }
-  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__box,
-  .verse--grid:has(.verse__editor--labelled) .verse__box { padding-top: 2px; min-height: 0; }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--marked) .verse__box,
+  .verse--grid:has(.verse__editor--marked) .verse__box { padding-top: 2px; min-height: 0; }
   /* There, a mark to add takes the mark's line, written out, as a mark
      would: in the corner it would leave its lyrics a line higher. */
-  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label--offer,
-  .verse--grid:has(.verse__editor--labelled) .verse__label--offer {
+  .verses:not(.verses--solo) .verse:has(.verse__editor--marked) .verse__label--offer,
+  .verse--grid:has(.verse__editor--marked) .verse__label--offer {
     position: static;
     display: block;
     width: auto;
@@ -759,12 +760,12 @@ button.text-tab__head { cursor: pointer; }
     margin: 10px 0 0 9px;
     padding: 2px 5px;
   }
-  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label--offer .verse__label-text,
-  .verse--grid:has(.verse__editor--labelled) .verse__label--offer .verse__label-text { display: inline; }
-  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__label--offer .verse__label-icon,
-  .verse--grid:has(.verse__editor--labelled) .verse__label--offer .verse__label-icon { display: none; }
-  .verses:not(.verses--solo) .verse:has(.verse__editor--labelled) .verse__editor--offer:not(.verse__editor--notes) .verse__box,
-  .verse--grid:has(.verse__editor--labelled) .verse__editor--offer:not(.verse__editor--notes) .verse__box { padding-right: 14px; }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--marked) .verse__label--offer .verse__label-text,
+  .verse--grid:has(.verse__editor--marked) .verse__label--offer .verse__label-text { display: inline; }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--marked) .verse__label--offer .verse__label-icon,
+  .verse--grid:has(.verse__editor--marked) .verse__label--offer .verse__label-icon { display: none; }
+  .verses:not(.verses--solo) .verse:has(.verse__editor--marked) .verse__editor--offer:not(.verse__editor--notes) .verse__box,
+  .verse--grid:has(.verse__editor--marked) .verse__editor--offer:not(.verse__editor--notes) .verse__box { padding-right: 14px; }
 }
 
 /* Every version in the verse view, on a big screen (see

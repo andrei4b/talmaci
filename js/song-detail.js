@@ -1613,6 +1613,9 @@ function _renderVersesView(ctx) {
       labelBtn.title = offer ? 'Adaugă o etichetă'
         : name === '…' ? 'Loc păstrat pentru o strofă nescrisă: alege o etichetă sau scrie versurile' : '';
       editor.classList.toggle('verse__editor--labelled', !!name);
+      // A mark of the verse's own, not a stand-in, is what the boxes
+      // beside it line up with (see the stylesheet).
+      editor.classList.toggle('verse__editor--marked', !!name && name !== '…');
       editor.classList.toggle('verse__editor--offer', offer);
       _fitHeight(ta);
     };
@@ -1720,12 +1723,22 @@ function _renderVersesView(ctx) {
       // A verse left with nothing in it is no longer a verse — nor is a
       // translation's left with only the mark it takes from the original.
       const bare = mirrored ? cell.label !== '[…]' : !cell.label;
+      const others = [...cell.row.values()].filter(c => c !== cell);
+      const emptyBeside = others.every(c => !c.box || !c.box.value.trim());
+      // A verse of the original with no mark, emptied with nothing beside
+      // it but the stand-ins kept for it (see settleRow): they go with it,
+      // and so does its row.
+      if (bare && s.inOriginal && emptyBeside && others.some(c => c.k != null)
+        && others.every(c => c.k == null || (c.side.editable && c.written === '[…]'))) {
+        others.filter(c => c.k != null).forEach(c => vacate(c, e.relatedTarget, true));
+        vacate(cell, e.relatedTarget, true);
+        return;
+      }
       if (bare) { vacate(cell, e.relatedTarget); return; }
       // A marked verse of the original, or of a composition, emptied with
       // nothing written beside it either: the row goes, mark and all, with
       // any mark or stand-in beside it that you may remove.
-      const others = [...cell.row.values()].filter(c => c !== cell);
-      if (!mirrored && lyricsOnFocus.trim() && others.every(c => !c.box || !c.box.value.trim())) {
+      if (!mirrored && lyricsOnFocus.trim() && emptyBeside) {
         others.filter(c => c.k != null && c.side.editable).forEach(c => vacate(c, e.relatedTarget, true));
         vacate(cell, e.relatedTarget, true);
       }
