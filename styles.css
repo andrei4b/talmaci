@@ -58,6 +58,10 @@ html, body {
   display: flex;
   flex-direction: column;
   max-width: 720px;
+  /* Installed on an iPhone, the page runs up under the status bar
+     (black-translucent in index.html), so the clock and battery would sit
+     on top of every screen's topbar. 0 everywhere else. */
+  padding-top: env(safe-area-inset-top);
 }
 
 button, input, textarea {
@@ -88,8 +92,9 @@ a { color: inherit; text-decoration: none; }
      does, .shell shrinks to match instead of running behind the keyboard,
      which is what let the keyboard cover the version switcher and
      undo/redo while typing a translation — .tab-content's own flex:1
-     absorbs the difference and keeps scrolling normally otherwise. */
-  max-height: var(--vvh, 100vh);
+     absorbs the difference and keeps scrolling normally otherwise.
+     Less the status-bar room #app keeps above it, if any. */
+  max-height: calc(var(--vvh, 100vh) - env(safe-area-inset-top));
 }
 
 /* Topbar */
@@ -1628,7 +1633,9 @@ button.text-tab__head { cursor: pointer; }
   font-weight: 600;
   cursor: pointer;
 }
-body.has-update-bar #app { top: var(--update-bar-h, 0px); }
+/* The bar already clears the status bar (its own padding), so #app no
+   longer needs to. */
+body.has-update-bar #app { top: var(--update-bar-h, 0px); padding-top: 0; }
 
 /* Toast */
 .toast-root {
