@@ -692,6 +692,8 @@ function openAccountMenu() {
   }, menuLabel(icons.logout, 'Deconectează-te')));
 
   if (window.Update.release) items.push(_versionLine(overlay));
+  const readout = _iosReadout();
+  if (readout) items.push(readout);
 
   overlay.appendChild(el('div', { class: 'sheet' }, items));
   openSheet(overlay);
@@ -721,6 +723,35 @@ function _versionLine(overlay) {
   }, ['Caută actualizări']);
   show(Update.newer() ? updateBtn(Update.newer()) : checkBtn);
   return el('div', { class: 'sheet__version' }, ['Versiunea ' + Update.release + ' · ', status]);
+}
+
+/* TEMPORARY, to be removed once the iPhone tab bar sits right: the sizes
+ * the bottom-of-screen fix (_iosLost) works from, as an iPhone sees them,
+ * since no browser here can stand in for an installed iPhone app. */
+function _iosReadout() {
+  if (!/iPhone|iPad/.test(navigator.userAgent)) return null;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;visibility:hidden;' +
+    'padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);box-sizing:content-box';
+  document.body.appendChild(probe);
+  const ps = getComputedStyle(probe);
+  const app = document.getElementById('app').getBoundingClientRect();
+  const bar = document.querySelector('.tab-bar');
+  const root = document.documentElement.style;
+  const vv = window.visualViewport;
+  const parts = [
+    'sa=' + navigator.standalone,
+    'vh=' + ps.height,
+    'ih=' + window.innerHeight,
+    'app=' + Math.round(app.top) + '–' + Math.round(app.bottom),
+    'vv=' + (vv ? Math.round(vv.height) : '-'),
+    'scr=' + screen.height,
+    'env=' + ps.paddingTop + '/' + ps.paddingBottom,
+    'lost=' + root.getPropertyValue('--ios-lost'),
+    'bar=' + (bar ? bar.offsetHeight + '/' + getComputedStyle(bar).paddingBottom : '-')
+  ];
+  probe.remove();
+  return el('div', { class: 'sheet__version' }, [parts.join(' ')]);
 }
 
 /* Notifications on this device about the songs you are working on — see
