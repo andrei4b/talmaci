@@ -30,7 +30,7 @@
 
   /* Room kept clear of the home indicator at the bottom of the page. Less
      where iOS has already left a strip of the screen out of the page, by
-     the status bar's height (--ios-lost, from _iosLost in app.js): the
+     the status bar's height (--ios-lost, from _watchIosLost in app.js): the
      indicator sits in that strip instead. */
   --safe-bottom: max(0px, calc(env(safe-area-inset-bottom) - var(--ios-lost, 0px)));
 }

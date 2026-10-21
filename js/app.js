@@ -19,21 +19,24 @@ let _fullHeight = 0, _fullHeightWidth = 0;
 // cream. Nothing there can be drawn into (Release 186 tried, and the tab
 // bar was cut off), so it is measured instead, for styles.css's
 // --safe-bottom: 100vh is still the whole screen, where #app (inset:0) is
-// only the page. Not window.innerHeight, which counts the strip as page
-// (Release 188 measured with it and got 0).
-const _iosStandalone = navigator.standalone === true;
-let _vhProbe = null;
-function _iosLost() {
+// only the page — 844 against 797 on an iPhone 13, as Release 190 read
+// them on the phone. Watched, not measured once: at launch the two are
+// still the same, and 100vh grows afterwards without any viewport event,
+// so Releases 188 and 189, which measured with those, always got 0.
+function _watchIosLost() {
   const app = document.getElementById('app');
-  if (!_iosStandalone || !app) return 0;
-  if (!_vhProbe) {
-    _vhProbe = document.createElement('div');
-    _vhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
-    document.body.appendChild(_vhProbe);
-  }
+  if (navigator.standalone !== true || !app) return;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
+  document.body.appendChild(probe);
   // #app's bottom edge, not its height: under the update bar it starts lower.
-  return Math.max(0, Math.round(_vhProbe.offsetHeight - app.getBoundingClientRect().bottom));
+  const measure = () => document.documentElement.style.setProperty('--ios-lost',
+    Math.max(0, Math.round(probe.offsetHeight - app.getBoundingClientRect().bottom)) + 'px');
+  const watch = new ResizeObserver(measure);
+  watch.observe(probe);
+  watch.observe(app);
 }
+_watchIosLost();
 
 function syncViewportInsets() {
   const vv = window.visualViewport;
@@ -41,7 +44,6 @@ function syncViewportInsets() {
   const vvh = vv ? vv.height : window.innerHeight;
   root.setProperty('--vvh', vvh + 'px');
   root.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
-  root.setProperty('--ios-lost', _iosLost() + 'px');
   if (window.innerWidth !== _fullHeightWidth) { _fullHeightWidth = window.innerWidth; _fullHeight = 0; }
   _fullHeight = Math.max(_fullHeight, window.innerHeight);
   // The keyboard's height (0 when it's closed). Measured against the
@@ -726,7 +728,7 @@ function _versionLine(overlay) {
 }
 
 /* TEMPORARY, to be removed once the iPhone tab bar sits right: the sizes
- * the bottom-of-screen fix (_iosLost) works from, as an iPhone sees them,
+ * the bottom-of-screen fix (_watchIosLost) works from, as an iPhone sees them,
  * since no browser here can stand in for an installed iPhone app. */
 function _iosReadout() {
   if (!/iPhone|iPad/.test(navigator.userAgent)) return null;
