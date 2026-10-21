@@ -29,8 +29,9 @@
   --shadow: 0 4px 20px rgba(30, 30, 30, 0.08);
 
   /* Room kept clear of the home indicator at the bottom of the page. Less
-     where iOS has already left a strip of the screen out of the page (see
-     html:has(.tab-bar)): the indicator sits in that strip instead. */
+     where iOS has already left a strip of the screen out of the page, by
+     the status bar's height (--ios-lost, from _iosLost in app.js): the
+     indicator sits in that strip instead. */
   --safe-bottom: max(0px, calc(env(safe-area-inset-bottom) - var(--ios-lost, 0px)));
 }
 
@@ -68,12 +69,6 @@ html, body {
      on top of every screen's topbar. 0 everywhere else. */
   padding-top: env(safe-area-inset-top);
 }
-/* Installed on an iPhone, iOS can leave the bottom of the screen outside
-   the page, by the status bar's height (--ios-lost, from _iosLost in
-   app.js). That strip shows the root's background, so while there is a
-   tab bar it takes the bar's white, as if the bar ran down to the edge;
-   body keeps the cream over the page itself. */
-html:has(.tab-bar) { background: var(--color-surface); }
 
 button, input, textarea {
   font-family: inherit;

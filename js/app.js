@@ -15,20 +15,24 @@ let _fullHeight = 0, _fullHeightWidth = 0;
 
 // Installed on an iPhone, iOS can lay the page out shorter than the screen
 // by the status bar's height while still drawing it from the very top, so
-// the bottom of the screen is left outside the page. Nothing there can be
-// drawn into (Release 186 tried, and the tab bar was cut off), so it is
-// measured instead, for styles.css's --safe-bottom: 100vh is still the
-// whole screen, where the page is not.
+// the bottom of the screen is left outside the page, showing the app's
+// cream. Nothing there can be drawn into (Release 186 tried, and the tab
+// bar was cut off), so it is measured instead, for styles.css's
+// --safe-bottom: 100vh is still the whole screen, where #app (inset:0) is
+// only the page. Not window.innerHeight, which counts the strip as page
+// (Release 188 measured with it and got 0).
 const _iosStandalone = navigator.standalone === true;
 let _vhProbe = null;
 function _iosLost() {
-  if (!_iosStandalone) return 0;
+  const app = document.getElementById('app');
+  if (!_iosStandalone || !app) return 0;
   if (!_vhProbe) {
     _vhProbe = document.createElement('div');
     _vhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
     document.body.appendChild(_vhProbe);
   }
-  return Math.max(0, _vhProbe.offsetHeight - window.innerHeight);
+  // #app's bottom edge, not its height: under the update bar it starts lower.
+  return Math.max(0, Math.round(_vhProbe.offsetHeight - app.getBoundingClientRect().bottom));
 }
 
 function syncViewportInsets() {
