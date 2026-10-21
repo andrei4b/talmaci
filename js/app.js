@@ -13,11 +13,17 @@ const { $, el, menuLabel, toast, copyWithToast, openSheet, closeSheet, closeShee
 // of the phone starts it over).
 let _fullHeight = 0, _fullHeightWidth = 0;
 
+// Installed on an iPhone, iOS lays the page out shorter than the screen by
+// the status bar's height while still drawing it from the very top, so
+// anything fixed to the bottom ends that far above it, over a bare strip.
+// #app is then sized by 100vh, which is the whole screen (see styles.css).
+const _iosStandalone = navigator.standalone === true;
+if (_iosStandalone) document.documentElement.classList.add('ios-standalone');
+
 function syncViewportInsets() {
   const vv = window.visualViewport;
   const root = document.documentElement.style;
   const vvh = vv ? vv.height : window.innerHeight;
-  root.setProperty('--vvh', vvh + 'px');
   root.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
   if (window.innerWidth !== _fullHeightWidth) { _fullHeightWidth = window.innerWidth; _fullHeight = 0; }
   _fullHeight = Math.max(_fullHeight, window.innerHeight);
@@ -32,6 +38,13 @@ function syncViewportInsets() {
   const kb = _fullHeight - vvh;
   root.setProperty('--keyboard-inset', (kb > 120 ? kb : 0) + 'px');
   document.documentElement.classList.toggle('keyboard-open', kb > 120);
+  // What iOS leaves off the bottom (above), given back to what is sized by
+  // --vvh while the keyboard is closed. With it open the sheets keep the
+  // height iOS reports: if that is short too, they only end a little
+  // higher above the keyboard, never behind it.
+  const app = document.getElementById('app');
+  const lost = _iosStandalone && app ? Math.max(0, app.offsetHeight - window.innerHeight) : 0;
+  root.setProperty('--vvh', (kb > 120 ? vvh : vvh + lost) + 'px');
   // How much of the layout viewport the keyboard covers: what something
   // fixed to its bottom has to rise by to stay in sight. 0 where the page
   // shrinks with the keyboard.
@@ -463,10 +476,17 @@ function _renderTabBar(activeTab) {
   // Publish the bar's real height so the scrolling panels above it can
   // reserve exactly that much room. Measured rather than guessed: the bar
   // grows by the safe-area inset on notched phones, and the fixed CSS
-  // estimate it replaces was wrong on both kinds of device.
-  requestAnimationFrame(() => {
+  // estimate it replaces was wrong on both kinds of device. Watched rather
+  // than measured once: an installed iPhone app can get that inset only
+  // after the first frame, and the "+" button above the bar was left
+  // half behind it.
+  const watch = new ResizeObserver(() => {
+    if (!bar.isConnected) { watch.disconnect(); return; }
+    // Hidden while the keyboard is up: keep the height it comes back at.
+    if (!bar.offsetHeight) return;
     document.documentElement.style.setProperty('--tabbar-h', bar.offsetHeight + 'px');
   });
+  watch.observe(bar);
   return bar;
 }
 

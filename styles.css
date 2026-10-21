@@ -63,6 +63,14 @@ html, body {
      on top of every screen's topbar. 0 everywhere else. */
   padding-top: env(safe-area-inset-top);
 }
+/* Installed on an iPhone, the layout viewport that inset:0 follows is
+   shorter than the screen by the status bar, which left the tab bar
+   floating above a bare strip (see _iosStandalone in app.js). 100vh is the
+   whole screen there, and the same as inset:0 once iOS gets it right. */
+.ios-standalone #app {
+  bottom: auto;
+  height: 100vh;
+}
 
 button, input, textarea {
   font-family: inherit;
