@@ -1068,11 +1068,11 @@ function _openLookup(ta) {
   // Read, so the caret may go (see _dropCaret).
   ta.blur();
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  // A tab whose script is missing gets no word; it opens on a notice
+  // saying so instead (see _renderRoute in app.js).
   const go = (tab) => closeSheetThen(overlay, () => {
-    if (tab === 'rime') window.RimeTab.search(word);
-    else if (tab === 'engleza') window.EnglezaTab.search(word);
-    else if (tab === 'biblic') window.BiblicTab.search(word);
-    else window.SinonimeTab.show(word);
+    const mod = { rime: window.RimeTab, engleza: window.EnglezaTab, biblic: window.BiblicTab, sinonime: window.SinonimeTab }[tab];
+    if (mod) (tab === 'sinonime' ? mod.show : mod.search)(word);
     window.App.openTab(tab);
   });
   // The original is in English, so rhymes and synonyms from Romanian

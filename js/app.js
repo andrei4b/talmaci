@@ -200,9 +200,9 @@ const TAB_ICONS = {
 
 const TABS = [
   { id: 'text', label: 'Text', route: '#/' },
-  { id: 'rime', label: 'Rime', route: '#/rime' },
+  { id: 'rime', label: 'Rime', route: '#/rime', module: () => window.RimeTab },
   { id: 'dictionare', label: 'Dicționare', route: '#/sinonime' },
-  { id: 'biblie', label: 'Biblie', route: '#/biblie' }
+  { id: 'biblie', label: 'Biblie', route: '#/biblie', module: () => window.BibleTab }
 ];
 
 // Where the Text tab was last, so its button returns there.
@@ -212,7 +212,7 @@ let _textRoute = '#/';
  * so the editor's lookup can open either. Romanian synonyms come first:
  * the translation is in Romanian, and that is where most lookups are. */
 const DICTIONARIES = [
-  { id: 'sinonime', label: 'Sinonime', route: '#/sinonime' },
+  { id: 'sinonime', label: 'Sinonime', route: '#/sinonime', module: () => window.SinonimeTab },
   { id: 'engleza', label: 'Engleză', route: '#/engleza', module: () => window.EnglezaTab },
   { id: 'biblic', label: 'Biblic', route: '#/biblic', module: () => window.BiblicTab }
 ];
@@ -395,12 +395,22 @@ function _renderRoute(root) {
   for (const child of [...root.children]) {
     if (child !== layer) child.remove();
   }
-  layer.hidden = (hash !== '#/sinonime');
+  // A tab whose script never ran: an extension blocked it, or the network
+  // dropped it on the way in. Without this the render threw halfway, before
+  // the tab bar, and there was no way left out of the empty screen.
+  const source = tab === 'dictionare' ? DICTIONARIES.find(d => d.route === hash) : TABS.find(t => t.id === tab);
+  const missing = !!source.module && !source.module();
+  layer.hidden = (hash !== '#/sinonime' || missing);
 
   const content = el('div', { class: 'shell' });
   root.appendChild(content);
 
-  if (tab === 'text') {
+  if (missing) {
+    _renderSimpleTab(content, TABS.find(t => t.id === tab).label, (host) => {
+      if (tab === 'dictionare') host.appendChild(_dictSwitch(hash));
+      host.appendChild(_notLoaded());
+    });
+  } else if (tab === 'text') {
     const songMatch = hash.match(/^#\/song\/(.+)$/);
     if (songMatch) window.SongDetail.render(content, decodeURIComponent(songMatch[1]), openNotesFor, entered);
     else if (hash === '#/jurnal') window.Activity.render(content);
@@ -447,6 +457,17 @@ function _renderSimpleTab(content, title, fill, actions) {
     })
   ]));
   fill(content);
+}
+
+// In place of a tab whose script is missing (see _renderRoute). A reload
+// fetches it again, which is all a dropped connection needs; a blocker
+// will stop it again, so the hint names that too.
+function _notLoaded() {
+  return el('div', { class: 'empty-state' }, [
+    el('p', {}, ['Pagina aceasta nu s-a încărcat.']),
+    el('p', { class: 'empty-state__hint' }, ['Reîncarcă aplicația. Dacă tot nu merge, poate o oprește o extensie a browserului, cum e un blocker de reclame.']),
+    el('button', { class: 'btn', onclick: () => location.reload() }, ['Reîncarcă'])
+  ]);
 }
 
 // Which dictionary, under the topbar of either. Switching is a tab switch

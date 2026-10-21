@@ -28,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v186';
+const CACHE_NAME = 'talmaci-shell-v187';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -222,8 +222,11 @@ self.addEventListener('fetch', (event) => {
   // the race still updates the cache once it finally arrives, instead of
   // being thrown away.
   const networkFetch = fetch(req, { cache: 'no-store' }).then(res => {
+    // Copied now, not once the cache is open: by then the page may have
+    // read the body, and clone() throws on a used one.
     if (res.ok && res.type === 'basic') {
-      caches.open(CACHE_NAME).then(cache => cache.put(req, res.clone()));
+      const copy = res.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(req, copy));
     }
     return res;
   }).catch(() => null);
