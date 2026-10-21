@@ -13,18 +13,31 @@ const { $, el, menuLabel, toast, copyWithToast, openSheet, closeSheet, closeShee
 // of the phone starts it over).
 let _fullHeight = 0, _fullHeightWidth = 0;
 
-// Installed on an iPhone, iOS lays the page out shorter than the screen by
-// the status bar's height while still drawing it from the very top, so
-// anything fixed to the bottom ends that far above it, over a bare strip.
-// #app is then sized by 100vh, which is the whole screen (see styles.css).
+// Installed on an iPhone, iOS can lay the page out shorter than the screen
+// by the status bar's height while still drawing it from the very top, so
+// the bottom of the screen is left outside the page. Nothing there can be
+// drawn into (Release 186 tried, and the tab bar was cut off), so it is
+// measured instead, for styles.css's --safe-bottom: 100vh is still the
+// whole screen, where the page is not.
 const _iosStandalone = navigator.standalone === true;
-if (_iosStandalone) document.documentElement.classList.add('ios-standalone');
+let _vhProbe = null;
+function _iosLost() {
+  if (!_iosStandalone) return 0;
+  if (!_vhProbe) {
+    _vhProbe = document.createElement('div');
+    _vhProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;visibility:hidden;pointer-events:none';
+    document.body.appendChild(_vhProbe);
+  }
+  return Math.max(0, _vhProbe.offsetHeight - window.innerHeight);
+}
 
 function syncViewportInsets() {
   const vv = window.visualViewport;
   const root = document.documentElement.style;
   const vvh = vv ? vv.height : window.innerHeight;
+  root.setProperty('--vvh', vvh + 'px');
   root.setProperty('--vv-top', (vv ? vv.offsetTop : 0) + 'px');
+  root.setProperty('--ios-lost', _iosLost() + 'px');
   if (window.innerWidth !== _fullHeightWidth) { _fullHeightWidth = window.innerWidth; _fullHeight = 0; }
   _fullHeight = Math.max(_fullHeight, window.innerHeight);
   // The keyboard's height (0 when it's closed). Measured against the
@@ -38,13 +51,6 @@ function syncViewportInsets() {
   const kb = _fullHeight - vvh;
   root.setProperty('--keyboard-inset', (kb > 120 ? kb : 0) + 'px');
   document.documentElement.classList.toggle('keyboard-open', kb > 120);
-  // What iOS leaves off the bottom (above), given back to what is sized by
-  // --vvh while the keyboard is closed. With it open the sheets keep the
-  // height iOS reports: if that is short too, they only end a little
-  // higher above the keyboard, never behind it.
-  const app = document.getElementById('app');
-  const lost = _iosStandalone && app ? Math.max(0, app.offsetHeight - window.innerHeight) : 0;
-  root.setProperty('--vvh', (kb > 120 ? vvh : vvh + lost) + 'px');
   // How much of the layout viewport the keyboard covers: what something
   // fixed to its bottom has to rise by to stay in sight. 0 where the page
   // shrinks with the keyboard.
