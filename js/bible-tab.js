@@ -689,6 +689,15 @@ function show(bookIdx, chapter, verse) {
   }
 }
 
-window.BibleTab = { render, preload, show };
+/* A word from elsewhere — the editor's lookup: the tab opens on its search,
+ * already run. Only the state is set, as with show(); render pushes the
+ * search's history entry, so back returns to the reader. */
+function search(word) {
+  _view = 'search';
+  _query = word;
+  _searchScrollTop = 0;
+}
+
+window.BibleTab = { render, preload, show, search };
 
 })();

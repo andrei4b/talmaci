@@ -1054,8 +1054,9 @@ function _viewOnly(ta) {
   return ta;
 }
 
-/* Rime or Sinonime for the word at the caret, without retyping it — or,
- * in the original, its English definition or Bible dictionary entry. One button for all of them
+/* Rime, Sinonime or the verses of the Bible that use the word at the
+ * caret, without retyping it — or, in the original, its English definition
+ * or Bible dictionary entry. One button for all of them
  * keeps the row under the text short; the sheet it opens names the word,
  * so a caret a letter off shows before the trip, not after. The other tab
  * keeps the word and Text keeps its place, so the tab bar is the way back. */
@@ -1071,7 +1072,7 @@ function _openLookup(ta) {
   // A tab whose script is missing gets no word; it opens on a notice
   // saying so instead (see _renderRoute in app.js).
   const go = (tab) => closeSheetThen(overlay, () => {
-    const mod = { rime: window.RimeTab, engleza: window.EnglezaTab, biblic: window.BiblicTab, sinonime: window.SinonimeTab }[tab];
+    const mod = { rime: window.RimeTab, engleza: window.EnglezaTab, biblic: window.BiblicTab, sinonime: window.SinonimeTab, biblie: window.BibleTab }[tab];
     if (mod) (tab === 'sinonime' ? mod.show : mod.search)(word);
     window.App.openTab(tab);
   });
@@ -1087,7 +1088,9 @@ function _openLookup(ta) {
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('rime') },
       menuLabel(icons.rime, 'Rime pentru „' + word + '”')),
     el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('sinonime') },
-      menuLabel(icons.sinonime, 'Sinonime pentru „' + word + '”'))
+      menuLabel(icons.sinonime, 'Sinonime pentru „' + word + '”')),
+    el('button', { class: 'btn btn--wide btn--menu', onclick: () => go('biblie') },
+      menuLabel(icons.bible, 'Caută „' + word + '” în Biblie'))
   ]));
   openSheet(overlay);
 }
