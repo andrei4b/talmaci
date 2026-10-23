@@ -521,10 +521,9 @@ function _syncVerseNotes() {
     const v = b._version;
     if (!threads.has(v.id)) threads.set(v.id, _threadsOf(v));
     const here = threads.get(v.id).filter(t => t.loc && t.loc.at.includes(b._index()));
-    const open = here.filter(t => !t.resolved).length;
-    b.classList.toggle('verse-notes--some', open > 0);
+    b.classList.toggle('verse-notes--some', here.length > 0);
     b.classList.toggle('verse-notes--unread', here.some(t => _threadUnread(v.id, t)));
-    b.lastChild.textContent = open ? String(open) : '';
+    b.lastChild.textContent = here.length ? String(here.length) : '';
   });
 }
 const _syncVerseNotesSoon = debounce(_syncVerseNotes, 500);
@@ -558,25 +557,15 @@ function _memberFullNames(members) {
 // dark enough for white letters, and told apart from one another.
 const AVATAR_COLORS = ['#2C3E66', '#B5652A', '#3F7A52', '#8A4B6E', '#3E7C8C', '#7A6230', '#5A5AA0', '#A04A3D'];
 
-// A check mark — a thread dealt with.
-const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
-
 // The start of an observation, for a line that only reminds of it.
 function _excerpt(text, max) {
   const t = String(text || '').replace(/\s+/g, ' ').trim();
   return t.length > max ? t.slice(0, max - 1).trimEnd() + '…' : t;
 }
 
-// "1 mesaj", "3 mesaje", "20 de mesaje".
-function _messages(n) {
-  if (n === 1) return '1 mesaj';
-  return n % 100 === 0 || n % 100 >= 20 ? `${n} de mesaje` : `${n} mesaje`;
-}
-
 /* A version's observations — or, with `verseIndex`, those on one of its
- * verses, and room to leave one there. Each is a thread: the observation,
- * the replies to it, and whether it has been dealt with; a thread dealt
- * with is folded to one line. On the whole version, a thread on a verse
+ * verses, and room to leave one there. Each is a thread: the observation
+ * and the replies to it. On the whole version, a thread on a verse
  * names it, and says when the verse has changed since or is no longer in
  * the text, with the words it was left on to compare. */
 function _openNotes(version, verseIndex) {
@@ -607,10 +596,10 @@ function _openNotes(version, verseIndex) {
   // name for a moment whenever the author had changed theirs since.
   let names = _memberNames();
   let fullNames = _memberFullNames();
-  // The thread being answered, if any; the folded threads opened to read;
+  // The thread being answered, or the observation being changed, if any;
   // the threads showing the words they were left on.
   let replyTo = null;
-  const unfolded = new Set();
+  let editing = null;
   const quoted = new Set();
 
   const whoOf = (n) => n.by === me ? 'Tu' : (names.get(n.by) || window.Auth.shortName({ displayName: n.byName }));
@@ -625,7 +614,7 @@ function _openNotes(version, verseIndex) {
 
   /* One observation: its author's initials in a colored circle, then their
    * name · when, what they wrote, and a gray row of what can be done with
-   * it — answer, mark the thread done (on its first), give a heart. */
+   * it — answer, change it (your own), give a heart. */
   function noteItem(n, t, isReply) {
     // Two taps to delete: the first only asks.
     const del = canDelete(n) ? el('button', {
@@ -652,7 +641,6 @@ function _openNotes(version, verseIndex) {
       }
     }) : null;
     const fresh = n.by !== me && n.at > _seenAt(seenBefore, version.id, t.id);
-    const isFirst = n === t.root;
     return el('div', { class: 'note' + (isReply ? ' note--reply' : '') + (fresh ? ' note--new' : '') }, [
       avatar(n),
       el('div', { class: 'note__body' }, [
@@ -665,13 +653,16 @@ function _openNotes(version, verseIndex) {
             datetime: new Date(n.at).toISOString(),
             title: new Date(n.at).toLocaleString('ro-RO')
           }, [window.Activity.formatWhen(n.at, Date.now())]),
+          n.editedAt ? el('span', {
+            class: 'note__edited',
+            title: 'Modificată ' + new Date(n.editedAt).toLocaleString('ro-RO')
+          }, ['(modificată)']) : null,
           del
         ]),
         el('div', { class: 'note__text' }, [n.text]),
         el('div', { class: 'note__actions' }, [
           el('button', { class: 'note__action', onclick: () => startReply(t) }, ['Răspunde']),
-          isFirst ? el('button', { class: 'note__action', onclick: () => resolve(t, !t.resolved) },
-            [t.resolved ? 'Redeschide' : 'Rezolvă']) : null,
+          n.by === me ? el('button', { class: 'note__action', onclick: () => startEdit(n) }, ['Editează']) : null,
           heartButton(n)
         ])
       ])
@@ -758,32 +749,7 @@ function _openNotes(version, verseIndex) {
   }
 
   function threadItem(t) {
-    const folded = t.resolved && !unfolded.has(t.id);
-    const li = el('li', { class: 'thread' + (t.resolved ? ' thread--resolved' : '') });
-    if (folded) {
-      const first = t.notes[0];
-      li.appendChild(el('button', {
-        class: 'thread__folded',
-        onclick: () => { unfolded.add(t.id); draw(); }
-      }, [
-        el('span', { class: 'thread__check', html: CHECK_ICON }),
-        t.anchor && !onVerse ? el('span', { class: 'thread__section' }, [window.Threads.label(t.anchor)]) : null,
-        el('span', { class: 'thread__gist' }, [whoOf(first) + ': ' + _excerpt(first.text, 60)]),
-        el('span', { class: 'thread__count' }, [_messages(t.notes.length)])
-      ]));
-      return li;
-    }
-    if (t.resolved) {
-      const by = t.root.resolvedBy === me ? 'tine' : (names.get(t.root.resolvedBy) || 'cineva');
-      li.appendChild(el('div', { class: 'thread__resolved' }, [
-        el('span', { class: 'thread__check', html: CHECK_ICON }),
-        el('span', {}, [`Rezolvat de ${by}`]),
-        el('button', {
-          class: 'note__action thread__fold',
-          onclick: () => { unfolded.delete(t.id); draw(); }
-        }, ['Strânge'])
-      ]));
-    }
+    const li = el('li', { class: 'thread' });
     if (t.anchor) whereItem(t, li);
     if (!t.root) {
       li.appendChild(el('div', { class: 'note note--gone' }, [
@@ -814,48 +780,73 @@ function _openNotes(version, verseIndex) {
     else _markNotesSeen(version.id);
   }
 
-  function startReply(t) {
-    replyTo = t;
-    const first = t.notes[0];
+  /* The bar above the field while answering or changing one: what it is
+   * for, and a way out of it. */
+  function showBar(text, closeLabel) {
     replyBar.innerHTML = '';
     replyBar.append(
-      el('span', { class: 'note-reply-to__text' }, [
-        'Răspuns pentru ', el('strong', {}, [whoOf(first)]), ': ' + _excerpt(first.text, 50)
-      ]),
+      el('span', { class: 'note-reply-to__text' }, text),
       el('button', {
         class: 'note-reply-to__close',
-        'aria-label': 'Renunță la răspuns',
+        'aria-label': closeLabel,
         title: 'Renunță',
         onmousedown: (e) => e.preventDefault(),
         onclick: cancelReply
       }, ['×'])
     );
     replyBar.hidden = false;
+  }
+
+  function startReply(t) {
+    if (editing) input.value = '';
+    editing = null;
+    replyTo = t;
+    const first = t.notes[0];
+    showBar(['Răspuns pentru ', el('strong', {}, [whoOf(first)]), ': ' + _excerpt(first.text, 50)],
+      'Renunță la răspuns');
+    addBtn.textContent = 'Adaugă';
     input.placeholder = 'Răspunsul tău…';
     input.focus();
   }
 
-  function cancelReply() {
+  // Its text in the field, to change and save in place of the old.
+  function startEdit(n) {
     replyTo = null;
+    editing = n;
+    showBar([el('strong', {}, ['Modifici']), ': ' + _excerpt(n.text, 50)], 'Renunță la modificare');
+    addBtn.textContent = 'Salvează';
+    input.value = n.text;
+    input.placeholder = placeholder;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+
+  function cancelReply() {
+    if (editing) input.value = '';
+    replyTo = null;
+    editing = null;
     replyBar.hidden = true;
+    addBtn.textContent = 'Adaugă';
     input.placeholder = placeholder;
   }
 
-  async function resolve(t, value) {
+  async function save(n, text) {
+    if (text === n.text) { cancelReply(); return; }
+    addBtn.disabled = true;
     try {
-      Object.assign(t.root, await window.Db.setNoteResolved(song.id, version.id, t.root.id, value, me));
-      if (value) unfolded.delete(t.id);
+      Object.assign(n, await window.Db.editNote(song.id, version.id, n.id, text));
+      cancelReply();
       draw();
-      _syncNoteDots();
     } catch (err) {
-      toast(failText(value ? 'Nu am putut marca observația ca rezolvată' : 'Nu am putut redeschide observația', err),
-        { kind: 'error' });
+      toast(failText('Nu am putut salva observația', err), { kind: 'error' });
     }
+    addBtn.disabled = false;
   }
 
   async function add() {
     const text = input.value.trim();
     if (!text) { input.focus(); return; }
+    if (editing) return save(editing, text);
     const user = window.Auth.currentUser();
     const thread = replyTo;
     // A reply carries its thread's anchor too, so the thread keeps its
@@ -874,12 +865,6 @@ function _openNotes(version, verseIndex) {
       if (anchor) extra.section = window.Threads.label(anchor);
       if (thread) { extra.reply = true; extra.threadId = thread.id; }
       window.Activity.log(song, 'note_added', extra);
-      // Answering a thread that was done opens it again.
-      if (thread && thread.resolved) {
-        window.Db.setNoteResolved(song.id, version.id, thread.root.id, false, user.uid)
-          .then(patch => { Object.assign(thread.root, patch); draw(); _syncNoteDots(); })
-          .catch(() => {});
-      }
       input.value = '';
       cancelReply();
       draw();
@@ -894,7 +879,7 @@ function _openNotes(version, verseIndex) {
   // Enter is a new line; Ctrl/Cmd+Enter sends.
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); add(); }
-    if (e.key === 'Escape' && replyTo) { e.preventDefault(); e.stopPropagation(); cancelReply(); }
+    if (e.key === 'Escape' && (replyTo || editing)) { e.preventDefault(); e.stopPropagation(); cancelReply(); }
   });
 
   // A verse without a mark is found again by its words and its place
@@ -927,9 +912,9 @@ function _openNotes(version, verseIndex) {
   list.scrollTop = list.scrollHeight;
   // The keyboard shrinks the list, not the field: keep its newest notes,
   // the ones just above the field, in sight as it does — unless a reply
-  // was started further up, which should stay where it is.
+  // or a change was started further up, which should stay where it is.
   input.addEventListener('focus', () => {
-    if (replyTo) return;
+    if (replyTo || editing) return;
     const toBottom = () => { list.scrollTop = list.scrollHeight; };
     toBottom();
     setTimeout(toBottom, 300);

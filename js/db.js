@@ -86,9 +86,7 @@
  *       quote                    // see Threads.anchorFor; replies carry
  *     },                         // their thread's too
  *     parentId?: string,         // a reply: the observation it answers
- *     resolved?: boolean,        // a thread's first observation only:
- *     resolvedBy?: uid,          // marked done, and by whom, when
- *     resolvedAt?: number (ms),
+ *     editedAt?: number (ms),    // when its author last changed its text
  *     hearts?: uid[]             // who has given it a heart
  *   }
  * and each member's own record of when they last read a song's, so the
@@ -324,9 +322,9 @@ async function setNoteHeart(songId, versionId, noteId, uid, on) {
   await _notesRef(songId, versionId).doc(noteId).update({ hearts: on ? FV.arrayUnion(uid) : FV.arrayRemove(uid) });
 }
 
-// Marks a thread done, or not any more — on its first observation.
-async function setNoteResolved(songId, versionId, noteId, resolved, by) {
-  const patch = { resolved, resolvedBy: by, resolvedAt: Date.now() };
+// Changes an observation's text — its author's own only.
+async function editNote(songId, versionId, noteId, text) {
+  const patch = { text, editedAt: Date.now() };
   await _notesRef(songId, versionId).doc(noteId).update(patch);
   return patch;
 }
@@ -356,7 +354,7 @@ window.Db = {
   setVersionVerses, setOriginalVerses,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
-    addVersion, updateVersion, deleteVersion, addNote, deleteNote, setNoteResolved, setNoteHeart, markSeen
+    addVersion, updateVersion, deleteVersion, addNote, deleteNote, editNote, setNoteHeart, markSeen
   }).map(([name, fn]) => [name, _online(fn)]))
 };
 

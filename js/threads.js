@@ -144,7 +144,6 @@ function group(notes) {
     t.at = all[0].at;
     t.last = all[all.length - 1].at;
     t.notes = all;
-    t.resolved = !!(t.root && t.root.resolved);
   });
   return threads.sort((a, b) => a.last - b.last);
 }

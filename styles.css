@@ -957,8 +957,9 @@ button.text-tab__head { cursor: pointer; }
 }
 .note__delete svg { width: 14px; height: 14px; }
 .note__delete--confirm { opacity: 1; color: #fff; background: var(--color-danger); }
+.note__edited { color: var(--color-text-muted); font-size: 0.75rem; font-style: italic; }
 .note__text { margin-top: 1px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Răspunde · Rezolvă · ♡ — gray, a dot between each. */
+/* Răspunde · Editează · ♡ — gray, a dot between each. */
 .note__actions { display: flex; align-items: center; flex-wrap: wrap; margin: 2px 0 0 -2px; }
 .note__action {
   display: inline-flex;
@@ -1035,48 +1036,7 @@ button.text-tab__head { cursor: pointer; }
 }
 .thread__quote--open { white-space: pre-wrap; overflow-wrap: anywhere; }
 .thread__quote-label { font-style: normal; font-weight: 600; }
-/* A thread dealt with: faded, folded to one line, a green check. */
-.thread--resolved { background: var(--color-surface); }
-.thread--resolved:has(.thread__folded) { padding: 8px 12px; opacity: 0.75; }
-.thread__check {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--color-success);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.thread__check svg { width: 12px; height: 12px; }
-.thread__folded {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-  cursor: pointer;
-}
-.thread__gist { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.thread__count { flex-shrink: 0; font-size: 0.8rem; }
-.thread__resolved {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--color-success);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.thread__fold { margin-left: auto; min-height: 24px; }
-/* Above the field while replying: to whom, and a way out of it. */
+/* Above the field while replying or editing: what for, and a way out of it. */
 .note-reply-to {
   display: flex;
   align-items: center;
