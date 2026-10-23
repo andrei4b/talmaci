@@ -2512,6 +2512,13 @@ function _openSongMenu(root) {
       disabled: !canEdit,
       onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _openEditSong(root)); }
     }, menuLabel(icons.edit, 'Editează melodia')),
+    // Only ever this way: a song the group has worked on is not taken
+    // back from it. A personal song is its creator's alone to see, so
+    // there is nobody else to offer it to.
+    !isShared(_song) && _song.createdBy === window.Auth.currentUser().uid ? el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => closeSheetThen(overlay, () => _confirmShareSong(root))
+    }, menuLabel(icons.users, 'Mută în grup')) : null,
     // Any member's to read, unlike the whole group's log. A personal song
     // has none, since it is never logged.
     isShared(_song) ? el('button', {
@@ -2671,6 +2678,45 @@ function _confirmDeleteSong() {
           }
         }
       }, ['Șterge'])
+    ])
+  ]));
+  openSheet(overlay);
+}
+
+/* A personal song moved to the group's list. Everything it has comes
+ * along — its versions and sheet music are under the song, and their
+ * rules follow its `shared` — so this is the one field. It is logged once
+ * shared, which is where the group's record of it begins. */
+function _confirmShareSong(root) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const group = window.Songs.groupName();
+  const moveBtn = el('button', { class: 'btn btn--primary' }, ['Mută']);
+  moveBtn.addEventListener('click', async () => {
+    moveBtn.disabled = true;
+    try {
+      await window.Db.updateSong(_song.id, { shared: true });
+      _note({ shared: true });
+      window.Activity.log(_song, 'song_shared');
+      closeSheetThen(overlay, () => {
+        _renderShell(root);
+        _loadNotes();
+        toast(group ? `Melodia e acum în „${group}”.` : 'Melodia e acum în grup.');
+      });
+    } catch (err) {
+      moveBtn.disabled = false;
+      toast(failText('Nu am putut muta melodia', err), { kind: 'error' });
+    }
+  });
+
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Muți melodia în grup?']),
+    el('p', { class: 'sheet__text' }, [
+      `„${_song.title || 'Fără titlu'}” va fi văzută de toți cei din ${group ? `„${group}”` : 'grup'}, `
+        + 'care vor putea adăuga versiuni, observații și partituri. După aceea nu mai poate redeveni personală.'
+    ]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
+      moveBtn
     ])
   ]));
   openSheet(overlay);

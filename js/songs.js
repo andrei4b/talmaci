@@ -452,6 +452,10 @@ function reset() {
   _memberNames = null;
 }
 
-window.Songs = { render, refresh, noteUpdated, noteDeleted, reset };
+// The group's name, for song-detail.js to say where a song is going; ''
+// until the list has loaded it.
+function groupName() { return _groupName; }
+
+window.Songs = { render, refresh, noteUpdated, noteDeleted, reset, groupName };
 
 })();

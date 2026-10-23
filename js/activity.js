@@ -135,6 +135,8 @@ const FIELD_LABELS = { title: 'titlul', demoUrl: 'linkul demo' };
 const DESCRIBE = {
   song_created: (e, a) => ({ before: `${a} creat melodia`, own: `${a} creat melodia` }),
   song_deleted: (e, a) => ({ before: `${a} șters melodia`, own: `${a} șters melodia` }),
+  // A personal song moved to the group, where its log begins.
+  song_shared: (e, a) => ({ before: `${a} adus în grup melodia`, own: `${a} adus melodia în grup` }),
   song_edited: (e, a) => {
     const what = (e.fields || []).map(f => FIELD_LABELS[f] || f).join(' și ') || 'detaliile';
     return { before: `${a} modificat ${what} la`, own: `${a} modificat ${what}` };
