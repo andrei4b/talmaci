@@ -86,7 +86,8 @@ or later). See `js/push.js` and `functions/index.js`.
 ## Sheet music
 
 A song can carry its sheet music: images or PDFs, up to 20 MB each, listed
-from the song's menu (**Partituri**) and opened in the browser's own
+from the song's menu (**Audio și partituri**, beside the link to a
+recording) and opened in the browser's own
 viewer. They belong to the song, not to any version. The files are kept in
 Cloud Storage (see `js/scores.js`, `js/db.js` and `storage.rules`), which
 needs the Blaze plan, as the functions already do.
@@ -100,7 +101,7 @@ needs the Blaze plan, as the functions already do.
 
 ## Google Translate "Mot-a-mot" translations (optional)
 
-A song's kebab menu can generate a literal machine translation into a version
+A translation's version sheet can generate a literal machine translation into a version
 named **"Mot-a-mot"** — a starting point to work from, not a substitute for
 the real translation. This calls the Google Cloud Translation API through a
 Cloud Function (`functions/index.js`), never directly from the browser.
@@ -133,7 +134,7 @@ app works without it.
    cd functions && npm install && cd ..
    firebase deploy --only functions
    ```
-6. That's it — the kebab menu's "Mot-a-mot" button will start working. No client-side config needed; `js/translate.js` calls the
+6. That's it — the version sheet's "Mot-a-mot" button will start working. No client-side config needed; `js/translate.js` calls the
    deployed function by name.
 
 If a translation ever fails (API not enabled yet, IAM role missing, quota
@@ -264,7 +265,7 @@ js/ro-phonetics.js                Romanian G2P, syllables, stress — shared
 js/rhyme.js                        Loads the rhyme index, answers queries
 js/songs.js                         Main page: song list, search, add song
 js/song-detail.js                    Song page: the text and its editor
-js/scores.js                         A song's sheet music (Partituri)
+js/scores.js                         Audio și partituri: recording link, sheet music
 js/engleza-tab.js                    Dicționare → Engleză (Merriam-Webster)
 js/biblic-tab.js                     Dicționare → Biblic (Easton's, ISBE)
 js/app.js                             Sign-in/join gating, routing, account

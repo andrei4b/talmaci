@@ -28,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v195';
+const CACHE_NAME = 'talmaci-shell-v196';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every

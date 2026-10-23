@@ -11,7 +11,7 @@
  * can draft in parallel) via the version switcher below the box — see
  * db.js's versions subcollection. */
 (function () {
-const { el, toast, copyWithToast, saveFile, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, normalizeUrl, isOriginal, orderVersions,
+const { el, toast, copyWithToast, saveFile, debounce, openSheet, closeSheet, closeSheetThen, icons, menuLabel, isOriginal, orderVersions,
         isShared, SONG_STATUSES, songStatus, statusLabel, songWorkers,
         isNetworkError, failText, offlineNotice } = window.Utils;
 
@@ -2272,7 +2272,21 @@ function _openVersionList(content) {
     el('button', {
       class: 'btn btn--wide',
       onclick: () => closeSheetThen(overlay, () => _openAddVersion(content))
-    }, ['+ Adaugă versiune'])
+    }, ['+ Adaugă versiune']),
+    // Makes or redoes the "Mot-a-mot" version, so it is with the others. A
+    // composition has no source text to translate.
+    isOriginal(_song) ? null : el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: async () => {
+        closeSheet(overlay);
+        if (!window.Verses.hasLyrics(_song.originalVerses)) {
+          toast('Adaugă mai întâi textul original.', { kind: 'error' });
+          return;
+        }
+        toast('Se generează traducerea…');
+        await _generateMotAMot(_shellRoot);
+      }
+    }, menuLabel(icons.sparkles, 'Generează traducere Mot-a-mot'))
   ]));
   openSheet(overlay);
 }
@@ -2480,37 +2494,19 @@ function _openSongMenu(root) {
   const original = isOriginal(_song);
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
-    // Anyone who can see the song may set this, unlike the items below —
-    // it is how the group says where a song stands.
+    // Anyone who can see the song may set this, unlike editing it — it is
+    // how the group says where a song stands.
     el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: () => closeSheetThen(overlay, () => _openStatusSheet())
     }, menuLabel(icons.flag, 'Stare: ' + statusLabel(songStatus(_song)))),
+    // The recording and the sheet music, together: what the song has
+    // besides its text.
     el('button', {
       class: 'btn btn--wide btn--menu',
-      // After the sheet's history entry is gone: a song found deleted
-      // leaves the page, and that must not race the sheet's own pop.
-      onclick: () => closeSheetThen(overlay, () => _refreshSong(root))
-    }, menuLabel(icons.refresh, 'Reîmprospătează')),
-    el('button', {
-      class: 'btn btn--wide btn--menu',
-      onclick: () => {
-        if (!_song.demoUrl) {
-          toast('Nu e salvat niciun link. Adaugă-l din „Editează melodia”.');
-          return;
-        }
-        // Opened synchronously from the tap: a popup opened after the
-        // sheet's async history unwind would no longer count as a user
-        // gesture and could be blocked.
-        window.open(_song.demoUrl, '_blank', 'noopener');
-        closeSheet(overlay);
-      }
-    }, menuLabel(icons.headphones, 'Ascultă melodia')),
-    // Like the status, anyone who can see the song adds sheet music to it.
-    el('button', {
-      class: 'btn btn--wide btn--menu',
-      onclick: () => closeSheetThen(overlay, () => window.Scores.open(_song))
-    }, menuLabel(icons.score, 'Partituri')),
+      onclick: () => closeSheetThen(overlay, () => window.Scores.open(_song, canEdit))
+    }, menuLabel(icons.score, 'Audio și partituri')),
+    // Deleting the song is in there too, for the same people.
     el('button', {
       class: 'btn btn--wide btn--menu',
       disabled: !canEdit,
@@ -2522,40 +2518,44 @@ function _openSongMenu(root) {
       class: 'btn btn--wide btn--menu',
       onclick: () => closeSheetThen(overlay, () => window.Activity.openForSong(_song))
     }, menuLabel(icons.history, 'Jurnal')) : null,
-    // A source text is something a composition does not have, so the
-    // generate item is absent rather than disabled — "Adaugă mai întâi
-    // textul original" is a confusing thing to be told about your own lyrics.
-    // The original's own copy button is above its column, which only a big
-    // screen with several versions shows; this one is there everywhere.
-    // Copied from inside the tap, before the sheet closes, which Safari
-    // requires.
-    original ? null : el('button', {
+    // A composition has no original to copy, which leaves the export
+    // alone — not worth a sheet of its own. Made and handed over from
+    // inside the tap, which sharing it requires.
+    original ? el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => { _exportSheet(); closeSheet(overlay); }
+    }, menuLabel(icons.table, 'Exportă în Excel')) : el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => closeSheetThen(overlay, () => _openCopyExport())
+    }, menuLabel(icons.copy, 'Copiază / exportă')),
+    el('button', {
+      class: 'btn btn--wide btn--menu',
+      // After the sheet's history entry is gone: a song found deleted
+      // leaves the page, and that must not race the sheet's own pop.
+      onclick: () => closeSheetThen(overlay, () => _refreshSong(root))
+    }, menuLabel(icons.refresh, 'Reîmprospătează'))
+  ].filter(Boolean)));
+  openSheet(overlay);
+}
+
+/* The original's text copied, or the whole song exported, for a
+ * translation. The original's own copy button is above its column, which
+ * only a big screen with several versions shows; this one is there
+ * everywhere. Both happen inside the tap, before the sheet closes, which
+ * Safari requires of the clipboard and sharing requires of the file. */
+function _openCopyExport() {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Copiază / exportă']),
+    el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: () => { _copyOriginal(); closeSheet(overlay); }
     }, menuLabel(icons.copy, 'Copiază originalul')),
-    // Made and handed over from inside the tap, which sharing it requires.
     el('button', {
       class: 'btn btn--wide btn--menu',
       onclick: () => { _exportSheet(); closeSheet(overlay); }
-    }, menuLabel(icons.table, 'Exportă în Excel')),
-    original ? null : el('button', {
-      class: 'btn btn--wide btn--menu',
-      onclick: async () => {
-        closeSheet(overlay);
-        if (!window.Verses.hasLyrics(_song.originalVerses)) {
-          toast('Adaugă mai întâi textul original.', { kind: 'error' });
-          return;
-        }
-        toast('Se generează traducerea…');
-        await _generateMotAMot(root);
-      }
-    }, menuLabel(icons.sparkles, 'Generează traducere Mot-a-mot')),
-    el('button', {
-      class: 'btn btn--wide btn--menu btn--danger',
-      disabled: !canEdit,
-      onclick: () => { if (!canEdit) return; closeSheetThen(overlay, () => _confirmDeleteSong()); }
-    }, menuLabel(icons.trash, 'Șterge melodia'))
-  ].filter(Boolean)));
+    }, menuLabel(icons.table, 'Exportă în Excel'))
+  ]));
   openSheet(overlay);
 }
 
@@ -2703,17 +2703,21 @@ async function _refreshSong(root) {
   }
 }
 
-// The song's own details. Its original text is not among them: that is
-// edited in place on the Text tab, beside the translation.
+// The song's own details, and deleting it, which is for the same people.
+// Its original text is not among them: that is edited in place on the
+// Text tab, beside the translation. Nor is the link to a recording, which
+// is with the sheet music (see scores.js).
 function _openEditSong(root) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   const titleInput = el('input', { class: 'field__input', type: 'text', value: _song.title || '' });
-  const demoInput = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off', value: _song.demoUrl || '' });
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Editează melodia']),
     el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Titlu']), titleInput]),
-    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo']), demoInput]),
+    el('button', {
+      class: 'btn btn--wide btn--menu btn--danger',
+      onclick: () => closeSheetThen(overlay, () => _confirmDeleteSong())
+    }, menuLabel(icons.trash, 'Șterge melodia')),
     el('div', { class: 'sheet__actions' }, [
       el('button', { class: 'btn', onclick: () => closeSheet(overlay) }, ['Anulează']),
       el('button', {
@@ -2721,12 +2725,9 @@ function _openEditSong(root) {
         onclick: async () => {
           const title = titleInput.value.trim();
           if (!title) { toast('Introdu un titlu.', { kind: 'error' }); return; }
-          const demoUrl = normalizeUrl(demoInput.value);
-          if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
 
           const patch = {};
           if (title !== (_song.title || '')) patch.title = title;
-          if (demoUrl !== (_song.demoUrl || '')) patch.demoUrl = demoUrl;
           if (!Object.keys(patch).length) { closeSheet(overlay); return; }
 
           try {

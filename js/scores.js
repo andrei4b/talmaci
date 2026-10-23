@@ -1,12 +1,18 @@
-/* scores.js — a song's sheet music: images or PDFs attached to it, listed
- * from its menu (Partituri). Any member who can see the song adds them;
+/* scores.js — what a song has besides its text, in one sheet from its
+ * menu (Audio și partituri): the link to a recording of it, and its sheet
+ * music.
+ *
+ * The link is the song's demoUrl, set here by whoever may edit the song.
+ *
+ * The sheet music is images or PDFs attached to it. Any member who can see
+ * the song adds them;
  * whoever added one, whoever created the song, or an admin deletes it —
  * enforced for real in firestore.rules and storage.rules, this only shows
  * the delete button to match. A file opens in a new tab, in the browser's
  * own viewer, which pages and zooms a score better than anything here
  * could. Where they are kept: see Db.addScore. */
 (function () {
-const { el, toast, icons, openSheet, closeSheet, closeSheetThen, failText } = window.Utils;
+const { el, toast, icons, openSheet, closeSheet, closeSheetThen, failText, normalizeUrl } = window.Utils;
 
 function _size(bytes) {
   if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
@@ -22,8 +28,30 @@ function _canDelete(song, score) {
 // shows it and does not start a second one alongside.
 const _uploading = new Map();
 
-function open(song) {
+/* `canEdit`: whether this member may change the song itself (see
+ * song-detail.js), which the link is part of. */
+function open(song, canEdit) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
+  const editLink = () => closeSheetThen(overlay, () => _openEditLink(song, canEdit));
+  let host = '';
+  try { host = song.demoUrl ? new URL(song.demoUrl).hostname.replace(/^www\./, '') : ''; } catch (_) { /* shown without */ }
+  const linkRow = song.demoUrl
+    ? el('div', { class: 'version-row' }, [
+        el('a', { class: 'version-row__title score-row', href: song.demoUrl, target: '_blank', rel: 'noopener' }, [
+          el('span', { class: 'score-row__name' }, ['Ascultă melodia']),
+          el('span', { class: 'score-row__meta' }, [host])
+        ]),
+        el('button', {
+          class: 'version-row__icon',
+          'aria-label': 'Schimbă linkul',
+          disabled: !canEdit,
+          html: icons.edit,
+          onclick: editLink
+        })
+      ])
+    : canEdit
+      ? el('button', { class: 'btn btn--wide', onclick: editLink }, ['+ Adaugă link către înregistrare'])
+      : el('p', { class: 'sheet__text' }, ['Niciun link către o înregistrare.']);
   const list = el('div', { class: 'version-list' }, [el('p', { class: 'sheet__text' }, ['Se încarcă…'])]);
   const input = el('input', { type: 'file', accept: 'image/*,application/pdf', multiple: 'multiple', hidden: 'hidden' });
   const addBtn = el('button', { class: 'btn btn--wide', onclick: () => input.click() });
@@ -56,7 +84,7 @@ function open(song) {
           'aria-label': 'Șterge partitura',
           disabled: !_canDelete(song, score),
           html: icons.trash,
-          onclick: () => closeSheetThen(overlay, () => _confirmDelete(song, score))
+          onclick: () => closeSheetThen(overlay, () => _confirmDelete(song, score, canEdit))
         })
       ]));
     });
@@ -104,7 +132,10 @@ function open(song) {
   });
 
   overlay.appendChild(el('div', { class: 'sheet' }, [
-    el('h2', { class: 'sheet__title' }, ['Partituri']),
+    el('h2', { class: 'sheet__title' }, ['Audio și partituri']),
+    el('span', { class: 'field__label' }, ['Înregistrare']),
+    linkRow,
+    el('span', { class: 'field__label score-heading' }, ['Partituri']),
     list,
     el('p', { class: 'sheet__text score-hint' }, ['Imagini sau PDF, de până la 20 MB fiecare.']),
     addBtn,
@@ -122,20 +153,55 @@ function open(song) {
   });
 }
 
-function _confirmDelete(song, score) {
+// The link to a recording, as the song's own detail: saved, logged and
+// told to the song list like an edit from Editează melodia was. Emptied,
+// it is taken off.
+function _openEditLink(song, canEdit) {
+  const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheetThen(overlay, () => open(song, canEdit)); } });
+  const input = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off', value: song.demoUrl || '' });
+  const back = () => closeSheetThen(overlay, () => open(song, canEdit));
+  overlay.appendChild(el('div', { class: 'sheet' }, [
+    el('h2', { class: 'sheet__title' }, ['Link către înregistrare']),
+    el('label', { class: 'field' }, [el('span', { class: 'field__label' }, ['Link demo']), input]),
+    el('div', { class: 'sheet__actions' }, [
+      el('button', { class: 'btn', onclick: back }, ['Anulează']),
+      el('button', {
+        class: 'btn btn--primary',
+        onclick: async () => {
+          const demoUrl = normalizeUrl(input.value);
+          if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
+          if (demoUrl === (song.demoUrl || '')) { back(); return; }
+          try {
+            await window.Db.updateSong(song.id, { demoUrl });
+            song.demoUrl = demoUrl;
+            window.Activity.log(song, 'song_edited', { fields: ['demoUrl'] });
+            window.Songs.noteUpdated(song.id, { demoUrl });
+            back();
+          } catch (err) {
+            toast(failText('Nu am putut salva linkul', err), { kind: 'error' });
+          }
+        }
+      }, ['Salvează'])
+    ])
+  ]));
+  openSheet(overlay);
+  input.focus();
+}
+
+function _confirmDelete(song, score, canEdit) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheet(overlay); } });
   overlay.appendChild(el('div', { class: 'sheet' }, [
     el('h2', { class: 'sheet__title' }, ['Ștergi partitura?']),
     el('p', { class: 'sheet__text' }, [`Sigur vrei să ștergi „${score.name}”? Fișierul se pierde definitiv.`]),
     el('div', { class: 'sheet__actions' }, [
-      el('button', { class: 'btn', onclick: () => closeSheetThen(overlay, () => open(song)) }, ['Anulează']),
+      el('button', { class: 'btn', onclick: () => closeSheetThen(overlay, () => open(song, canEdit)) }, ['Anulează']),
       el('button', {
         class: 'btn btn--danger-solid',
         onclick: async () => {
           try {
             await window.Db.deleteScore(song.id, score);
             window.Activity.log(song, 'score_deleted', { fileName: score.name });
-            closeSheetThen(overlay, () => open(song));
+            closeSheetThen(overlay, () => open(song, canEdit));
           } catch (err) {
             toast(failText('Nu am putut șterge partitura', err), { kind: 'error' });
           }

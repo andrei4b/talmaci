@@ -1098,6 +1098,7 @@ button.text-tab__head { cursor: pointer; }
 .score-row__name { overflow: hidden; text-overflow: ellipsis; }
 .score-row__meta { font-size: 0.78rem; font-weight: 400; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
 .score-hint { font-size: 0.85rem; }
+.score-heading { margin-top: 8px; }
 .version-row__title--active { border-color: var(--color-accent); color: var(--color-accent); }
 .version-row__icon {
   flex-shrink: 0;
