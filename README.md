@@ -99,6 +99,11 @@ needs the Blaze plan, as the functions already do.
 3. Publish `storage.rules` — Storage → Rules → paste → Publish — and allow
    it to read Firestore when the console asks.
 
+The recording link beside them is shown by what it leads to — a YouTube
+video's title and channel, a public Drive file's name, any page's title —
+which the `linkTitle` function reads (`firebase deploy --only functions`).
+Without it, or for a private file, the link reads "Ascultă melodia".
+
 ## Google Translate "Mot-a-mot" translations (optional)
 
 A translation's version sheet can generate a literal machine translation into a version

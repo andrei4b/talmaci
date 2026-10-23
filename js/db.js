@@ -54,6 +54,10 @@
  *                               // '' or absent when there is none. Always
  *                               // saved through Utils.normalizeUrl, so it
  *                               // is an http(s) URL when present.
+ *     demoTitle: string,        // what the link leads to: a video's title,
+ *     demoAuthor: string,       // a file's name; its channel or artist.
+ *                               // '' when the page does not say; null or
+ *                               // absent when not read yet — see scores.js.
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -214,6 +218,13 @@ async function updateSong(songId, patch) {
     ...patch,
     updatedAt: Date.now()
   });
+}
+
+// What the recording link leads to, read afterwards for a link saved
+// without it. Nobody changed the song, so updatedAt — the list's order —
+// stays as it was.
+async function setDemoTitle(songId, { demoTitle, demoAuthor }) {
+  await fs().collection('songs').doc(songId).update({ demoTitle, demoAuthor });
 }
 
 /* A song's status and who is working on it. Written on their own, and
@@ -431,7 +442,7 @@ window.Db = {
   listSongs, getSong, getGroup, listVersions, watchNotes, getSeen,
   setVersionVerses, setOriginalVerses,
   ...Object.fromEntries(Object.entries({
-    addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
+    addSong, updateSong, setDemoTitle, deleteSong, setSongStatus, setWorking, setVersionOrder,
     addVersion, updateVersion, deleteVersion, addNote, deleteNote, editNote, setNoteHeart, markSeen,
     listScores, addScore, deleteScore
   }).map(([name, fn]) => [name, _online(fn)])),

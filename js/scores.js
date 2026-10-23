@@ -3,10 +3,13 @@
  * music.
  *
  * The link is the song's demoUrl, set here by whoever may edit the song.
+ * It is shown by what it leads to — a YouTube video's title and channel, a
+ * Drive file's name — read by the linkTitle function when it is saved and
+ * kept on the song beside it (demoTitle, demoAuthor; see db.js).
  *
  * The sheet music is images or PDFs attached to it. Any member who can see
- * the song adds them;
- * whoever added one, whoever created the song, or an admin deletes it —
+ * the song adds them; whoever added one, whoever created the song, or an
+ * admin deletes it —
  * enforced for real in firestore.rules and storage.rules, this only shows
  * the delete button to match. A file opens in a new tab, in the browser's
  * own viewer, which pages and zooms a score better than anything here
@@ -24,6 +27,18 @@ function _canDelete(song, score) {
   return score.by === me || song.createdBy === me || window.Auth.isAdmin();
 }
 
+/* What the link leads to, as { title, author } — either '' when the page
+ * does not say, as a private Drive file's does not — or null when the
+ * function could not be asked, so that it is asked again another time. */
+async function _linkTitle(url) {
+  try {
+    const res = await firebase.functions().httpsCallable('linkTitle')({ url });
+    return { title: String(res.data.title || ''), author: String(res.data.author || '') };
+  } catch (_) {
+    return null;
+  }
+}
+
 // Uploads in progress, by song, so the sheet opened again mid-upload still
 // shows it and does not start a second one alongside.
 const _uploading = new Map();
@@ -35,12 +50,30 @@ function open(song, canEdit) {
   const editLink = () => closeSheetThen(overlay, () => _openEditLink(song, canEdit));
   let host = '';
   try { host = song.demoUrl ? new URL(song.demoUrl).hostname.replace(/^www\./, '') : ''; } catch (_) { /* shown without */ }
+  const linkName = el('span', { class: 'score-row__name score-row__name--wrap' });
+  const linkMeta = el('span', { class: 'score-row__meta' });
+  function paintLink() {
+    linkName.textContent = song.demoTitle || 'Ascultă melodia';
+    linkMeta.textContent = [host, song.demoAuthor].filter(Boolean).join(' · ');
+  }
+  paintLink();
+  // A link saved before titles were kept, or while the function could not
+  // be reached: read now, and kept on the song by whoever may change it.
+  if (song.demoUrl && typeof song.demoTitle !== 'string') {
+    const url = song.demoUrl;
+    _linkTitle(url).then(info => {
+      if (!info || song.demoUrl !== url) return;
+      const patch = { demoTitle: info.title, demoAuthor: info.author };
+      Object.assign(song, patch);
+      if (overlay.isConnected) paintLink();
+      if (canEdit) {
+        window.Db.setDemoTitle(song.id, patch).then(() => window.Songs.noteUpdated(song.id, patch)).catch(() => {});
+      }
+    });
+  }
   const linkRow = song.demoUrl
     ? el('div', { class: 'version-row' }, [
-        el('a', { class: 'version-row__title score-row', href: song.demoUrl, target: '_blank', rel: 'noopener' }, [
-          el('span', { class: 'score-row__name' }, ['Ascultă melodia']),
-          el('span', { class: 'score-row__meta' }, [host])
-        ]),
+        el('a', { class: 'version-row__title score-row', href: song.demoUrl, target: '_blank', rel: 'noopener' }, [linkName, linkMeta]),
         el('button', {
           class: 'version-row__icon',
           'aria-label': 'Schimbă linkul',
@@ -154,8 +187,8 @@ function open(song, canEdit) {
 }
 
 // The link to a recording, as the song's own detail: saved, logged and
-// told to the song list like an edit from Editează melodia was. Emptied,
-// it is taken off.
+// told to the song list like an edit from Editează melodia was, with what
+// it leads to read first. Emptied, it is taken off.
 function _openEditLink(song, canEdit) {
   const overlay = el('div', { class: 'sheet-overlay', onclick: (e) => { if (e.target === overlay) closeSheetThen(overlay, () => open(song, canEdit)); } });
   const input = el('input', { class: 'field__input', type: 'url', placeholder: 'https://…', autocapitalize: 'off', autocomplete: 'off', value: song.demoUrl || '' });
@@ -167,17 +200,26 @@ function _openEditLink(song, canEdit) {
       el('button', { class: 'btn', onclick: back }, ['Anulează']),
       el('button', {
         class: 'btn btn--primary',
-        onclick: async () => {
+        onclick: async (e) => {
           const demoUrl = normalizeUrl(input.value);
           if (demoUrl === null) { toast('Linkul demo nu este valid.', { kind: 'error' }); return; }
           if (demoUrl === (song.demoUrl || '')) { back(); return; }
+          const btn = e.currentTarget;
+          btn.disabled = true;
+          btn.textContent = 'Se salvează…';
+          // Not known (null) when the function could not be asked: the
+          // sheet asks again when it next opens.
+          const info = demoUrl ? await _linkTitle(demoUrl) : { title: '', author: '' };
+          const patch = { demoUrl, demoTitle: info ? info.title : null, demoAuthor: info ? info.author : null };
           try {
-            await window.Db.updateSong(song.id, { demoUrl });
-            song.demoUrl = demoUrl;
+            await window.Db.updateSong(song.id, patch);
+            Object.assign(song, patch);
             window.Activity.log(song, 'song_edited', { fields: ['demoUrl'] });
-            window.Songs.noteUpdated(song.id, { demoUrl });
+            window.Songs.noteUpdated(song.id, patch);
             back();
           } catch (err) {
+            btn.disabled = false;
+            btn.textContent = 'Salvează';
             toast(failText('Nu am putut salva linkul', err), { kind: 'error' });
           }
         }

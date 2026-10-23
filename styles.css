@@ -1096,6 +1096,13 @@ button.text-tab__head { cursor: pointer; }
  * is, how big, and who added it when. */
 .score-row { display: flex; flex-direction: column; gap: 2px; text-decoration: none; }
 .score-row__name { overflow: hidden; text-overflow: ellipsis; }
+/* A video's title is often long, and its end is as telling as its start. */
+.score-row__name--wrap {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 .score-row__meta { font-size: 0.78rem; font-weight: 400; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
 .score-hint { font-size: 0.85rem; }
 .score-heading { margin-top: 8px; }

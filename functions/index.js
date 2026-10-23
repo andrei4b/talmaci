@@ -25,6 +25,11 @@
  * day. It is kept as a secret:
  *   firebase functions:secrets:set MW_COLLEGIATE_KEY
  *
+ * linkTitle: the name behind a link — a YouTube video's title, a Drive
+ * file's name — for the song's recording link (see js/scores.js). Fetched
+ * here because, YouTube aside, those pages do not answer a browser on
+ * another site. Nothing to set up.
+ *
  * notifySongActivity: notifications to everyone
  * working on a song but whoever changed it — observations, text edits,
  * new versions, status changes, someone joining — and replies to an
@@ -381,3 +386,102 @@ exports.notifyNoteHeart = onDocumentUpdated(
     });
   }
 );
+
+/* ---- linkTitle ---- */
+
+const LINK_TIMEOUT_MS = 6000;
+// The page's head is all that is read; a title is never further in.
+const LINK_MAX_BYTES = 512 * 1024;
+
+/* Only an http(s) address on a public name. The function reaches whatever
+ * it is given, so an IP address, a bare host name or an internal one —
+ * the metadata server above all — is refused, and so is every hop of a
+ * redirect, which is followed here one at a time for that reason. */
+function _publicUrl(raw) {
+  let u;
+  try { u = new URL(raw); } catch (_) { return null; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+  const host = u.hostname.toLowerCase();
+  if (!host.includes('.') || /^[\d.]+$/.test(host) || host.includes(':') ||
+      /\.(internal|local|localhost)$/.test(host)) return null;
+  return u;
+}
+
+function _decodeEntities(s) {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ').trim();
+}
+
+async function _fetchPage(url) {
+  let u = _publicUrl(url);
+  for (let hop = 0; u && hop < 5; hop++) {
+    const res = await fetch(u.href, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(LINK_TIMEOUT_MS),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Talmaci/1.0)', 'Accept-Language': 'ro,en;q=0.8' }
+    });
+    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+      u = _publicUrl(new URL(res.headers.get('location'), u).href);
+      continue;
+    }
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') || '')) return null;
+    // Read up to the end of the head, or LINK_MAX_BYTES.
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let html = '';
+    while (html.length < LINK_MAX_BYTES && !/<\/head>/i.test(html)) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value, { stream: true });
+    }
+    reader.cancel().catch(() => {});
+    return { html, host: u.hostname };
+  }
+  return null;
+}
+
+function _meta(html, property) {
+  const tag = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]*>`, 'i'));
+  const content = tag && tag[0].match(/content=["']([^"']*)["']/i);
+  return content ? _decodeEntities(content[1]) : '';
+}
+
+/* { title, author }, either of them '' when the link does not say. A
+ * YouTube video's title and channel come from YouTube's own oEmbed. Any
+ * other page gives its og:title — the bare name, where its <title> often
+ * carries the site's too ("… - Google Drive") — or else its <title>,
+ * except from a Google sign-in page, which is what a private Drive file
+ * leads to. */
+exports.linkTitle = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Trebuie să fii autentificat.');
+  }
+  const url = _publicUrl(String((request.data && request.data.url) || ''));
+  if (!url) throw new HttpsError('invalid-argument', 'Linkul nu este valid.');
+
+  try {
+    if (/(^|\.)(youtube\.com|youtu\.be)$/i.test(url.hostname)) {
+      const res = await fetch('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(url.href),
+        { signal: AbortSignal.timeout(LINK_TIMEOUT_MS) });
+      if (!res.ok) return { title: '', author: '' };
+      const data = await res.json();
+      return { title: String(data.title || ''), author: String(data.author_name || '') };
+    }
+
+    const page = await _fetchPage(url.href);
+    if (!page || /^accounts\.google\./i.test(page.host)) return { title: '', author: '' };
+    let title = _meta(page.html, 'og:title');
+    if (!title) {
+      const t = page.html.match(/<title[^>]*>([^<]*)<\/title>/i);
+      title = t ? _decodeEntities(t[1]) : '';
+    }
+    return { title: title.slice(0, 300), author: '' };
+  } catch (err) {
+    logger.warn('linkTitle failed', { url: url.href, message: err.message });
+    return { title: '', author: '' };
+  }
+});
