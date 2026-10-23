@@ -95,6 +95,21 @@
  *   users/{uid}/seen/{songId}
  *   { [versionId]: number (ms), [versionId + ':' + threadId]: number (ms) }
  *
+ * Sheet music attached to a song — images or PDFs, any number of them,
+ * added by any member who can see the song. The file itself is in Cloud
+ * Storage, at the same path as its description here (see storage.rules):
+ *   songs/{songId}/scores/{scoreId}
+ *   {
+ *     name: string,              // the file's name as it was picked
+ *     type: string,              // 'application/pdf' or an image/* type
+ *     size: number (bytes),
+ *     path: string,              // where the file is in Cloud Storage
+ *     url: string,               // its download link — see addScore
+ *     by: uid,
+ *     byName: string,
+ *     at: number (ms)
+ *   }
+ *
  * The Rime/Sinonime/Biblie tabs have no persisted fields yet — their data
  * model will be added once that functionality is specified. */
 (function () {
@@ -233,6 +248,13 @@ function _versionsRef(songId) {
 async function deleteSong(songId) {
   const versionsSnap = await _versionsRef(songId).get();
   await Promise.all(versionsSnap.docs.map(d => deleteVersion(songId, d.id)));
+  // Refused only while the rules that allow sheet music are not published
+  // yet, and then none can have been added either.
+  const scoresSnap = await _scoresRef(songId).get().catch(err => {
+    if (err.code === 'permission-denied') return { docs: [] };
+    throw err;
+  });
+  await Promise.all(scoresSnap.docs.map(d => deleteScore(songId, { id: d.id, ...d.data() })));
   await fs().collection('songs').doc(songId).delete();
 }
 
@@ -347,6 +369,62 @@ async function markSeen(uid, songId, patch) {
 
 // Every other write fails at once when there is no connection, rather
 // than leaving whatever awaits it waiting until there is one.
+// ---- sheet music ----
+
+const SCORE_MAX_BYTES = 20 * 1024 * 1024;
+
+function _scoresRef(songId) {
+  return fs().collection('songs').doc(songId).collection('scores');
+}
+
+// What a picked file is, as storage.rules accepts it, or '' when it is
+// neither an image nor a PDF. Some Android file pickers give a PDF no type.
+function scoreType(file) {
+  const type = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : '');
+  return type === 'application/pdf' || type.startsWith('image/') ? type : '';
+}
+
+async function listScores(songId) {
+  const snap = await _scoresRef(songId).orderBy('at', 'asc').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+/* Uploads `file` and describes it beside the song's versions. The download
+ * link is kept in the description so that opening a file is a link opened
+ * from the tap itself: asked for afterwards, it would come too late for
+ * the browser to let a new tab open. `onProgress` hears the fraction sent. */
+async function addScore(songId, file, { by, byName }, onProgress) {
+  const ref = _scoresRef(songId).doc();
+  const path = `songs/${songId}/scores/${ref.id}`;
+  const fileRef = firebase.storage().ref(path);
+  const type = scoreType(file);
+  const task = fileRef.put(file, {
+    contentType: type,
+    // Shown in the browser rather than downloaded, under its own name.
+    contentDisposition: `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    customMetadata: { by }
+  });
+  if (onProgress) task.on('state_changed', snap => onProgress(snap.bytesTransferred / snap.totalBytes));
+  await task;
+  try {
+    const score = { name: file.name, type, size: file.size, path, url: await fileRef.getDownloadURL(), by, byName, at: Date.now() };
+    await ref.set(score);
+    return { id: ref.id, ...score };
+  } catch (err) {
+    fileRef.delete().catch(() => {});
+    throw err;
+  }
+}
+
+// The file first: if its description then fails to go, trying again still
+// works, where the other way round would leave a file nobody can see.
+async function deleteScore(songId, score) {
+  await firebase.storage().ref(score.path).delete().catch(err => {
+    if (err.code !== 'storage/object-not-found') throw err;
+  });
+  await _scoresRef(songId).doc(score.id).delete();
+}
+
 const _online = (fn) => async (...args) => { window.Utils.requireOnline(); return fn(...args); };
 
 window.Db = {
@@ -354,8 +432,10 @@ window.Db = {
   setVersionVerses, setOriginalVerses,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, deleteSong, setSongStatus, setWorking, setVersionOrder,
-    addVersion, updateVersion, deleteVersion, addNote, deleteNote, editNote, setNoteHeart, markSeen
-  }).map(([name, fn]) => [name, _online(fn)]))
+    addVersion, updateVersion, deleteVersion, addNote, deleteNote, editNote, setNoteHeart, markSeen,
+    listScores, addScore, deleteScore
+  }).map(([name, fn]) => [name, _online(fn)])),
+  scoreType, SCORE_MAX_BYTES
 };
 
 })();

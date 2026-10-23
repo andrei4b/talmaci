@@ -28,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v194';
+const CACHE_NAME = 'talmaci-shell-v195';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -109,7 +109,8 @@ const CDN_FILES = [
   'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore-compat.js',
   'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions-compat.js',
-  'https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js'
+  'https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js',
+  'https://www.gstatic.com/firebasejs/11.10.0/firebase-storage-compat.js'
 ];
 
 self.addEventListener('install', (event) => {

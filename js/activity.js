@@ -25,6 +25,8 @@
  *     status?: string,      // for 'status'
  *     working?: boolean,    // for 'working'
  *     fields?: string[],    // for 'song_edited': which details changed
+ *     fileName?: string,    // for 'score_added'/'score_deleted': the
+ *                           // sheet music file's name
  *     at: number (ms)
  *   }
  * A subcollection of the group rather than a top-level collection so the
@@ -158,6 +160,14 @@ const DESCRIBE = {
     const v = `„${e.versionTitle || 'o versiune'}”` + (e.section ? ` (${e.section})` : '');
     const what = e.reply ? `${a} răspuns la o observație la ${v}` : `${a} lăsat o observație la ${v}`;
     return { before: `${what} din`, own: what };
+  },
+  score_added: (e, a) => {
+    const f = `partitura „${e.fileName || ''}”`;
+    return { before: `${a} adăugat ${f} la`, own: `${a} adăugat ${f}` };
+  },
+  score_deleted: (e, a) => {
+    const f = `partitura „${e.fileName || ''}”`;
+    return { before: `${a} șters ${f} din`, own: `${a} șters ${f}` };
   },
   status: (e, a) => {
     const v = `ca „${statusLabel(e.status)}”`;

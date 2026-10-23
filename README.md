@@ -83,6 +83,21 @@ or later). See `js/push.js` and `functions/index.js`.
 2. Publish `firestore.rules` (it lets each member store their devices).
 3. `firebase deploy --only functions`.
 
+## Sheet music
+
+A song can carry its sheet music: images or PDFs, up to 20 MB each, listed
+from the song's menu (**Partituri**) and opened in the browser's own
+viewer. They belong to the song, not to any version. The files are kept in
+Cloud Storage (see `js/scores.js`, `js/db.js` and `storage.rules`), which
+needs the Blaze plan, as the functions already do.
+
+1. Firebase console → Build → **Storage** → Get started (production mode),
+   so the default bucket in `js/firebase-config.js` (`storageBucket`)
+   exists.
+2. Publish `firestore.rules`.
+3. Publish `storage.rules` — Storage → Rules → paste → Publish — and allow
+   it to read Firestore when the console asks.
+
 ## Google Translate "Mot-a-mot" translations (optional)
 
 A song's kebab menu can generate a literal machine translation into a version
@@ -237,6 +252,7 @@ service-worker.js          App-shell offline caching (bypasses Firebase/
                              Google API traffic — never caches your data)
 firestore.rules             Security rules (reference copy — publish to
                              the Firebase console manually, see above)
+storage.rules               Cloud Storage rules, for sheet music (same)
 js/firebase-config.js        Your Firebase project's public web config
 js/auth.js                    Firebase Auth + user profile (role, group)
 js/db.js                       Firestore data layer (songs, versions)
@@ -248,6 +264,7 @@ js/ro-phonetics.js                Romanian G2P, syllables, stress — shared
 js/rhyme.js                        Loads the rhyme index, answers queries
 js/songs.js                         Main page: song list, search, add song
 js/song-detail.js                    Song page: the text and its editor
+js/scores.js                         A song's sheet music (Partituri)
 js/engleza-tab.js                    Dicționare → Engleză (Merriam-Webster)
 js/biblic-tab.js                     Dicționare → Biblic (Easton's, ISBE)
 js/app.js                             Sign-in/join gating, routing, account

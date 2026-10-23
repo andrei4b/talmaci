@@ -18,6 +18,8 @@ rules_version = '2';
 //   /songs/{songId}   { title, originalVerses: [{ mark, lyrics }], groupId, shared, status, workers, versionOrder, demoUrl, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId} { title, verses: [{ mark, lyrics }], createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId}/notes/{noteId} { text, by, byName, at, anchor?, parentId?, editedAt?, hearts? }
+//   /songs/{songId}/scores/{scoreId} { name, type, size, path, url, by, byName, at }
+//                     (the file itself is in Cloud Storage — see storage.rules)
 //   /users/{uid}/seen/{songId} { [versionId]: ms, [versionId:threadId]: ms }
 //
 // Any group member can create a song, but editing (rename, original text)
@@ -242,14 +244,15 @@ service cloud.firestore {
       // it, or an admin — this is what stops one person's draft from being
       // overwritten by someone else without permission. A personal song's
       // versions follow the same not-even-an-admin rule as the song itself.
+      function parentSong() {
+        return get(/databases/$(database)/documents/songs/$(songId)).data;
+      }
+      function canSeeParent() {
+        return parentSong().groupId == myGroup()
+          && (isShared(parentSong()) || parentSong().createdBy == request.auth.uid);
+      }
+
       match /versions/{versionId} {
-        function parentSong() {
-          return get(/databases/$(database)/documents/songs/$(songId)).data;
-        }
-        function canSeeParent() {
-          return parentSong().groupId == myGroup()
-            && (isShared(parentSong()) || parentSong().createdBy == request.auth.uid);
-        }
         allow read: if isSignedIn() && canSeeParent();
         allow create: if isSignedIn() && canSeeParent()
           && request.resource.data.createdBy == request.auth.uid;
@@ -307,6 +310,29 @@ service cloud.firestore {
                 || parentVersion().createdBy == request.auth.uid
                 || parentSong().createdBy == request.auth.uid);
         }
+      }
+
+      // The song's sheet music: one per file, described here and kept in
+      // Cloud Storage at the same path (see storage.rules). Any member who
+      // can see the song reads and adds them, in their own name; nothing
+      // about one ever changes afterwards. Whoever added it deletes it, and
+      // so does whoever created the song or an admin — the song's deletion
+      // has to clear them out first (see db.js).
+      match /scores/{scoreId} {
+        allow read: if isSignedIn() && canSeeParent();
+        allow create: if isSignedIn() && canSeeParent()
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 300
+          && request.resource.data.path == 'songs/' + songId + '/scores/' + scoreId
+          && request.resource.data.url is string
+          && request.resource.data.at is number;
+        allow update: if false;
+        allow delete: if isSignedIn() && canSeeParent()
+          && (resource.data.by == request.auth.uid
+              || isAdmin()
+              || parentSong().createdBy == request.auth.uid);
       }
     }
   }

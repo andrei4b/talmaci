@@ -1,0 +1,52 @@
+rules_version = '2';
+
+// Security rules for Tălmaci's Cloud Storage, which holds the sheet music
+// attached to songs (see js/scores.js) and nothing else.
+//
+// Each file sits at the same path as its description in Firestore,
+// songs/{songId}/scores/{scoreId}, and follows the same rules as that
+// description (see firestore.rules): anyone who can see the song reads
+// and adds files, in their own name; whoever added one, whoever created
+// the song or an admin deletes it. Who may see the song is read from
+// Firestore itself, so the two can't drift apart.
+//
+// Like firestore.rules, this copy does not deploy itself: paste it in the
+// Firebase console — Storage → Rules → Publish. The first time, the
+// console asks to let these rules read Firestore; allow it.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function song(songId) {
+      return firestore.get(/databases/(default)/documents/songs/$(songId)).data;
+    }
+    function isAdmin() {
+      return (request.auth.token.email == 'andrei4.bulzan@gmail.com'
+          && request.auth.token.email_verified == true)
+        || profile().role == 'admin';
+    }
+    function canSeeSong(songId) {
+      return request.auth != null
+        && song(songId).groupId == profile().groupId
+        && (song(songId).get('shared', true) != false
+            || song(songId).createdBy == request.auth.uid);
+    }
+
+    match /songs/{songId}/scores/{scoreId} {
+      allow read: if canSeeSong(songId);
+      // An image or a PDF, of up to 20 MB, marked with who added it.
+      allow create: if canSeeSong(songId)
+        && request.resource.size <= 20 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType == 'application/pdf')
+        && request.resource.metadata.by == request.auth.uid;
+      allow update: if false;
+      allow delete: if canSeeSong(songId)
+        && (resource.metadata.by == request.auth.uid
+            || isAdmin()
+            || song(songId).createdBy == request.auth.uid);
+    }
+  }
+}

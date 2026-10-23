@@ -1092,6 +1092,12 @@ button.text-tab__head { cursor: pointer; }
   white-space: nowrap;
   cursor: pointer;
 }
+/* A sheet music file, in the same row as a version: its name over what it
+ * is, how big, and who added it when. */
+.score-row { display: flex; flex-direction: column; gap: 2px; text-decoration: none; }
+.score-row__name { overflow: hidden; text-overflow: ellipsis; }
+.score-row__meta { font-size: 0.78rem; font-weight: 400; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.score-hint { font-size: 0.85rem; }
 .version-row__title--active { border-color: var(--color-accent); color: var(--color-accent); }
 .version-row__icon {
   flex-shrink: 0;

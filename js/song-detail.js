@@ -2506,6 +2506,11 @@ function _openSongMenu(root) {
         closeSheet(overlay);
       }
     }, menuLabel(icons.headphones, 'Ascultă melodia')),
+    // Like the status, anyone who can see the song adds sheet music to it.
+    el('button', {
+      class: 'btn btn--wide btn--menu',
+      onclick: () => closeSheetThen(overlay, () => window.Scores.open(_song))
+    }, menuLabel(icons.score, 'Partituri')),
     el('button', {
       class: 'btn btn--wide btn--menu',
       disabled: !canEdit,
