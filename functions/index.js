@@ -260,21 +260,6 @@ function _noteWhere(e) {
   return `„${e.versionTitle || 'o versiune'}”` + (e.section ? ` (${e.section})` : '');
 }
 
-/* A reply goes to the others in its thread — whoever left an observation
- * in it — rather than to everyone working on the song. */
-async function _threadPeople(e) {
-  const notes = admin.firestore().collection('songs').doc(e.songId)
-    .collection('versions').doc(e.versionId).collection('notes');
-  const [first, replies] = await Promise.all([
-    notes.doc(e.threadId).get(),
-    notes.where('parentId', '==', e.threadId).get()
-  ]);
-  const people = new Set(replies.docs.map(d => d.data().by));
-  if (first.exists) people.add(first.data().by);
-  people.delete(e.by);
-  return [...people].filter(Boolean);
-}
-
 /* What each logged action says, or null for those that do not notify. An
  * observation's entry names the observation from release 128 on, and its
  * text is added to it then; one from an older release says only where. */
@@ -303,8 +288,8 @@ exports.notifySongActivity = onDocumentCreated(
     const song = await _song(e.songId);
     if (!song) return;
     const where = { kind: e.action, songId: e.songId, by: e.by, workers: song.workers || [] };
-    const reply = e.action === 'note_added' && e.reply && e.versionId && e.threadId;
-    let recipients = await _inGroup(reply ? await _threadPeople(e) : _recipients(song, e.by), song.groupId);
+    // A reply too goes to everyone working on the song.
+    let recipients = await _inGroup(_recipients(song, e.by), song.groupId);
     const text = e.action === 'version_text' || e.action === 'original_text';
     if (text) recipients = await _dueForText(e.songId, recipients, Date.now());
     // No tag, so none replaces another: on a Mac, Chrome swaps a tagged

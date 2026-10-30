@@ -264,7 +264,7 @@ service cloud.firestore {
         // adds them, in their own name. Reading is not limited the same way
         // so that deleting a personal song's versions can still list them.
         // One may be on a verse (`anchor`) or answer another (`parentId`),
-        // which makes a thread. Only its author changes one's text, and only
+        // which it quotes. Only its author changes one's text, and only
         // that and when; any member gives any one a heart or takes their own
         // back — only their own. Its
         // author or an admin deletes one — and so does whoever may delete

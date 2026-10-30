@@ -898,18 +898,24 @@ button.text-tab__head { cursor: pointer; }
   box-shadow: 0 0 0 2px var(--color-surface);
 }
 
-/* The observations sheet: one card a thread, on the page's warm tint so
-   it stands off the white sheet. Each observation is its author's initials
-   in a circle beside their name · when, the text, and a gray row of what
-   can be done with it; the replies are set in under the first, their
-   circles smaller and in line with its text. */
+/* The observations sheet: one card an observation, in the order they were
+   left, on the page's warm tint so it stands off the white sheet. Each is
+   its author's initials in a circle beside their name · when, what it
+   answers if it is a reply, the text, and a gray row of what can be done
+   with it. */
 .note-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .note-list__empty { color: var(--color-text-muted); padding: 4px 0 8px; }
-.thread {
+.note-card {
   padding: 12px 12px 6px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-bg);
+}
+/* Gone to from a reply's quote: lit up, then back to its tint. */
+.note-card--flash { animation: note-flash 1.6s ease-out; }
+@keyframes note-flash {
+  0%, 35% { background: rgba(201, 125, 62, 0.2); }
+  100% { background: var(--color-bg); }
 }
 .note { display: flex; gap: 10px; padding: 2px 0 4px; }
 .note__avatar {
@@ -959,6 +965,33 @@ button.text-tab__head { cursor: pointer; }
 .note__delete--confirm { opacity: 1; color: #fff; background: var(--color-danger); }
 .note__edited { color: var(--color-text-muted); font-size: 0.75rem; font-style: italic; }
 .note__text { margin-top: 1px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* What a reply answers: its author in their color over two lines of what
+   they said, a bar in the same color at the left. */
+.note__quote {
+  display: block;
+  width: 100%;
+  margin: 3px 0 5px;
+  padding: 5px 9px 6px;
+  border: none;
+  border-left: 3px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-panel);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.note__quote-who { display: block; font-weight: 600; }
+.note__quote-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.note__quote--gone { font-style: italic; cursor: default; }
 /* Răspunde · Editează · ♡ — gray, a dot between each. */
 .note__actions { display: flex; align-items: center; flex-wrap: wrap; margin: 2px 0 0 -2px; }
 .note__action {
@@ -985,13 +1018,9 @@ button.text-tab__head { cursor: pointer; }
 .note__heart svg { width: 15px; height: 15px; }
 .note__heart--mine { color: var(--color-danger); }
 .note__heart--mine svg { fill: currentColor; }
-.note--reply { margin-left: 42px; }
-.note--reply .note__avatar { width: 26px; height: 26px; font-size: 0.68rem; }
-.note--gone { align-items: center; padding: 0 0 6px; color: var(--color-text-muted); font-style: italic; font-size: 0.9rem; }
-.note__avatar--gone { background: none; border: 1.5px dashed var(--color-border); }
-/* Where a thread on a verse is: its name, a pill when it has changed or
-   is gone, and a gray line of its words that opens to the whole verse. */
-.thread__where {
+/* Where an observation on a verse is: its name, a pill when it has changed
+   or is gone, and a gray line of its words that opens to the whole verse. */
+.note-where {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -999,7 +1028,7 @@ button.text-tab__head { cursor: pointer; }
   margin-bottom: 4px;
   font-size: 0.78rem;
 }
-.thread__section {
+.note-where__section {
   padding: 2px 9px;
   border-radius: 999px;
   background: var(--color-panel);
@@ -1008,14 +1037,14 @@ button.text-tab__head { cursor: pointer; }
   font-weight: 600;
   white-space: nowrap;
 }
-.thread__state {
+.note-where__state {
   padding: 2px 9px;
   border-radius: 999px;
   background: rgba(201, 125, 62, 0.14);
   color: #8F5222;
   font-weight: 600;
 }
-.thread__quote {
+.note-where__quote {
   display: block;
   width: 100%;
   margin: 0 0 8px;
@@ -1034,8 +1063,8 @@ button.text-tab__head { cursor: pointer; }
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.thread__quote--open { white-space: pre-wrap; overflow-wrap: anywhere; }
-.thread__quote-label { font-style: normal; font-weight: 600; }
+.note-where__quote--open { white-space: pre-wrap; overflow-wrap: anywhere; }
+.note-where__quote-label { font-style: normal; font-weight: 600; }
 /* Above the field while replying or editing: what for, and a way out of it. */
 .note-reply-to {
   display: flex;
@@ -1062,7 +1091,7 @@ button.text-tab__head { cursor: pointer; }
 }
 .note-hint { font-size: 0.85rem; }
 .note-verse { margin-top: -4px; font-size: 0.85rem; color: var(--color-text-muted); }
-/* White, unlike the threads' warm cards above it, so the field to write
+/* White, unlike the observations' warm cards above it, so the field to write
    in never reads as one more observation. */
 .note-input { flex-shrink: 0; min-height: 76px; background: var(--color-surface); border-color: #D6CFBF; }
 .note-input:focus { border-color: var(--color-accent); outline: none; box-shadow: 0 0 0 3px rgba(201, 125, 62, 0.15); }

@@ -20,8 +20,8 @@
  *                           // the text (see functions/index.js); absent
  *                           // on entries before release 128
  *     section?: string,     // for 'note_added' on a verse: its name
- *     reply?: boolean,      // for 'note_added' answering another, with
- *     threadId?: string,    // the thread's first observation (release 133)
+ *     reply?: boolean,      // for 'note_added' answering another; from
+ *     threadId?: string,    // release 133 to 198, the thread's first
  *     status?: string,      // for 'status'
  *     working?: boolean,    // for 'working'
  *     fields?: string[],    // for 'song_edited': which details changed

@@ -87,17 +87,20 @@
  *     at: number (ms),
  *     anchor?: {                 // on a verse: what it was left on, to
  *       key, name, nth, pos,     // find the verse again after edits —
- *       quote                    // see Threads.anchorFor; replies carry
- *     },                         // their thread's too
- *     parentId?: string,         // a reply: the observation it answers
+ *       quote                    // see Threads.anchorFor; a reply
+ *     },                         // carries that of what it answers
+ *     parentId?: string,         // a reply: the observation it answers,
+ *                                // itself perhaps a reply (until release
+ *                                // 199, always its thread's first)
  *     editedAt?: number (ms),    // when its author last changed its text
  *     hearts?: uid[]             // who has given it a heart
  *   }
  * and each member's own record of when they last read a song's, so the
  * button can mark what is new to them on any device — a version's as a
- * whole, or one thread's, read on its own from its verse:
+ * whole, or one observation's, read from its verse (until release 199, a
+ * thread's, under its first observation):
  *   users/{uid}/seen/{songId}
- *   { [versionId]: number (ms), [versionId + ':' + threadId]: number (ms) }
+ *   { [versionId]: number (ms), [versionId + ':' + noteId]: number (ms) }
  *
  * Sheet music attached to a song — images or PDFs, any number of them,
  * added by any member who can see the song. The file itself is in Cloud
@@ -366,8 +369,8 @@ function _seenRef(uid, songId) {
   return fs().collection('users').doc(uid).collection('seen').doc(songId);
 }
 
-// { versionId: ms, 'versionId:threadId': ms } — when this member last
-// read each version's notes, and threads read on their own.
+// { versionId: ms, 'versionId:noteId': ms } — when this member last
+// read each version's notes, and notes read from their verse.
 async function getSeen(uid, songId) {
   const snap = await _get(_seenRef(uid, songId));
   return snap.exists ? snap.data() : {};

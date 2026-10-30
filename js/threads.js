@@ -1,5 +1,5 @@
-/* threads.js — observations on one verse of a version, and the replies to
- * an observation (see db.js for how they are stored).
+/* threads.js — observations on one verse of a version (see db.js for how
+ * they are stored).
  *
  * A verse has no id of its own: it is an entry in its version's list of
  * verses (see verses.js), and the list is edited freely afterwards —
@@ -116,38 +116,6 @@ function locate(verses, anchor) {
   return { at: [], home: -1, changed: true };
 }
 
-/* A version's observations, flat and in the order they were left, as
- * threads: [{ id, root, replies, anchor, at, last }], by when each last
- * had something added. `root` is null when the first observation of a
- * thread was deleted after it had replies; the replies stay, and carry
- * the anchor for that reason. */
-function group(notes) {
-  const byId = new Map();
-  const threads = [];
-  (notes || []).filter(n => !n.parentId).forEach(n => {
-    const t = { id: n.id, root: n, replies: [], anchor: n.anchor || null };
-    byId.set(n.id, t);
-    threads.push(t);
-  });
-  (notes || []).filter(n => n.parentId).forEach(n => {
-    let t = byId.get(n.parentId);
-    if (!t) {
-      t = { id: n.parentId, root: null, replies: [], anchor: n.anchor || null };
-      byId.set(n.parentId, t);
-      threads.push(t);
-    }
-    t.replies.push(n);
-  });
-  threads.forEach(t => {
-    t.replies.sort((a, b) => a.at - b.at);
-    const all = (t.root ? [t.root] : []).concat(t.replies);
-    t.at = all[0].at;
-    t.last = all[all.length - 1].at;
-    t.notes = all;
-  });
-  return threads.sort((a, b) => a.last - b.last);
-}
-
 /* What to call the verse an anchor is on: its section's name, or for a
  * verse with no mark, its first line. */
 function label(anchor) {
@@ -158,5 +126,5 @@ function label(anchor) {
   return '„' + (t.length > 32 ? t.slice(0, 31).trimEnd() + '…' : t) + '”';
 }
 
-window.Threads = { anchorFor, locate, group, label };
+window.Threads = { anchorFor, locate, label };
 })();
