@@ -28,7 +28,7 @@
  * fresh attempt once connectivity was actually back. */
 // The release, also in the ?v= of every app file index.html loads — bump
 // the two together (see index.html).
-const CACHE_NAME = 'talmaci-shell-v200';
+const CACHE_NAME = 'talmaci-shell-v201';
 const NETWORK_TIMEOUT_MS = 1500;
 // The Bible text (~4 MB) and the rhyme index (~5.7 MB) are static, so unlike
 // the rest of the shell they are served cache-first: no re-download on every
@@ -260,8 +260,9 @@ self.addEventListener('message', (event) => {
  * shown here. Every push is shown: Safari takes the permission away from
  * a site whose pushes show nothing. A tag from the sender would make a
  * new one replace the last, but none is sent any more: on a Mac the
- * replacement comes in silently. An observation's carries its versionId,
- * and tapping it opens that version's. */
+ * replacement comes in silently. An observation's carries its versionId
+ * and noteId, and tapping it opens the observations it is among: its
+ * verse's, or its version's (see _openNotesFor in js/song-detail.js). */
 self.addEventListener('push', (event) => {
   let d = {};
   try { d = (event.data && event.data.json() || {}).data || {}; } catch (_) {}
@@ -273,6 +274,7 @@ self.addEventListener('push', (event) => {
     renotify: !!d.tag,
     data: { hash: !d.songId ? '#/'
       : d.versionId ? `#/song/${encodeURIComponent(d.songId)}/notes/${encodeURIComponent(d.versionId)}`
+        + (d.noteId ? '/' + encodeURIComponent(d.noteId) : '')
       : `#/song/${encodeURIComponent(d.songId)}` }
   }));
 });

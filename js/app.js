@@ -395,15 +395,16 @@ function _tabForHash(hash) {
 }
 
 function _renderRoute(root) {
-  // A song with one version's observations to open — where a tapped
-  // notification leads (see service-worker.js). Only on the way in: the
+  // A song with observations to open — where a tapped notification leads
+  // (see service-worker.js): a version's, and the one observation it is
+  // about, from release 201 on. Only on the way in: the
   // address becomes the song's own, so back, a reload or a tab switch
   // return to the song without opening them again.
   let openNotesFor = null;
-  const notes = (location.hash || '').match(/^#\/song\/([^/]+)\/notes\/([^/]*)$/);
+  const notes = (location.hash || '').match(/^#\/song\/([^/]+)\/notes\/([^/]*)(?:\/([^/]+))?$/);
   if (notes) {
     history.replaceState(history.state, '', '#/song/' + notes[1]);
-    openNotesFor = decodeURIComponent(notes[2]);
+    openNotesFor = { versionId: decodeURIComponent(notes[2]), noteId: notes[3] ? decodeURIComponent(notes[3]) : null };
   }
   const hash = location.hash || '#/';
   const tab = _tabForHash(hash);

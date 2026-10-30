@@ -126,8 +126,9 @@ WIDE.addEventListener('change', () => {
   if (_song && _shellRoot && _shellRoot.isConnected) _renderShell(_shellRoot);
 });
 
-/* `openNotesFor`, a version id, opens that version's observations once
- * the song is on screen — from a tapped notification. `entered`: the song
+/* `openNotesFor`, { versionId, noteId? }, opens observations once the
+ * song is on screen — from a tapped notification: where that observation
+ * is, its verse's or its version's (see _openNotesFor). `entered`: the song
  * is being arrived at (see _renderRoute in app.js), so it is read afresh
  * even if it is the one last open, which may have changed since. */
 async function render(root, songId, openNotesFor, entered) {
@@ -171,7 +172,8 @@ async function render(root, songId, openNotesFor, entered) {
   try {
     ({ song: _song, versions: _versions } = await _loadSong(songId));
 
-    const remembered = _versions.some(v => v.id === openNotesFor) ? openNotesFor : _recallVersion(songId);
+    const asked = openNotesFor && openNotesFor.versionId;
+    const remembered = _versions.some(v => v.id === asked) ? asked : _recallVersion(songId);
     const rememberedStillExists = remembered && _versions.some(v => v.id === remembered);
     _activeVersionId = rememberedStillExists ? remembered
       : (_versions.length ? _versions[_versions.length - 1].id : null);
@@ -234,15 +236,42 @@ async function _loadSong(songId) {
 }
 
 // Brings the version up whose observations a notification is about.
-function _showNotesFor(versionId) {
+function _showNotesFor(target) {
+  const versionId = target && target.versionId;
   if (!_versions.some(v => v.id === versionId)) return;
   _activeVersionId = versionId;
   _rememberVersion(_song.id, versionId);
 }
 
-function _openNotesFor(versionId) {
-  const version = _versions.find(v => v.id === versionId);
-  if (version && _hasNotes()) _openNotes(version);
+/* Opens what a notification is about: the observations on the verse its
+ * observation was left on — a reply carries that of what it answers — or
+ * the version's, for one on the whole version, one whose verse is no
+ * longer in the text, and a notification from before release 201, which
+ * named only the version. */
+async function _openNotesFor(target) {
+  const songId = _song && _song.id;
+  if (!target || !_hasNotes() || !_versions.some(v => v.id === target.versionId)) return;
+  const n = target.noteId ? await _noteComing(target.versionId, target.noteId) : null;
+  const version = _songOnScreen() && _song.id === songId && _versions.find(v => v.id === target.versionId);
+  if (!version) return;
+  const loc = n && n.anchor ? window.Threads.locate(version.verses || [], n.anchor) : null;
+  const at = !loc || !loc.at.length ? null : loc.at.includes(loc.home) ? loc.home : loc.at[0];
+  _openNotes(version, at);
+}
+
+/* An observation of a version, once its listener has brought it: at once
+ * when it is here already, or null when it does not come within
+ * NOTE_WAIT_MS — deleted since, or no connection. */
+const NOTE_WAIT_MS = 4000;
+function _noteComing(versionId, noteId) {
+  const find = () => (_notes.get(versionId) || []).find(n => n.id === noteId);
+  if (find()) return Promise.resolve(find());
+  return new Promise(resolve => {
+    const done = (n) => { _noteRedraws.delete(redraw); clearTimeout(timer); resolve(n); };
+    const redraw = (id) => { if (id === versionId && find()) done(find()); };
+    const timer = setTimeout(() => done(null), NOTE_WAIT_MS);
+    _noteRedraws.add(redraw);
+  });
 }
 
 function _renderShell(root) {

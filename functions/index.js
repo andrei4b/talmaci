@@ -201,7 +201,8 @@ async function _inGroup(recipients, groupId) {
 }
 
 /* `data` is what the service worker shows: title, body, songId, and
- * versionId for an observation (which opens them). All strings, as FCM requires. */
+ * versionId and noteId for an observation (which open the observations it
+ * is among). All strings, as FCM requires. */
 async function _send(where, recipients, data) {
   const db = admin.firestore();
   if (!recipients.length) { logger.info('Nobody to notify', where); return; }
@@ -299,6 +300,7 @@ exports.notifySongActivity = onDocumentCreated(
       const said = await _noteText(e).catch(() => '');
       if (said) data.body = `${_firstName(e)}${e.reply ? ' a răspuns' : ''} la ${_noteWhere(e)}: ${said}`;
       data.versionId = e.versionId;
+      if (e.noteId) data.noteId = e.noteId;
     }
     await _send(where, recipients, data);
   }
@@ -367,7 +369,8 @@ exports.notifyNoteHeart = onDocumentUpdated(
       title: song.title || 'Fără titlu',
       body: `${who} a dat o inimă observației tale la ${where}` + (said ? `: ${said}` : ''),
       songId,
-      versionId
+      versionId,
+      noteId
     });
   }
 );
