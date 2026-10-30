@@ -278,15 +278,37 @@ function _switchTab(route) {
     return;
   }
   if (st && st.talmaciFromText === route) {
-    history.back();
+    _backToText();
     return;
   }
   if (_tabForHash(here) === 'text') {
     history.pushState({ talmaciFromText: here }, '', route);
+    _markDepth();
   } else {
     history.replaceState(st, '', route);
   }
   _renderCurrentScreen();
+}
+
+/* Back to the Text entry under this one. history.back() steps through the
+ * JOINT session history, which also holds the pages followed inside the
+ * Sinonime frame — each search there and each link adds an entry. So after
+ * a few lookups back only rewound the frame, one page per tap, and the Text
+ * button took that many taps to answer. The Navigation API's back() moves
+ * between this page's own entries and passes over the frame's.
+ *
+ * Without it, the length the history had when the entry was pushed tells
+ * how many steps were added since. That count is wrong only after back
+ * inside dexonline itself, which leaves the length as it was. */
+function _backToText() {
+  if (window.navigation && navigation.canGoBack) { navigation.back(); return; }
+  const depth = history.state && history.state.talmaciDepth;
+  history.go(depth ? Math.min(-1, depth - 1 - history.length) : -1);
+}
+
+// Recorded on the entry just pushed, for _backToText's fallback.
+function _markDepth() {
+  history.replaceState({ ...history.state, talmaciDepth: history.length }, '');
 }
 
 // Whether the pop under way is _switchTab dropping an inner page, which
@@ -301,6 +323,7 @@ function _anchorOnText() {
   if (_tabForHash(here) === 'text' || (history.state && history.state.talmaciFromText)) return;
   history.replaceState(null, '', '#/');
   history.pushState({ talmaciFromText: '#/' }, '', here);
+  _markDepth();
 }
 
 /* Another tab, by id, the way its button in the bar would open it — or one
