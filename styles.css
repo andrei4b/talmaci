@@ -221,6 +221,7 @@ a { color: inherit; text-decoration: none; }
 .song-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .song-list__item { }
 .song-list__link {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -228,6 +229,19 @@ a { color: inherit; text-decoration: none; }
   background: var(--color-surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+}
+/* A song with observations you have not read, with the dot their button
+   has inside it (see .notes-btn--unread) — in the corner, clear of the
+   title, which stops short of it. */
+.song-list__link--unread::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
 }
 .song-list__title {
   font-weight: 600;

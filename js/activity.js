@@ -122,6 +122,17 @@ async function _listForSong(groupId, songId) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
 }
 
+/* The observations left in the group after `since`, as their entries
+ * name them — for the dots on the song list (see songs.js). On `at` alone,
+ * which needs no index made by hand; the other entries are dropped here.
+ * Those before release 128 name no observation, and are dropped too. */
+async function notesSince(groupId, since) {
+  window.Utils.requireOnline();
+  const snap = await _ref(groupId).where('at', '>', since).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(e => e.action === 'note_added' && e.songId && e.versionId && e.noteId);
+}
+
 // ---- the screen ----
 
 const FIELD_LABELS = { title: 'titlul', demoUrl: 'linkul demo' };
@@ -326,6 +337,6 @@ function _renderEntry(e, names, me, now, inSong) {
   ]);
 }
 
-window.Activity = { log, render, openForSong, formatWhen };
+window.Activity = { log, render, openForSong, formatWhen, notesSince };
 
 })();

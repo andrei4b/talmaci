@@ -412,31 +412,28 @@ function _located(version) {
   }));
 }
 
-// When you last read an observation: all of its version's at once, or
-// that one on its own, from its verse — whichever was later. Until
-// release 199 one was read from its verse with its whole thread, under
-// the thread's first observation, which a reply then named as its parent.
-function _seenAt(seen, versionId, n) {
-  return Math.max(seen[versionId] || 0, seen[versionId + ':' + n.id] || 0,
-    n.parentId ? seen[versionId + ':' + n.parentId] || 0 : 0);
-}
-
-// Someone else's observation since you last read it — none until it is
-// known when that was (see _seenFor).
+// Someone else's observation since you last read it (see Db.seenAt) —
+// none until it is known when that was (see _seenFor).
 function _noteUnread(versionId, n, seen) {
   if (!seen && _seenFor !== _song.id) return false;
-  return n.by !== window.Auth.currentUser().uid && n.at > _seenAt(seen || _seen, versionId, n);
+  return n.by !== window.Auth.currentUser().uid && n.at > window.Db.seenAt(seen || _seen, versionId, n);
 }
 
 function _hasUnread(versionId) {
   return (_notes.get(versionId) || []).some(n => _noteUnread(versionId, n));
 }
 
+/* The dots on the observations' buttons, and on the song in the list (see
+ * Songs.notesUnread): it keeps one while any is unread, and loses it once
+ * every version's have come in and none is. */
 function _syncNoteDots() {
   document.querySelectorAll('.notes-btn[data-version]').forEach(b => {
     b.classList.toggle('notes-btn--unread', _hasUnread(b.dataset.version));
   });
   _syncVerseNotes();
+  if (_seenFor !== _song.id) return;
+  const unread = _versions.some(v => _hasUnread(v.id));
+  if (unread || _versions.every(v => _notes.has(v.id))) window.Songs.notesUnread(_song.id, unread);
 }
 
 /* The button that opens a version's observations: in the row under the
@@ -671,7 +668,7 @@ function _openNotes(version, verseIndex) {
         }
       }
     }) : null;
-    const fresh = n.by !== me && n.at > _seenAt(seenBefore, version.id, n);
+    const fresh = n.by !== me && n.at > window.Db.seenAt(seenBefore, version.id, n);
     return el('div', { class: 'note' + (fresh ? ' note--new' : '') }, [
       avatar(n),
       el('div', { class: 'note__body' }, [

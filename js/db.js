@@ -381,6 +381,22 @@ async function markSeen(uid, songId, patch) {
   await _seenRef(uid, songId).set(patch, { merge: true });
 }
 
+// When, by a song's `seen`, you last read observation `n`: all of its
+// version's at once, or that one on its own, from its verse — whichever
+// was later. Until release 199 one was read from its verse with its whole
+// thread, under the thread's first observation, which a reply then named
+// as its parent.
+function seenAt(seen, versionId, n) {
+  return Math.max(seen[versionId] || 0, seen[versionId + ':' + n.id] || 0,
+    n.parentId ? seen[versionId + ':' + n.parentId] || 0 : 0);
+}
+
+// One observation, or null when it is gone.
+async function getNote(songId, versionId, noteId) {
+  const snap = await _get(_notesRef(songId, versionId).doc(noteId));
+  return snap.exists ? { id: snap.id, ...snap.data() } : null;
+}
+
 // Every other write fails at once when there is no connection, rather
 // than leaving whatever awaits it waiting until there is one.
 // ---- sheet music ----
@@ -442,7 +458,7 @@ async function deleteScore(songId, score) {
 const _online = (fn) => async (...args) => { window.Utils.requireOnline(); return fn(...args); };
 
 window.Db = {
-  listSongs, getSong, getGroup, listVersions, watchNotes, getSeen,
+  listSongs, getSong, getGroup, listVersions, watchNotes, getSeen, seenAt, getNote,
   setVersionVerses, setOriginalVerses,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, setDemoTitle, deleteSong, setSongStatus, setWorking, setVersionOrder,

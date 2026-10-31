@@ -82,6 +82,7 @@ async function render(root) {
     // where the list was scrolled to instead of resetting to the top.
     _renderList(_listWrap);
     _listWrap.scrollTop = _listScrollTop;
+    _checkUnread();
   } else {
     await _loadSongs();
   }
@@ -182,6 +183,7 @@ async function _loadSongs(quiet) {
   _repaintScopeButton();
   _renderList(_listWrap);
   if (quiet) _listWrap.scrollTop = top;
+  if (_loaded) _checkUnread();
   return _loaded;
 }
 
@@ -257,7 +259,8 @@ function _renderList(listWrap) {
     ul.appendChild(el('li', { class: 'song-list__item' }, [
       el('a', {
         href: `#/song/${song.id}`,
-        class: 'song-list__link'
+        class: 'song-list__link' + (isShared(song) && _unread.has(song.id) ? ' song-list__link--unread' : ''),
+        'data-song': song.id
       }, [
         el('span', { class: 'song-list__title' }, [song.title || 'Fără titlu']),
         el('span', { class: 'song-list__snippet' }, [window.Sections.strip(window.Verses.toText(window.Verses.read(song.originalVerses))).slice(0, 80)]),
@@ -436,6 +439,111 @@ function _openAddSong() {
 // Everything above is per-account, and the page is no longer reloaded
 // between accounts, so signing in as someone else has to start from nothing
 // instead of inheriting the previous account's list, scope and group name.
+/* ---- the dots on songs with observations you have not read ----
+ *
+ * Someone else's, left since you last read them — what puts the dot on a
+ * version's observations button (see _noteUnread in song-detail.js). Found
+ * from the group's activity log rather than from the observations
+ * themselves, which would be a read of every version of every song: its
+ * entries for observations of the last UNREAD_DAYS, read once and then
+ * only those added since, each held against when you last read that
+ * song's — and the observation itself looked up, to be sure it is still
+ * there. One older than that shows its dot only inside its song.
+ *
+ * A song with a dot is checked again every time the list is shown, as it
+ * may have been read on another device. Meanwhile the song on screen
+ * says itself whether it still has any (see notesUnread). */
+const UNREAD_DAYS = 60;
+// Entries are read again from a little before the last read, for one
+// whose writer's clock runs behind this one's.
+const CLOCK_SLACK_MS = 10 * 60 * 1000;
+let _noteEntries = new Map();   // entry id -> entry, for others' observations
+let _entriesAskedAt = 0;        // when they were last read, by this clock
+let _unread = new Set();        // song ids
+// songId -> when the open song last said whether it has any: a check that
+// began before that knows less, and leaves the song as it said.
+let _toldAt = new Map();
+let _checking = false;
+let _checkAgain = false;
+
+async function _checkUnread() {
+  if (_checking) { _checkAgain = true; return; }
+  if (isOffline() || !_loaded) return;
+  _checking = true;
+  const gen = _gen;
+  try {
+    await _readUnread(gen);
+  } catch (_) { /* the dots stay as they were, to be checked again */ }
+  if (gen !== _gen) return;
+  _checking = false;
+  if (_checkAgain) { _checkAgain = false; _checkUnread(); }
+}
+
+async function _readUnread(gen) {
+  const me = window.Auth.currentUser().uid;
+  const started = Date.now();
+  const since = _entriesAskedAt ? _entriesAskedAt - CLOCK_SLACK_MS : started - UNREAD_DAYS * 24 * 3600 * 1000;
+  const fresh = await window.Activity.notesSince(window.Auth.currentGroupId(), since);
+  if (gen !== _gen) return;
+  _entriesAskedAt = started;
+  const toCheck = new Set(_unread);
+  fresh.forEach(e => {
+    if (e.by === me || _noteEntries.has(e.id)) return;
+    _noteEntries.set(e.id, e);
+    toCheck.add(e.songId);
+  });
+  const shared = new Set(_songs.filter(isShared).map(s => s.id));
+  const ids = [...toCheck].filter(id => shared.has(id));
+  const unread = await Promise.all(ids.map(id => _songUnread(id, me).catch(() => null)));
+  if (gen !== _gen) return;
+  [..._unread].forEach(id => { if (!shared.has(id)) _unread.delete(id); });
+  ids.forEach((id, i) => {
+    if (unread[i] === null || (_toldAt.get(id) || 0) >= started) return;
+    if (unread[i]) _unread.add(id); else _unread.delete(id);
+  });
+  _paintUnread();
+}
+
+// Whether the song has an observation of someone else's you have not
+// read, newest first, as far as its entries in the log go.
+async function _songUnread(songId, me) {
+  const entries = [..._noteEntries.values()].filter(e => e.songId === songId).sort((a, b) => b.at - a.at);
+  if (!entries.length) return false;
+  const seen = await window.Db.getSeen(me, songId);
+  for (const e of entries) {
+    // Read already, by what the entry says; from release 133 to 198 one
+    // named the thread a reply was in.
+    if (e.at <= window.Db.seenAt(seen, e.versionId, { id: e.noteId, parentId: e.threadId })) continue;
+    const n = await window.Db.getNote(songId, e.versionId, e.noteId);
+    if (n && n.by !== me && n.at > window.Db.seenAt(seen, e.versionId, n)) return true;
+  }
+  return false;
+}
+
+function _paintUnread() {
+  if (!_listWrap || !_listWrap.isConnected) return;
+  _listWrap.querySelectorAll('.song-list__link[data-song]').forEach(a => {
+    a.classList.toggle('song-list__link--unread', _unread.has(a.dataset.song));
+  });
+}
+
+// From song-detail.js, for the song open there.
+function notesUnread(songId, unread) {
+  _toldAt.set(songId, Date.now());
+  if (unread) _unread.add(songId); else _unread.delete(songId);
+}
+
+// Back on screen after a while away, the list checks again: an
+// observation left meanwhile has most likely sent a notification.
+const AWAY_MS = 30 * 1000;
+let _hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { _hiddenAt = Date.now(); return; }
+  const away = _hiddenAt && Date.now() - _hiddenAt >= AWAY_MS;
+  _hiddenAt = 0;
+  if (away && _listWrap && _listWrap.isConnected) _checkUnread();
+});
+
 function reset() {
   _gen++;
   _songs = [];
@@ -450,12 +558,18 @@ function reset() {
   _scopeBtnEl = null;
   _listWrap = null;
   _memberNames = null;
+  _noteEntries = new Map();
+  _entriesAskedAt = 0;
+  _unread = new Set();
+  _toldAt = new Map();
+  _checking = false;
+  _checkAgain = false;
 }
 
 // The group's name, for song-detail.js to say where a song is going; ''
 // until the list has loaded it.
 function groupName() { return _groupName; }
 
-window.Songs = { render, refresh, noteUpdated, noteDeleted, reset, groupName };
+window.Songs = { render, refresh, noteUpdated, noteDeleted, notesUnread, reset, groupName };
 
 })();
