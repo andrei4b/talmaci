@@ -45,6 +45,9 @@ html, body {
   color: var(--color-text);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  /* iOS otherwise enlarges the text when the phone is turned sideways. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #app {
@@ -64,9 +67,10 @@ html, body {
   display: flex;
   flex-direction: column;
   max-width: 720px;
-  /* Installed on an iPhone, the page runs up under the status bar
-     (black-translucent in index.html), so the clock and battery would sit
-     on top of every screen's topbar. 0 everywhere else. */
+  /* On an iPhone installed before the status bar went opaque (see
+     index.html), the page runs up under the status bar, so the clock and
+     battery would sit on top of every screen's topbar. 0 everywhere else,
+     including fresh installs, where iOS starts the page below the bar. */
   padding-top: env(safe-area-inset-top);
 }
 

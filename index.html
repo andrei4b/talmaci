@@ -8,9 +8,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, interactive-widget=resizes-content" />
 <title>Tălmaci — Atelier de versuri</title>
 <meta name="description" content="Traduceri și compoziții de versuri în română — text, rime, sinonime și referințe biblice, într-un singur loc." />
-<meta name="theme-color" content="#2C3E66" />
+<!-- The page's cream, so the opaque status bar below blends into the topbar. -->
+<meta name="theme-color" content="#FAF7F0" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<!-- "default" (an opaque status bar), not "black-translucent": on iOS 26 a
+     Home Screen app with a translucent status bar gets a page that's short
+     by the status bar's height (WebKit bug 301108), leaving a strip at the
+     bottom that nothing on the page can paint. Installed apps keep the
+     style they were added with, so they need re-adding to pick this up;
+     until then _watchIosLost in app.js keeps the tab bar clear of the strip. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Tălmaci" />
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="apple-touch-icon" href="./icons/icon-192.png" />
@@ -29,7 +36,7 @@
      only when its URL matches exactly, so a new page never picks up an
      old stylesheet that happened to load faster, and an old page from the
      cache never mixes in new code. -->
-<link rel="stylesheet" href="./styles.css?v=202" />
+<link rel="stylesheet" href="./styles.css?v=203" />
 </head>
 <body>
 
@@ -45,29 +52,29 @@
 <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/11.10.0/firebase-storage-compat.js"></script>
-<script src="./js/firebase-config.js?v=202"></script>
-<script src="./js/auth.js?v=202"></script>
-<script src="./js/db.js?v=202"></script>
-<script src="./js/utils.js?v=202"></script>
-<script src="./js/sections.js?v=202"></script>
-<script src="./js/verses.js?v=202"></script>
-<script src="./js/threads.js?v=202"></script>
-<script src="./js/translate.js?v=202"></script>
-<script src="./js/ro-phonetics.js?v=202"></script>
-<script src="./js/rhyme.js?v=202"></script>
-<script src="./js/activity.js?v=202"></script>
-<script src="./js/push.js?v=202"></script>
-<script src="./js/update.js?v=202"></script>
-<script src="./js/songs.js?v=202"></script>
-<script src="./js/rime-tab.js?v=202"></script>
-<script src="./js/sinonime-tab.js?v=202"></script>
-<script src="./js/engleza-tab.js?v=202"></script>
-<script src="./js/biblic-tab.js?v=202"></script>
-<script src="./js/bible-tab.js?v=202"></script>
-<script src="./js/xlsx.js?v=202"></script>
-<script src="./js/scores.js?v=202"></script>
-<script src="./js/song-detail.js?v=202"></script>
-<script src="./js/app.js?v=202"></script>
+<script src="./js/firebase-config.js?v=203"></script>
+<script src="./js/auth.js?v=203"></script>
+<script src="./js/db.js?v=203"></script>
+<script src="./js/utils.js?v=203"></script>
+<script src="./js/sections.js?v=203"></script>
+<script src="./js/verses.js?v=203"></script>
+<script src="./js/threads.js?v=203"></script>
+<script src="./js/translate.js?v=203"></script>
+<script src="./js/ro-phonetics.js?v=203"></script>
+<script src="./js/rhyme.js?v=203"></script>
+<script src="./js/activity.js?v=203"></script>
+<script src="./js/push.js?v=203"></script>
+<script src="./js/update.js?v=203"></script>
+<script src="./js/songs.js?v=203"></script>
+<script src="./js/rime-tab.js?v=203"></script>
+<script src="./js/sinonime-tab.js?v=203"></script>
+<script src="./js/engleza-tab.js?v=203"></script>
+<script src="./js/biblic-tab.js?v=203"></script>
+<script src="./js/bible-tab.js?v=203"></script>
+<script src="./js/xlsx.js?v=203"></script>
+<script src="./js/scores.js?v=203"></script>
+<script src="./js/song-detail.js?v=203"></script>
+<script src="./js/app.js?v=203"></script>
 
 <script>
 // Registered after load so it never competes with the app's own first

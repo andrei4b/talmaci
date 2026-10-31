@@ -23,6 +23,8 @@ let _fullHeight = 0, _fullHeightWidth = 0;
 // (Release 190). Watched, not measured once: at launch the two are
 // still the same, and 100vh grows afterwards without any viewport event,
 // so Releases 188 and 189, which measured with those, always got 0.
+// That happens with the translucent status bar only; since the opaque one
+// (index.html) it is 0, and this stays for apps added before the switch.
 function _watchIosLost() {
   const app = document.getElementById('app');
   if (navigator.standalone !== true || !app) return;
