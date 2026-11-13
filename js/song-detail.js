@@ -148,8 +148,10 @@ async function render(root, songId, openNotesFor, entered) {
   _undoStateVersionId = undefined;
   _originalHistory = null;
   // And its observations' listeners start afresh with it, in case one
-  // ended while the song was off screen.
+  // ended while the song was off screen, and so does its text's.
   _unwatchNotes();
+  _unwatchText();
+  _forgetText();
   // Set once the song turns out not to be there, so leaving it takes its
   // entry out of the history rather than leaving it to be gone back to.
   let gone = false;
@@ -398,9 +400,282 @@ const AWAY_MS = 30 * 1000;
 let _hiddenAt = 0;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { _hiddenAt = Date.now(); return; }
-  if (_hiddenAt && Date.now() - _hiddenAt >= AWAY_MS) _rewatchNotes();
+  if (_hiddenAt && Date.now() - _hiddenAt >= AWAY_MS) { _rewatchNotes(); _rewatchText(); }
   _hiddenAt = 0;
 });
+
+/* ---- the text, live ----
+ *
+ * The open song and its versions are listened to while the song is on
+ * screen, the way its observations are: what someone else writes — or
+ * you, on another device — shows up by itself, the verse it changed lit
+ * up for a moment (see the verse view's `remote`). Without it, a song
+ * left open on one device would save its older text over everything
+ * written since on another, at the first word typed into it.
+ *
+ * Each save goes to whoever has the song open as one read; text typed
+ * here costs nothing more than the saves it already made.
+ *
+ * Text that cannot be shown yet waits in _textWaiting: text typed here
+ * that is not saved yet is in the way, or a box is being written in while
+ * the rows would have to be redrawn. It is shown once the box is left, or
+ * the save is made — unless the save was of the same text, which then
+ * puts back what came in, and says so (see _textSaving).
+ *
+ * The song's other details come along too: its title, status, who is
+ * working on it, its versions — added, removed, renamed, reordered. */
+let _textWatch = { songId: null, stops: [], fails: 0 };
+// The verse view on screen, which shows what comes in.
+let _textView = null;
+// Text come in that waits to be shown: by side, 'original' or a version's
+// id, { verses, by }.
+const _textWaiting = new Map();
+// The Text tab is to be drawn again, once nothing is being written in it.
+let _redrawWaiting = false;
+// The last few texts saved from here, by side, to tell them apart when
+// they come back from the server.
+const _textSent = new Map();
+const TEXT_SENT_KEPT = 5;
+// A listener that failed is started again this many times in a row.
+const TEXT_RETRIES = 5;
+
+function _unwatchText() {
+  _textWatch.stops.forEach(stop => stop());
+  _textWatch.stops = [];
+}
+
+function _watchText() {
+  if (!_song) return;
+  if (_textWatch.songId === _song.id && _textWatch.stops.length) return;
+  _unwatchText();
+  if (_textWatch.songId !== _song.id) _forgetText();
+  _textWatch.songId = _song.id;
+  const songId = _song.id;
+  // Like the observations', the listeners stop at the first change after
+  // the song has left the screen; drawing it again starts them anew.
+  const here = () => {
+    if (!_song || _song.id !== songId || _textWatch.songId !== songId) return false;
+    if (!_songOnScreen()) { _unwatchText(); return false; }
+    _textWatch.fails = 0;
+    return true;
+  };
+  const failed = (err) => {
+    if (_textWatch.songId !== songId || !_textWatch.stops.length) return;
+    console.warn('Song text stopped coming in:', err && (err.code || err.message));
+    _unwatchText();
+    if (++_textWatch.fails > TEXT_RETRIES) return;
+    setTimeout(async () => {
+      if (!_songOnScreen() || _song.id !== songId || _textWatch.stops.length) return;
+      // A song deleted on another device is refused rather than reported
+      // missing (see Db.getSong).
+      if (err && err.code === 'permission-denied') {
+        const there = await window.Db.getSong(songId).catch(() => true);
+        if (!_songOnScreen() || _song.id !== songId) return;
+        if (!there) { _songGone(); return; }
+      }
+      _watchText();
+    }, WATCH_RETRY_MS);
+  };
+  _textWatch.stops = [
+    window.Db.watchSong(songId, (snap) => { if (here()) _songCameIn(snap); }, failed),
+    window.Db.watchVersions(songId, (snap) => { if (here()) _versionsCameIn(snap); }, failed)
+  ];
+}
+
+// Started afresh: see _rewatchNotes.
+function _rewatchText() {
+  if (!_songOnScreen()) return;
+  _unwatchText();
+  _watchText();
+}
+
+// Nothing kept about the song's text coming in: another song is opened.
+function _forgetText() {
+  _textWaiting.clear();
+  _textSent.clear();
+  _redrawWaiting = false;
+  _textWatch.fails = 0;
+}
+
+function _songGone() {
+  _unwatchText();
+  toast('Melodia nu mai există.', { kind: 'error' });
+  window.Songs.noteDeleted(_song.id);
+  window.App.goUpToList(true);
+}
+
+// The details of the song shown or acted on here besides its text.
+const SONG_DETAILS = ['title', 'kind', 'shared', 'status', 'workers', 'versionOrder',
+  'demoUrl', 'demoTitle', 'demoAuthor'];
+const _same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+function _songCameIn({ exists, data, pending, fromCache }) {
+  if (!exists) {
+    // Not deleted here, where that leaves the song itself, and not just
+    // missing from the device's copy.
+    if (!pending && !fromCache) _songGone();
+    return;
+  }
+  const patch = {};
+  SONG_DETAILS.forEach(f => { if (!_same(_song[f], data[f])) patch[f] = data[f]; });
+  if (Object.keys(patch).length) {
+    const order = _versions.map(v => v.id).join();
+    _note(patch);
+    if ('title' in patch) {
+      const title = _shellRoot.querySelector('.topbar__title');
+      if (title) title.textContent = _song.title || 'Fără titlu';
+    }
+    if ('versionOrder' in patch) _versions = orderVersions(_song, _versions);
+    const reordered = _showingVerseGrid() && _versions.map(v => v.id).join() !== order;
+    if ('kind' in patch || 'shared' in patch || reordered) _redrawSoon();
+    if ('shared' in patch) _loadNotes();
+  }
+  if (!pending) _textCameIn('original', window.Verses.read(data.originalVerses), data.textBy);
+}
+
+function _versionsCameIn({ docs, pending, fromCache }) {
+  let changed = false;      // which versions there are, or their titles
+  const ids = new Set(docs.map(d => d.id));
+  docs.forEach(d => {
+    const v = _versions.find(x => x.id === d.id);
+    if (!v) {
+      // One being added here is taken in by _openAddVersion.
+      if (d.pending) return;
+      _versions.push({ id: d.id, ...d.data, verses: window.Verses.read(d.data.verses) });
+      changed = true;
+      return;
+    }
+    if ((d.data.title || '') !== (v.title || '')) { v.title = d.data.title; changed = true; }
+    if (!d.pending) _textCameIn(d.id, window.Verses.read(d.data.verses), d.data.textBy);
+  });
+  if (changed) {
+    _versions.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    _versions = orderVersions(_song, _versions);
+    // A song that had none to write in has one now.
+    if (!_activeVersionId && _versions.length) _activeVersionId = _versions[_versions.length - 1].id;
+  }
+  // Gone: not while one is being deleted here, which leaves it itself,
+  // nor from the device's copy, which may have only some of them.
+  const gone = pending || fromCache ? [] : _versions.filter(v => !ids.has(v.id));
+  if (gone.length) {
+    _versions = _versions.filter(v => ids.has(v.id));
+    gone.forEach(v => { _otherHistories.delete(v.id); _textWaiting.delete(v.id); });
+    changed = true;
+    if (gone.some(v => v.id === _activeVersionId)) {
+      // Its text cannot be saved any more, so it does not wait for that.
+      _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
+      _rememberVersion(_song.id, _activeVersionId);
+      toast('Versiunea deschisă a fost ștearsă.', { kind: 'error' });
+      _renderShell(_shellRoot);
+      return;
+    }
+  }
+  if (changed) { _watchNotes(); _redrawSoon(); }
+}
+
+// The text a side has here: the song's original, or a version's.
+function _textOf(key) {
+  if (key === 'original') return _song.originalVerses;
+  const v = _versions.find(x => x.id === key);
+  return v ? v.verses : null;
+}
+
+/* A side's text as the server has it now (`by` saved it). Ours coming
+ * back, or text the same as here, is nothing to show; anything else is
+ * shown, or waits to be. */
+function _textCameIn(key, verses, by) {
+  const now = _textOf(key);
+  if (!now) return;
+  const json = JSON.stringify(verses);
+  if (json === JSON.stringify(now)) { _textWaiting.delete(key); return; }
+  const me = window.Auth.currentUser().uid;
+  if (by === me && (_textSent.get(key) || []).includes(json)) return;
+
+  const shown = _textView && _textView.el.isConnected ? _textView.remote(key, verses) : null;
+  if (shown === false) { _textWaiting.set(key, { verses, by }); return; }
+  _textWaiting.delete(key);
+  // Not on screen: kept for when it is, its history starting afresh.
+  if (shown === null) {
+    if (key === 'original') {
+      _song.originalVerses = verses;
+      if (_originalHistory && _originalHistorySongId === _song.id) Object.assign(_originalHistory, _newHistory(verses));
+    } else {
+      _versions.find(x => x.id === key).verses = verses;
+      if (key === _undoStateVersionId) Object.assign(_versionHistory, _newHistory(verses));
+      _otherHistories.delete(key);
+    }
+  }
+  if (key === 'original') window.Songs.noteUpdated(_song.id, { originalVerses: verses });
+  _tellWritten(key, by);
+}
+
+// What waited is shown, if it can be now; see _textWaiting.
+function _flushText() {
+  if (!_songOnScreen()) return;
+  [..._textWaiting].forEach(([key, w]) => {
+    _textWaiting.delete(key);
+    _textCameIn(key, w.verses, w.by);
+  });
+  if (_redrawWaiting && !_writingHere()) {
+    _redrawWaiting = false;
+    _renderShell(_shellRoot);
+  }
+}
+
+function _redrawSoon() {
+  _redrawWaiting = true;
+  _flushText();
+}
+
+// A box or field of the song page has the caret.
+function _writingHere() {
+  const a = document.activeElement;
+  return !!a && !!_shellRoot && _shellRoot.contains(a) && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT');
+}
+
+/* A save about to go out from here, of one side's text: remembered, to
+ * know it when it comes back, and — when text from elsewhere was waiting
+ * on it — the one time that text is lost, since the save is of the whole
+ * text and goes over it. Told, so the other side can be looked at. */
+function _textSaving(key, verses) {
+  const sent = _textSent.get(key) || [];
+  sent.push(JSON.stringify(verses));
+  _textSent.set(key, sent.slice(-TEXT_SENT_KEPT));
+  const w = _textWaiting.get(key);
+  if (!w) return;
+  _textWaiting.delete(key);
+  const where = _textPlace(key);
+  toast(w.by === window.Auth.currentUser().uid
+    ? `Ai scris în același timp în ${where} și pe alt dispozitiv; s-a păstrat textul de aici.`
+    : `${_memberNames().get(w.by) || 'Altcineva'} a scris în același timp în ${where}; s-a păstrat textul tău.`,
+    { kind: 'error' });
+}
+
+// "în …": the original, or a version by its title.
+function _textPlace(key) {
+  if (key === 'original') return 'original';
+  const v = _versions.find(x => x.id === key);
+  return `„${(v && v.title) || 'Fără titlu'}”`;
+}
+
+/* Text come in to a side you may write in too — another device of yours,
+ * or someone else who may — is told, so it is not written over unawares.
+ * At most once every TELL_EVERY_MS for the same side: a sitting of
+ * someone's writing comes in as many saves. Watching someone else write
+ * their own version, the lit-up verses are enough. */
+const TELL_EVERY_MS = 2 * 60 * 1000;
+const _toldAt = new Map();
+function _tellWritten(key, by) {
+  const mine = key === 'original' ? _canEditSong() : _canEditVersion(_versions.find(x => x.id === key));
+  if (!mine || !_songOnScreen()) return;
+  const told = `${_song.id}:${key}`;
+  if (Date.now() - (_toldAt.get(told) || 0) < TELL_EVERY_MS) return;
+  _toldAt.set(told, Date.now());
+  const where = _textPlace(key);
+  toast(by === window.Auth.currentUser().uid
+    ? `Ai scris în ${where} pe alt dispozitiv.`
+    : `${_memberNames().get(by) || 'Cineva'} a scris în ${where}.`);
+}
 
 /* A version's observations in the order they were left, each found in
  * the version's text as it reads now (see threads.js): `loc` is where its
@@ -1242,6 +1517,27 @@ function _fitHeight(ta) {
   ta.style.height = ta.scrollHeight + 'px';
 }
 
+/* New text into the box being written in, the caret staying with the
+ * text it was in: moved by as much as was added or taken out before it,
+ * and left alone by a change after it. */
+function _keepCaret(ta, next) {
+  const was = ta.value, a = ta.selectionStart, b = ta.selectionEnd;
+  let same = 0;
+  while (same < was.length && same < next.length && was[same] === next[same]) same++;
+  const shift = next.length - was.length;
+  const at = (x) => x <= same ? x : Math.max(same, x + shift);
+  ta.value = next;
+  ta.setSelectionRange(at(a), at(b));
+}
+
+// A box whose text just came in from elsewhere, lit up for a moment.
+function _flashBox(ta) {
+  ta.classList.remove('verse__box--changed');
+  void ta.offsetWidth;
+  ta.classList.add('verse__box--changed');
+  ta.addEventListener('animationend', () => ta.classList.remove('verse__box--changed'), { once: true });
+}
+
 /* One text being edited on the Text tab — the version or the original —
  * with its own undo history and its own autosave.
  *
@@ -1287,6 +1583,16 @@ function _editedText({ verses, history, canEdit, write, save }) {
       history.last = next;
       history.pending = false;
       save(next);
+      doc.onChange();
+    },
+    /* Text written elsewhere, as it came in (see _textCameIn): not saved
+     * again, and not a step to undo. The history starts afresh from it,
+     * since undoing past it would save the older text over what the other
+     * device wrote. */
+    remote(next) {
+      doc.verses = next;
+      write(next);
+      Object.assign(history, { undo: [], redo: [], last: next, pending: false });
       doc.onChange();
     },
     // Undo moves from `from` to `to`; redo the other way round.
@@ -1412,6 +1718,8 @@ function _renderTextTab(content) {
   });
   content.appendChild(el('div', { class: 'text-tab-wrap' }, [body.el, switcher]));
   body.mounted();
+  _textView = body;
+  _watchText();
 }
 
 /* The Text tab: a song verse by verse. For a translation, each verse of
@@ -2146,9 +2454,46 @@ function _renderVersesView(ctx) {
   ctx.original.showHistory = redraw;
   trs.forEach(s => { s.doc.showHistory = redraw; });
 
+  /* Text written elsewhere into one side — 'original', or a version's id
+   * — shown as it comes in (see _textCameIn). Null when that side is not
+   * on screen; false when it has to wait, and true once it is shown.
+   *
+   * The same verses with the same marks, the usual case of someone
+   * writing, change in place: only the boxes whose lyrics changed, each
+   * lit up for a moment, a caret in one kept where it was in the text.
+   * Anything else — a verse added, removed, or marked anew — moves rows
+   * about, so it redraws them all, which only waits for no box to be
+   * written in. Nor does any of it go into text typed here that is not
+   * saved yet: the save that is coming would put it back anyway. */
+  function remote(key, verses) {
+    const s = sides.find(x => (x.inOriginal ? 'original' : x.version ? x.version.id : _activeVersionId) === key);
+    if (!s) return null;
+    if (s.doc.history.pending) return false;
+    const was = s.doc.verses;
+    const sameShape = verses.length === was.length && verses.every((v, k) => v.mark === was[k].mark);
+    if (!sameShape) {
+      if (list.contains(document.activeElement)) return false;
+      s.doc.remote(verses);
+      redraw();
+      return true;
+    }
+    s.doc.remote(verses);
+    s.cells.forEach(c => {
+      if (c.k == null || verses[c.k].lyrics === was[c.k].lyrics) return;
+      if (c.box === document.activeElement) { _keepCaret(c.box, verses[c.k].lyrics); c.show(); }
+      else c.show(verses[c.k].lyrics);
+      _flashBox(c.box);
+    });
+    if (!s.inOriginal) _syncVerseNotesSoon();
+    return true;
+  }
+  // What waited for the boxes to be left is shown once they are.
+  list.addEventListener('focusout', () => setTimeout(_flushText));
+
   const pending = draw();
   return {
     el: wrap,
+    remote,
     mounted() {
       pending.forEach(f => f());
       fitColumns();
@@ -2252,8 +2597,9 @@ window.addEventListener('beforeunload', (e) => {
 async function _saveVersionText(versionId, history, verses) {
   if (!versionId) return;
   const song = _song;
+  _textSaving(versionId, verses);
   try {
-    const { queued, sent } = await window.Db.setVersionVerses(song.id, versionId, verses);
+    const { queued, sent } = await window.Db.setVersionVerses(song.id, versionId, verses, window.Auth.currentUser().uid);
     if (queued) _queued(sent, 'Nu am putut salva textul');
     const version = _versions.find(v => v.id === versionId);
     window.Activity.log(song, 'version_text', { versionTitle: version ? version.title : '' }, versionId);
@@ -2261,6 +2607,7 @@ async function _saveVersionText(versionId, history, verses) {
     // tab), so it is not set back here to whatever this save carried.
     history.last = verses;
     history.pending = false;
+    if (_song === song) _flushText();
   } catch (err) {
     toast(failText('Nu am putut salva textul', err), { kind: 'error' });
   }
@@ -2270,8 +2617,9 @@ async function _saveVersionText(versionId, history, verses) {
 // its own copy for the snippet under each title, so it is told as well.
 async function _saveOriginalText(verses) {
   const song = _song;
+  _textSaving('original', verses);
   try {
-    const { queued, sent } = await window.Db.setOriginalVerses(song.id, verses);
+    const { queued, sent } = await window.Db.setOriginalVerses(song.id, verses, window.Auth.currentUser().uid);
     if (queued) _queued(sent, 'Nu am putut salva originalul');
     window.Songs.noteUpdated(song.id, { originalVerses: verses });
     window.Activity.log(song, 'original_text', null, 'original');
@@ -2279,6 +2627,7 @@ async function _saveOriginalText(verses) {
       _originalHistory.last = verses;
       _originalHistory.pending = false;
     }
+    if (_song === song) _flushText();
   } catch (err) {
     toast(failText('Nu am putut salva originalul', err), { kind: 'error' });
   }
@@ -2499,7 +2848,10 @@ function _openAddVersion(content) {
             // With its creator, as listVersions would bring it: that is
             // who may write in it, and without it the version you just
             // made would be read-only to you until the song is reloaded.
-            _versions.push({ id, title, verses: [], createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now });
+            // Unless it has come in live already (see _versionsCameIn).
+            if (!_versions.some(v => v.id === id)) {
+              _versions.push({ id, title, verses: [], createdBy: window.Auth.currentUser().uid, createdAt: now, updatedAt: now });
+            }
             window.Activity.log(_song, 'version_added', { versionTitle: title });
             _activeVersionId = id;
             _rememberVersion(_song.id, id);
@@ -2793,9 +3145,9 @@ function _confirmShareSong(root) {
   openSheet(overlay);
 }
 
-// Re-fetches the song + its versions from Firestore — there are no live
-// listeners, so this is how you pick up a change someone else just made.
-// Keeps the current tab (unlike render(), which is also used for
+// Re-fetches the song + its versions from Firestore — the listeners (see
+// _watchText) bring changes by themselves, so this is for when they may
+// not have: a connection that is not what it seems. Keeps the current tab (unlike render(), which is also used for
 // navigating to a brand-new song and resets to the Text tab).
 async function _refreshSong(root) {
   try {
@@ -2809,6 +3161,8 @@ async function _refreshSong(root) {
     _song = refreshed;
     window.Songs.noteUpdated(_song.id, refreshed);
     _versions = versions;
+    _textWaiting.clear();
+    _redrawWaiting = false;
     if (!_versions.find(v => v.id === _activeVersionId)) {
       _activeVersionId = _versions.length ? _versions[_versions.length - 1].id : null;
     }
@@ -2882,6 +3236,10 @@ async function _generateMotAMot(root) {
 // Drops the open song so the next account never sees it (see Songs.reset).
 function reset() {
   _unwatchNotes(true);
+  _unwatchText();
+  _textWatch.songId = null;
+  _forgetText();
+  _textView = null;
   _notes = new Map();
   _seen = {};
   _seenFor = null;

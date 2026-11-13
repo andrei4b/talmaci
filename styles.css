@@ -703,6 +703,13 @@ button.text-tab__head { cursor: pointer; }
   border-radius: 0;
 }
 .verse__box:focus { outline: none; }
+/* Text that just came in from another device, lit up for a moment and
+   back to the box's own background: see _flashBox in song-detail.js. */
+.verse__box--changed { animation: verse-changed 1.6s ease-out; }
+@keyframes verse-changed {
+  0%, 30% { background: rgba(201, 125, 62, 0.18); }
+  100% { background: transparent; }
+}
 /* A side you may not edit, where it has no verse yet: see _renderVersesView. */
 .verse__editor:has(textarea:disabled) { opacity: 0.5; }
 .verses__note { margin: 0; font-size: 0.8rem; color: var(--color-text-muted); }

@@ -17,7 +17,9 @@ verse: each verse of the original beside its verse of every version, paired
 by section mark (verse, chorus, bridge…, picked above each box; see
 `js/sections.js`) and otherwise by position. The original and each version
 are stored as a list of verses, `{ mark, lyrics }` (see `js/verses.js`), so
-a blank line inside a verse is just a line. Rime
+a blank line inside a verse is just a line. An open song is live: what
+anyone writes in it, on any device, shows up on the others as it is saved,
+the changed verse lit up for a moment. Rime
 looks a word up in a 210k-word index built from dexonline and returns its
 perfect rhymes, with the stressed syllable marked; its index is built
 offline, see `tools/rhyme/README.md`. Sinonime shows dexonline's *Dicționar

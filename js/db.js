@@ -58,6 +58,8 @@
  *     demoAuthor: string,       // a file's name; its channel or artist.
  *                               // '' when the page does not say; null or
  *                               // absent when not read yet — see scores.js.
+ *     textBy: uid,              // who last saved originalVerses; absent
+ *                               // until someone has since release 204
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -71,6 +73,7 @@
  *     title: string,             // shown in the version switcher
  *     verses: [{ mark, lyrics }], // the Romanian translation for this
  *                                 // version, verse by verse
+ *     textBy: uid,                // who last saved them, as on the song
  *     createdBy: uid,
  *     createdAt: number (ms),
  *     updatedAt: number (ms)
@@ -302,11 +305,46 @@ function _queued(write) {
   if (!window.Utils.isOffline()) return sent.then(() => ({ queued: false, sent }));
   return Promise.resolve({ queued: true, sent });
 }
-function setVersionVerses(songId, versionId, verses) {
-  return _queued(() => _versionsRef(songId).doc(versionId).update({ verses, updatedAt: Date.now() }));
+/* `by` goes with them as `textBy`, so whoever has the song open elsewhere
+ * can be told who wrote what just came in (see watchSong). */
+function setVersionVerses(songId, versionId, verses, by) {
+  return _queued(() => _versionsRef(songId).doc(versionId).update({ verses, textBy: by, updatedAt: Date.now() }));
 }
-function setOriginalVerses(songId, verses) {
-  return _queued(() => fs().collection('songs').doc(songId).update({ originalVerses: verses, updatedAt: Date.now() }));
+function setOriginalVerses(songId, verses, by) {
+  return _queued(() => fs().collection('songs').doc(songId).update({ originalVerses: verses, textBy: by, updatedAt: Date.now() }));
+}
+
+/* The open song and its versions, kept live, so text written on another
+ * device shows up by itself (see song-detail.js): `onChange` gets the
+ * song now — from the device's copy first — and again after every change,
+ * until the function returned is called.
+ *
+ * With its metadata too: `pending` says the device's copy holds a change
+ * of its own not yet sent, and `fromCache` that the server has not
+ * answered yet. A change of someone else's that comes in while one of
+ * ours is still on its way would otherwise never be told apart from ours:
+ * once ours is sent, nothing about the data changes again. Metadata alone
+ * changing is not a read Firestore charges for. */
+function watchSong(songId, onChange, onError) {
+  return fs().collection('songs').doc(songId).onSnapshot({ includeMetadataChanges: true },
+    snap => onChange({
+      exists: snap.exists,
+      data: snap.exists ? snap.data() : null,
+      pending: snap.metadata.hasPendingWrites,
+      fromCache: snap.metadata.fromCache
+    }),
+    err => { if (onError) onError(err); });
+}
+// The same for its versions, as listVersions reads them, each one saying
+// whether a change of ours to it is pending.
+function watchVersions(songId, onChange, onError) {
+  return _versionsRef(songId).orderBy('createdAt', 'asc').onSnapshot({ includeMetadataChanges: true },
+    snap => onChange({
+      docs: snap.docs.map(d => ({ id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites })),
+      pending: snap.metadata.hasPendingWrites,
+      fromCache: snap.metadata.fromCache
+    }),
+    err => { if (onError) onError(err); });
 }
 
 async function updateVersion(songId, versionId, patch) {
@@ -458,7 +496,7 @@ async function deleteScore(songId, score) {
 const _online = (fn) => async (...args) => { window.Utils.requireOnline(); return fn(...args); };
 
 window.Db = {
-  listSongs, getSong, getGroup, listVersions, watchNotes, getSeen, seenAt, getNote,
+  listSongs, getSong, getGroup, listVersions, watchSong, watchVersions, watchNotes, getSeen, seenAt, getNote,
   setVersionVerses, setOriginalVerses,
   ...Object.fromEntries(Object.entries({
     addSong, updateSong, setDemoTitle, deleteSong, setSongStatus, setWorking, setVersionOrder,

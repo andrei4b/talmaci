@@ -15,8 +15,8 @@ rules_version = '2';
 //   /groups/{groupId} { name, createdBy, createdAt }
 //   /groups/{groupId}/activity/{entryId} { action, by, byName, songId, songTitle, ..., at }
 //   /invites/{code}   { groupId, createdBy, createdAt }
-//   /songs/{songId}   { title, originalVerses: [{ mark, lyrics }], groupId, shared, status, workers, versionOrder, demoUrl, createdBy, createdAt, updatedAt }
-//   /songs/{songId}/versions/{versionId} { title, verses: [{ mark, lyrics }], createdBy, createdAt, updatedAt }
+//   /songs/{songId}   { title, originalVerses: [{ mark, lyrics }], textBy, groupId, shared, status, workers, versionOrder, demoUrl, createdBy, createdAt, updatedAt }
+//   /songs/{songId}/versions/{versionId} { title, verses: [{ mark, lyrics }], textBy, createdBy, createdAt, updatedAt }
 //   /songs/{songId}/versions/{versionId}/notes/{noteId} { text, by, byName, at, anchor?, parentId?, editedAt?, hearts? }
 //   /songs/{songId}/scores/{scoreId} { name, type, size, path, url, by, byName, at }
 //                     (the file itself is in Cloud Storage — see storage.rules)
