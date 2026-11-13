@@ -417,9 +417,10 @@ document.addEventListener('visibilitychange', () => {
  * here costs nothing more than the saves it already made.
  *
  * Text that cannot be shown yet waits in _textWaiting: text typed here
- * that is not saved yet is in the way, or a box is being written in while
- * the rows would have to be redrawn. It is shown once the box is left, or
- * the save is made — unless the save was of the same text, which then
+ * that is not saved yet is in the way, or the rows would have to be
+ * redrawn under a box being written in whose verse they no longer have
+ * (see _redrawKeepingCaret). It is shown once the box is left, or the
+ * save is made — unless the save was of the same text, which then
  * puts back what came in, and says so (see _textSaving).
  *
  * The song's other details come along too: its title, status, who is
@@ -616,9 +617,17 @@ function _flushText() {
     _textWaiting.delete(key);
     _textCameIn(key, w.verses, w.by);
   });
-  if (_redrawWaiting && !_writingHere()) {
+  if (!_redrawWaiting) return;
+  if (!_writingHere()) {
     _redrawWaiting = false;
     _renderShell(_shellRoot);
+    return;
+  }
+  // Under a verse being written in, the caret put back in it.
+  const at = _textView && _textView.el.isConnected && _textView.caretAt();
+  if (at) {
+    _redrawWaiting = false;
+    _redrawKeepingCaret(at, () => _renderShell(_shellRoot));
   }
 }
 
@@ -1530,6 +1539,33 @@ function _keepCaret(ta, next) {
   ta.setSelectionRange(at(a), at(b));
 }
 
+// The index of a verse the same as `verse`, nearest `k`; or null.
+function _sameVerseNear(verses, verse, k) {
+  let best = null;
+  verses.forEach((v, j) => {
+    if (v.mark === verse.mark && v.lyrics === verse.lyrics && (best == null || Math.abs(j - k) < Math.abs(best - k))) best = j;
+  });
+  return best;
+}
+
+/* The Text tab drawn again by `redraw` under a box being written in, and
+ * the caret put back in the same verse (`at`, from the verse view's
+ * caretAt). Meanwhile it waits in a box of its own, off to the side, so
+ * it goes from box to box and never to nothing: a phone keeps its keyboard
+ * up through that, and drops it as soon as no box has the caret. */
+function _redrawKeepingCaret(at, redraw) {
+  const hold = el('textarea', { class: 'caret-hold', tabindex: '-1', 'aria-hidden': 'true' });
+  hold.style.top = Math.max(0, at.top) + 'px';
+  document.body.appendChild(hold);
+  hold.focus({ preventScroll: true });
+  try {
+    redraw();
+  } finally {
+    if (_textView && _textView.el.isConnected) _textView.takeCaret(at);
+    hold.remove();
+  }
+}
+
 // A box whose text just came in from elsewhere, lit up for a moment.
 function _flashBox(ta) {
   ta.classList.remove('verse__box--changed');
@@ -1769,6 +1805,8 @@ function _renderVersesView(ctx) {
     ? trs.find(t => !t.version || t.version.id === _activeVersionId) || trs[0]
     : orig;
   const verseOf = (s, k) => s.doc.verses[k];
+  // Which text a side is, as text coming in names it (see remote).
+  const keyOf = (s) => s.inOriginal ? 'original' : s.version ? s.version.id : _activeVersionId;
   // Each side's column, counted from 1.
   const colOf = (s) => s.inOriginal ? 1 : trs.indexOf(s) + (hasOrig ? 2 : 1);
   let lastBox = null;
@@ -2462,19 +2500,27 @@ function _renderVersesView(ctx) {
    * writing, change in place: only the boxes whose lyrics changed, each
    * lit up for a moment, a caret in one kept where it was in the text.
    * Anything else — a verse added, removed, or marked anew — moves rows
-   * about, so it redraws them all, which only waits for no box to be
-   * written in. Nor does any of it go into text typed here that is not
+   * about, so it redraws them all: under a box being written in too, the
+   * caret put back in its verse, unless that verse is gone. Nor does any of it go into text typed here that is not
    * saved yet: the save that is coming would put it back anyway. */
   function remote(key, verses) {
-    const s = sides.find(x => (x.inOriginal ? 'original' : x.version ? x.version.id : _activeVersionId) === key);
+    const s = sides.find(x => keyOf(x) === key);
     if (!s) return null;
     if (s.doc.history.pending) return false;
     const was = s.doc.verses;
     const sameShape = verses.length === was.length && verses.every((v, k) => v.mark === was[k].mark);
     if (!sameShape) {
-      if (list.contains(document.activeElement)) return false;
+      if (!list.contains(document.activeElement)) {
+        s.doc.remote(verses);
+        redraw();
+        return true;
+      }
+      // Under a box being written in, when its verse is there to put the
+      // caret back in afterwards (see caretAt).
+      const at = caretAt();
+      if (!at || (at.key === key && at.verse && _sameVerseNear(verses, at.verse, at.k) == null)) return false;
       s.doc.remote(verses);
-      redraw();
+      _redrawKeepingCaret(at, redraw);
       return true;
     }
     s.doc.remote(verses);
@@ -2490,10 +2536,46 @@ function _renderVersesView(ctx) {
   // What waited for the boxes to be left is shown once they are.
   list.addEventListener('focusout', () => setTimeout(_flushText));
 
+  /* The box being written in, to put the caret back in once the rows are
+   * drawn again: which side, the verse it is in — found again by what it
+   * says, nearest where it was — or, for an empty box past the side's
+   * last verse, the next one there is; the selection, and where on screen
+   * the box is. Null for a box that could not be found that way: an empty
+   * one between verses, or a verse emptied, which leaving would take out
+   * (see the box's blur). */
+  function caretAt() {
+    const a = document.activeElement;
+    const c = a && sides.flatMap(x => x.cells).find(x => x.box === a);
+    if (!c || (c.k == null ? !nextSlots(c.side).includes(c) : !a.value.trim())) return null;
+    return {
+      key: keyOf(c.side), k: c.k, verse: c.k != null ? verseOf(c.side, c.k) : null,
+      start: a.selectionStart, end: a.selectionEnd, top: a.getBoundingClientRect().top
+    };
+  }
+  // A side's empty boxes past its last verse, where its next one goes.
+  function nextSlots(s) {
+    const last = s.cells.map(c => c.k != null).lastIndexOf(true);
+    return s.cells.slice(last + 1).filter(c => c.box);
+  }
+  // The caret back where caretAt found it, the box where it was on screen.
+  function takeCaret(at) {
+    const s = sides.find(x => keyOf(x) === at.key);
+    if (!s) return false;
+    const j = at.verse ? _sameVerseNear(s.doc.verses, at.verse, at.k) : null;
+    const cell = at.verse ? (j == null ? null : s.cells.find(c => c.k === j)) : nextSlots(s)[0];
+    if (!cell || !cell.box) return false;
+    cell.box.focus({ preventScroll: true });
+    cell.box.setSelectionRange(at.start, at.end);
+    wrap.scrollTop += cell.box.getBoundingClientRect().top - at.top;
+    return true;
+  }
+
   const pending = draw();
   return {
     el: wrap,
     remote,
+    caretAt,
+    takeCaret,
     mounted() {
       pending.forEach(f => f());
       fitColumns();

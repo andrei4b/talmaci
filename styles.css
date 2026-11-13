@@ -710,6 +710,20 @@ button.text-tab__head { cursor: pointer; }
   0%, 30% { background: rgba(201, 125, 62, 0.18); }
   100% { background: transparent; }
 }
+/* Where the caret waits while the verses are drawn again under it (see
+   _redrawKeepingCaret): a box, so a phone keeps its keyboard up, but not
+   one to see. 16px, or iOS would zoom in on it. */
+.caret-hold {
+  position: fixed;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  pointer-events: none;
+}
 /* A side you may not edit, where it has no verse yet: see _renderVersesView. */
 .verse__editor:has(textarea:disabled) { opacity: 0.5; }
 .verses__note { margin: 0; font-size: 0.8rem; color: var(--color-text-muted); }
